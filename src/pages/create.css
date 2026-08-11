@@ -1,0 +1,6 @@
+/* Create page: disabled-CTA tooltip and chart frame. */
+.disabled-tip-wrap { position: relative; display: inline-flex; }
+.disabled-tip { position: absolute; bottom: calc(100% + 4px); left: 50%; transform: translateX(-50%); white-space: nowrap; background: var(--ink); color: var(--paper); font-size: var(--text-xs); line-height: 1.4; padding: 4px 9px; opacity: 0; pointer-events: none; transition: opacity 120ms ease; z-index: 5; }
+.disabled-tip-wrap:hover .disabled-tip { opacity: 1; }
+.disabled-tip:empty { display: none; }
+.curve-frame { border: 0; }
