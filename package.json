@@ -1,0 +1,36 @@
+{
+  "name": "splits-pact",
+  "version": "0.1.0",
+  "description": "Raise small onchain rounds by selling a slice of a 0xSplits Liquid Split along a bonding curve.",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "build:contracts": "forge build && node scripts/export-contracts.js",
+    "start": "node server.js",
+    "test": "node --test tests/*.test.js",
+    "test:e2e": "npm run build && playwright test"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.11.1",
+    "express": "^5.2.1",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "viem": "^2.54.0"
+  },
+  "overrides": {
+    "ws": "8.21.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.61.1",
+    "@tailwindcss/vite": "^4.3.2",
+    "@vitejs/plugin-react": "^5.2.0",
+    "tailwindcss": "^4.3.2",
+    "vite": "^7.3.0"
+  }
+}

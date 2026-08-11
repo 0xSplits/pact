@@ -1,0 +1,18 @@
+app = "splits-pact"
+primary_region = "sjc"
+
+[env]
+  PORT = "7228"
+  PACT_DB_PATH = "/data/pact.sqlite"
+
+[[mounts]]
+  source = "pact_data"
+  destination = "/data"
+
+[http_service]
+  internal_port = 7228
+  force_https = true
+  auto_stop_machines = true
+  auto_start_machines = true
+  min_machines_running = 0
+  processes = ["app"]
