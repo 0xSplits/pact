@@ -49,12 +49,16 @@ contract PactToken is ERC1155, LiquidSplit {
         return operator == offering || super.isApprovedForAll(owner, operator);
     }
 
+    /// @notice Unit balance as a 0xSplits percentage (1 unit = 0.1% = 1000 on
+    /// the 1e6 scale).
     function scaledPercentBalanceOf(address account) public view override returns (uint32) {
         unchecked {
             return uint32(balanceOf[account][TOKEN_ID] * SUPPLY_TO_PERCENTAGE);
         }
     }
 
+    /// @notice Fully onchain metadata: a base64 JSON data URI whose image is an
+    /// inline SVG of the project name, so wallets render without any server.
     function uri(uint256) public view override returns (string memory) {
         string memory svg = string.concat(
             "<svg xmlns='http://www.w3.org/2000/svg' width='600' height='600'>",

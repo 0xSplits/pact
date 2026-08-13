@@ -1,196 +1,27 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-import {IERC1155Receiver, Offering} from "../src/Offering.sol";
-import {OfferingFactory} from "../src/OfferingFactory.sol";
-import {PactToken} from "../src/PactToken.sol";
+import {BaseTest} from "./Base.t.sol";
+import {Offering} from "../src/Offering.sol";
+import {MockUSDC} from "./Mocks.sol";
 
-interface Vm {
-    function warp(uint256) external;
-    function prank(address) external;
-    function startPrank(address) external;
-    function stopPrank() external;
-    function expectRevert(bytes4) external;
-    function etch(address, bytes calldata) external;
-    function chainId(uint256) external;
-    function addr(uint256) external pure returns (address);
-    function sign(uint256, bytes32) external pure returns (uint8, bytes32, bytes32);
-    function readFile(string calldata) external view returns (string memory);
-    function parseJsonUint(string calldata, string calldata) external pure returns (uint256);
-    function parseJsonAddress(string calldata, string calldata) external pure returns (address);
-    function parseJsonBytes32(string calldata, string calldata) external pure returns (bytes32);
-    function parseJsonString(string calldata, string calldata) external pure returns (string memory);
-    function parseJsonBytes(string calldata, string calldata) external pure returns (bytes memory);
-}
-
-contract MockUSDC {
-    string public constant name = "Mock USDC";
-    string public constant symbol = "USDC";
-    uint8 public constant decimals = 6;
-
-    mapping(address => uint256) public balanceOf;
-    mapping(address => mapping(address => uint256)) public allowance;
-    mapping(address => bool) public blocked;
-
-    function mint(address to, uint256 amount) external {
-        balanceOf[to] += amount;
-    }
-
-    function setBlocked(address account, bool value) external {
-        blocked[account] = value;
-    }
-
-    function approve(address spender, uint256 amount) external returns (bool) {
-        allowance[msg.sender][spender] = amount;
-        return true;
-    }
-
-    function transfer(address to, uint256 amount) external returns (bool) {
-        require(!blocked[to] && !blocked[msg.sender], "blocked");
-        require(balanceOf[msg.sender] >= amount, "balance");
-        balanceOf[msg.sender] -= amount;
-        balanceOf[to] += amount;
-        return true;
-    }
-
-    function transferFrom(address from, address to, uint256 amount) external returns (bool) {
-        require(!blocked[to] && !blocked[from], "blocked");
-        require(balanceOf[from] >= amount, "balance");
-        require(allowance[from][msg.sender] >= amount, "allowance");
-        allowance[from][msg.sender] -= amount;
-        balanceOf[from] -= amount;
-        balanceOf[to] += amount;
-        return true;
-    }
-}
-
-contract MockSplitMain {
-    uint256 private nonce;
-
-    function createSplit(address[] calldata, uint32[] calldata, uint32, address) external returns (address) {
-        return address(uint160(uint256(keccak256(abi.encode(address(this), ++nonce)))));
-    }
-}
-
-contract OfferingTest {
-    Vm internal constant vm = Vm(address(uint160(uint256(keccak256("hevm cheat code")))));
-    address internal constant USDC_ADDRESS = 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913;
-
-    uint256 internal constant OWNER_KEY = 1;
-    uint256 internal constant LINK_KEY = 2;
-
-    MockUSDC internal usdc;
-    MockSplitMain internal splitMain;
-    OfferingFactory internal factory;
-    Offering internal offering;
-    PactToken internal token;
-
-    address internal treasury;
-    address internal holder = address(0x1234);
-    address internal buyer = address(0xB0B);
-    address internal buyer2 = address(0xCAFE);
-
-    function setUp() public {
-        treasury = vm.addr(OWNER_KEY);
-        MockUSDC impl = new MockUSDC();
-        vm.etch(USDC_ADDRESS, address(impl).code);
-        usdc = MockUSDC(USDC_ADDRESS);
-        splitMain = new MockSplitMain();
-        factory = new OfferingFactory(address(splitMain));
-
-        (address offeringAddress, address tokenAddress) = _create(100e6, 100);
-        offering = Offering(offeringAddress);
-        token = PactToken(payable(tokenAddress));
-
-        usdc.mint(buyer, 1_000e6);
-        usdc.mint(buyer2, 1_000e6);
-        vm.prank(buyer);
-        usdc.approve(address(offering), type(uint256).max);
-        vm.prank(buyer2);
-        usdc.approve(address(offering), type(uint256).max);
-    }
-
-    function _create(uint256 raiseMin, uint256 publicUnits) internal returns (address, address) {
-        address[] memory holders = new address[](1);
-        holders[0] = holder;
-        uint32[] memory allocations = new uint32[](1);
-        allocations[0] = 800;
-        return factory.createOffering(
-            "Test Project", raiseMin, uint64(block.timestamp + 7 days), 1e6, 1000, publicUnits, treasury, holders, allocations, 200
-        );
-    }
-
-    function _voucher(string memory buyerName, uint256 cap) internal pure returns (Offering.Voucher memory) {
-        return Offering.Voucher({
-            allocationId: keccak256(abi.encode(buyerName, cap)),
-            buyerName: buyerName,
-            amountCapUsdc: cap,
-            linkKey: vm.addr(LINK_KEY)
-        });
-    }
-
-    function _ownerSig(Offering target, Offering.Voucher memory voucher) internal view returns (bytes memory) {
-        (uint8 v, bytes32 r, bytes32 s) = vm.sign(OWNER_KEY, target.voucherDigest(voucher));
-        return abi.encodePacked(r, s, v);
-    }
-
-    function _claimSig(Offering target, bytes32 allocationId, address claimer) internal view returns (bytes memory) {
-        (uint8 v, bytes32 r, bytes32 s) = vm.sign(LINK_KEY, target.claimDigest(allocationId, claimer));
-        return abi.encodePacked(r, s, v);
-    }
-
-    /*//////////////////////////////////////////////////////////////
-                              FACTORY + TOKEN
-    //////////////////////////////////////////////////////////////*/
-
-    function testFactoryCreatesOfferingAndToken() public view {
-        require(offering.pactToken() == address(token), "initialized");
-        require(offering.owner() == treasury, "owner");
-        require(offering.treasury() == treasury, "treasury");
-        require(offering.publicUnits() == 100, "public units");
-        require(token.balanceOf(address(offering), 0) == 200, "offering units");
-        require(token.balanceOf(holder, 0) == 800, "holder units");
-        require(token.offering() == address(offering), "token offering");
-        require(token.isApprovedForAll(buyer, address(offering)), "escrow operator");
-        require(token.scaledPercentBalanceOf(holder) == 800_000, "scaled percent");
-        require(token.payoutSplit() != address(0), "payout split");
-        require(keccak256(bytes(token.projectName())) == keccak256("Test Project"), "name");
-    }
-
-    function testFactoryRejectsImpossibleMinimum() public {
-        // costFor(0, 200) = 200e6 + 1000 * (200*199/2) = 219.9e6
-        vm.expectRevert(OfferingFactory.InvalidConfig.selector);
-        _create(220e6, 100);
-    }
-
-    function testFactoryRejectsPublicUnitsOverOffering() public {
-        vm.expectRevert(OfferingFactory.InvalidConfig.selector);
-        _create(100e6, 201);
-    }
-
-    function testTokenUriIsOnchainJson() public view {
-        bytes memory prefix = "data:application/json;base64,";
-        bytes memory result = bytes(token.uri(0));
-        require(result.length > prefix.length, "uri length");
-        for (uint256 i = 0; i < prefix.length; i++) {
-            require(result[i] == prefix[i], "uri prefix");
-        }
-    }
-
+contract OfferingTest is BaseTest {
     /*//////////////////////////////////////////////////////////////
                               PUBLIC TRANCHE
     //////////////////////////////////////////////////////////////*/
 
     function testBuyPublicAlongCurveAndMinMet() public {
+        vm.expectEmit(true, true, false, true, address(offering));
+        emit Offering.Bought(buyer, bytes32(0), 100, 100e6 + 1000 * ((99 * 100) / 2), "Bob");
         vm.prank(buyer);
         uint256 cost = offering.buyPublic(100, type(uint256).max, "Bob");
 
-        require(cost == 100e6 + 1000 * ((99 * 100) / 2), "cost");
-        require(offering.minMet(), "min");
-        require(offering.unitsSold() == 100, "sold");
-        require(offering.publicUnitsSold() == 100, "public sold");
-        require(offering.unitsBought(buyer) == 100, "units bought");
-        require(token.balanceOf(buyer, 0) == 100, "buyer units");
+        assertEq(cost, 100e6 + 1000 * ((99 * 100) / 2), "cost");
+        assertTrue(offering.minMet(), "min");
+        assertEq(offering.unitsSold(), 100, "sold");
+        assertEq(offering.publicUnitsSold(), 100, "public sold");
+        assertEq(offering.unitsBought(buyer), 100, "units bought");
+        assertEq(token.balanceOf(buyer, 0), 100, "buyer units");
     }
 
     function testBuyPublicCapEnforced() public {
@@ -205,11 +36,39 @@ contract OfferingTest {
         offering.setPublicUnits(150);
         vm.prank(buyer2);
         offering.buyPublic(50, type(uint256).max, "");
-        require(offering.publicUnitsSold() == 150, "raised cap used");
+        assertEq(offering.publicUnitsSold(), 150, "raised cap used");
 
         vm.prank(treasury);
         vm.expectRevert(Offering.InvalidConfig.selector);
         offering.setPublicUnits(100);
+    }
+
+    /// Any single public buy pays exactly the closed-form curve price.
+    function testFuzzBuyPublicCostMatchesCurve(uint256 units) public {
+        units = bound(units, 1, 100);
+        uint256 expected = units * 1e6 + 1000 * ((units * (units - 1)) / 2);
+        assertEq(offering.quote(units), expected, "quote");
+
+        vm.prank(buyer);
+        uint256 cost = offering.buyPublic(units, type(uint256).max, "");
+        assertEq(cost, expected, "cost");
+        assertEq(token.balanceOf(buyer, 0), units, "buyer units");
+        assertEq(usdc.balanceOf(address(offering)), cost, "escrowed usdc");
+    }
+
+    /// Splitting a purchase in two never changes the total price: the curve
+    /// has no seam between buys (or between the two tranches sharing it).
+    function testFuzzBuyPathIsSplitInvariant(uint256 first, uint256 second) public {
+        first = bound(first, 1, 99);
+        second = bound(second, 1, 100 - first);
+
+        vm.prank(buyer);
+        uint256 costA = offering.buyPublic(first, type(uint256).max, "");
+        vm.prank(buyer2);
+        uint256 costB = offering.buyPublic(second, type(uint256).max, "");
+
+        assertEq(costA + costB, offering.costFor(0, first + second), "no curve seam");
+        assertEq(offering.unitsSold(), first + second, "sold");
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -224,10 +83,10 @@ contract OfferingTest {
         vm.prank(buyer2);
         uint256 cost = offering.buyPrivate(voucher, ownerSig, claimSig, 150, type(uint256).max);
 
-        require(cost <= 200e6, "cap respected");
-        require(token.balanceOf(buyer2, 0) == 150, "buyer units");
-        require(offering.allocationConsumed(voucher.allocationId), "consumed");
-        require(offering.publicUnitsSold() == 0, "not public");
+        assertLe(cost, 200e6, "cap respected");
+        assertEq(token.balanceOf(buyer2, 0), 150, "buyer units");
+        assertTrue(offering.allocationConsumed(voucher.allocationId), "consumed");
+        assertEq(offering.publicUnitsSold(), 0, "not public");
 
         // One-shot: a second claim on the same allocation fails.
         vm.prank(buyer2);
@@ -285,7 +144,7 @@ contract OfferingTest {
         bytes memory ownerSig = _ownerSig(offering, voucher);
         bytes memory claimSig = _claimSig(offering, voucher.allocationId, buyer2);
 
-        address newOwner = address(0x9E11);
+        address newOwner = makeAddr("newOwner");
         vm.prank(treasury);
         offering.transferOwnership(newOwner);
         vm.prank(newOwner);
@@ -300,11 +159,6 @@ contract OfferingTest {
                             FAILURE + REFUNDS
     //////////////////////////////////////////////////////////////*/
 
-    function _fail() internal {
-        vm.warp(block.timestamp + 8 days);
-        offering.markFailed();
-    }
-
     function testRefundReclaimsUnitsAndDecrementsRaised() public {
         vm.prank(buyer);
         uint256 cost = offering.buyPublic(10, type(uint256).max, "");
@@ -314,12 +168,12 @@ contract OfferingTest {
         vm.prank(buyer);
         offering.refund();
 
-        require(usdc.balanceOf(buyer) == 1_000e6, "refunded");
-        require(token.balanceOf(buyer, 0) == 0, "units reclaimed");
-        require(token.balanceOf(address(offering), 0) == 200, "escrow restored");
-        require(offering.deposits(buyer) == 0, "deposit cleared");
-        require(offering.unitsBought(buyer) == 0, "units cleared");
-        require(offering.raised() == raisedBefore - cost, "raised decremented");
+        assertEq(usdc.balanceOf(buyer), 1_000e6, "refunded");
+        assertEq(token.balanceOf(buyer, 0), 0, "units reclaimed");
+        assertEq(token.balanceOf(address(offering), 0), 200, "escrow restored");
+        assertEq(offering.deposits(buyer), 0, "deposit cleared");
+        assertEq(offering.unitsBought(buyer), 0, "units cleared");
+        assertEq(offering.raised(), raisedBefore - cost, "raised decremented");
     }
 
     function testRefundForfeitedIfUnitsMoved() public {
@@ -351,16 +205,16 @@ contract OfferingTest {
         vm.prank(treasury);
         offering.refundAll(buyers);
 
-        require(offering.deposits(buyer) > 0, "blocked kept deposit");
-        require(token.balanceOf(buyer, 0) == 10, "blocked kept units");
-        require(offering.deposits(buyer2) == 0, "second refunded");
-        require(token.balanceOf(buyer2, 0) == 0, "second units reclaimed");
+        assertGt(offering.deposits(buyer), 0, "blocked kept deposit");
+        assertEq(token.balanceOf(buyer, 0), 10, "blocked kept units");
+        assertEq(offering.deposits(buyer2), 0, "second refunded");
+        assertEq(token.balanceOf(buyer2, 0), 0, "second units reclaimed");
 
         // The skipped buyer keeps the pull path once unblocked.
         usdc.setBlocked(buyer, false);
         vm.prank(buyer);
         offering.refund();
-        require(usdc.balanceOf(buyer) == 1_000e6, "pull refund");
+        assertEq(usdc.balanceOf(buyer), 1_000e6, "pull refund");
     }
 
     function testSweepFailedUnitsToTreasury() public {
@@ -371,8 +225,8 @@ contract OfferingTest {
         offering.refund();
 
         uint256 swept = offering.sweepFailedUnits();
-        require(swept == 200, "swept all");
-        require(token.balanceOf(treasury, 0) == 200, "treasury units");
+        assertEq(swept, 200, "swept all");
+        assertEq(token.balanceOf(treasury, 0), 200, "treasury units");
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -383,11 +237,12 @@ contract OfferingTest {
         vm.prank(buyer);
         uint256 first = offering.buyPublic(100, type(uint256).max, "");
 
-        vm.prank(address(0xD00D));
+        address keeper = makeAddr("keeper");
+        vm.prank(keeper);
         uint256 withdrawn = offering.withdraw();
-        require(withdrawn == first, "withdrawn");
-        require(usdc.balanceOf(treasury) == first, "treasury");
-        require(usdc.balanceOf(address(0xD00D)) == 0, "caller paid");
+        assertEq(withdrawn, first, "withdrawn");
+        assertEq(usdc.balanceOf(treasury), first, "treasury");
+        assertEq(usdc.balanceOf(keeper), 0, "caller paid");
     }
 
     function testOwnerCloseReturnsUnsoldUnits() public {
@@ -397,9 +252,9 @@ contract OfferingTest {
         vm.prank(treasury);
         offering.closeAndWithdraw();
 
-        require(uint256(offering.state()) == uint256(Offering.State.Closed), "closed");
-        require(token.balanceOf(treasury, 0) == 100, "unsold");
-        require(usdc.balanceOf(treasury) > 0, "usdc");
+        assertEq(uint256(offering.state()), uint256(Offering.State.Closed), "closed");
+        assertEq(token.balanceOf(treasury, 0), 100, "unsold");
+        assertGt(usdc.balanceOf(treasury), 0, "usdc");
     }
 
     function testSkimUsdcSweepsOnlyExcess() public {
@@ -409,8 +264,8 @@ contract OfferingTest {
 
         vm.prank(treasury);
         uint256 skimmed = offering.skimUsdc();
-        require(skimmed == 5e6, "skimmed excess only");
-        require(usdc.balanceOf(address(offering)) == cost, "liability intact");
+        assertEq(skimmed, 5e6, "skimmed excess only");
+        assertEq(usdc.balanceOf(address(offering)), cost, "liability intact");
     }
 
     function testRescueRejectsUsdcAndPactToken() public {
@@ -425,14 +280,14 @@ contract OfferingTest {
         stray.mint(address(offering), 7e6);
         vm.prank(treasury);
         offering.rescue(address(stray), treasury);
-        require(stray.balanceOf(treasury) == 7e6, "rescued");
+        assertEq(stray.balanceOf(treasury), 7e6, "rescued");
     }
 
     function testTwoStepOwnership() public {
-        address newOwner = address(0x9E11);
+        address newOwner = makeAddr("newOwner");
         vm.prank(treasury);
         offering.transferOwnership(newOwner);
-        require(offering.owner() == treasury, "owner unchanged until accept");
+        assertEq(offering.owner(), treasury, "owner unchanged until accept");
 
         vm.prank(buyer);
         vm.expectRevert(Offering.NotOwner.selector);
@@ -440,8 +295,8 @@ contract OfferingTest {
 
         vm.prank(newOwner);
         offering.acceptOwnership();
-        require(offering.owner() == newOwner, "accepted");
-        require(offering.pendingOwner() == address(0), "pending cleared");
+        assertEq(offering.owner(), newOwner, "accepted");
+        assertEq(offering.pendingOwner(), address(0), "pending cleared");
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -461,7 +316,7 @@ contract OfferingTest {
         offering.setPublicUnits(150);
         vm.prank(buyer2);
         offering.buyPublic(10, type(uint256).max, "");
-        require(token.balanceOf(buyer2, 0) == 10, "post close buy");
+        assertEq(token.balanceOf(buyer2, 0), 10, "post close buy");
     }
 
     function testBuyBlockedPastCloseWithoutMin() public {
@@ -476,55 +331,5 @@ contract OfferingTest {
         vm.prank(holder);
         vm.expectRevert(Offering.ClosedOrFailed.selector);
         token.safeTransferFrom(holder, address(offering), 0, 50, "");
-    }
-
-    /*//////////////////////////////////////////////////////////////
-                            GOLDEN VECTOR
-    //////////////////////////////////////////////////////////////*/
-
-    // Pins the JS ↔ Solidity voucher boundary: the fixture is generated by
-    // scripts/generate-voucher-fixture.js from src/lib/voucher.js, and the
-    // real verifier must accept its signatures end to end.
-    function testGoldenVoucherVector() public {
-        string memory json = vm.readFile("../tests/fixtures/voucher-golden.json");
-        vm.chainId(vm.parseJsonUint(json, ".chainId"));
-
-        address deployer = vm.parseJsonAddress(json, ".deployer");
-        address owner = vm.parseJsonAddress(json, ".owner");
-        address claimBuyer = vm.parseJsonAddress(json, ".buyer");
-
-        vm.prank(deployer); // fresh EOA, nonce 0 — the fixture precomputes the CREATE address
-        Offering golden = new Offering(100e6, uint64(block.timestamp + 7 days), 1e6, 1000, 100, owner, owner);
-        require(address(golden) == vm.parseJsonAddress(json, ".offering"), "fixture address drift");
-
-        address[] memory goldenHolders = new address[](1);
-        goldenHolders[0] = holder;
-        uint32[] memory goldenAllocations = new uint32[](1);
-        goldenAllocations[0] = 800;
-        PactToken goldenToken =
-            new PactToken(address(splitMain), "Golden", goldenHolders, goldenAllocations, address(golden), 200);
-        vm.prank(deployer);
-        golden.initialize(address(goldenToken));
-
-        Offering.Voucher memory voucher = Offering.Voucher({
-            allocationId: vm.parseJsonBytes32(json, ".voucher.allocationId"),
-            buyerName: vm.parseJsonString(json, ".voucher.buyerName"),
-            amountCapUsdc: vm.parseJsonUint(json, ".voucher.amountCapUsdc"),
-            linkKey: vm.parseJsonAddress(json, ".linkKey")
-        });
-        bytes memory ownerSig = vm.parseJsonBytes(json, ".ownerSig");
-        bytes memory claimSig = vm.parseJsonBytes(json, ".claimSig");
-
-        // The Solidity digests reproduce the JS signatures bit for bit.
-        (uint8 v, bytes32 r, bytes32 s) = vm.sign(vm.parseJsonUint(json, ".ownerKey"), golden.voucherDigest(voucher));
-        require(keccak256(abi.encodePacked(r, s, v)) == keccak256(ownerSig), "owner sig drift");
-
-        // And the real verifier accepts the fixture end to end.
-        usdc.mint(claimBuyer, 1_000e6);
-        vm.startPrank(claimBuyer);
-        usdc.approve(address(golden), type(uint256).max);
-        uint256 cost = golden.buyPrivate(voucher, ownerSig, claimSig, 100, type(uint256).max);
-        vm.stopPrank();
-        require(cost > 0 && goldenToken.balanceOf(claimBuyer, 0) == 100, "golden claim");
     }
 }

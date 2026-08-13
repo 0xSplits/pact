@@ -2,9 +2,14 @@
 src = "src"
 test = "test"
 out = "out"
-libs = ["lib"]
+libs = ["../node_modules"]
 solc_version = "0.8.24"
 optimizer = true
 optimizer_runs = 200
 via_ir = true
 fs_permissions = [{ access = "read", path = "../tests/fixtures" }]
+
+[profile.default.invariant]
+runs = 1000
+depth = 100
+fail_on_revert = true

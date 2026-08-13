@@ -74,10 +74,10 @@ export default async function globalSetup(_config: FullConfig) {
   const accounts: Address[] = await rpc('eth_accounts');
   const [deployer, buyerA, buyerB] = accounts;
 
-  const usdc = artifact('Offering.t.sol/MockUSDC.json');
+  const usdc = artifact('Mocks.sol/MockUSDC.json');
   await rpc('anvil_setCode', [BASE_USDC, usdc.deployedBytecode.object]);
 
-  const splitMain = artifact('Offering.t.sol/MockSplitMain.json');
+  const splitMain = artifact('Mocks.sol/MockSplitMain.json');
   const splitMainAddress = (await sendTx({ from: deployer, data: splitMain.bytecode.object })).contractAddress!;
 
   const factoryArtifact = artifact('OfferingFactory.sol/OfferingFactory.json');

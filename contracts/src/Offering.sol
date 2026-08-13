@@ -443,6 +443,7 @@ contract Offering is IERC1155Receiver {
         emit OwnershipTransferStarted(owner, newOwner);
     }
 
+    /// @notice Completes the transfer; only the pending owner may call.
     function acceptOwnership() external {
         if (msg.sender != pendingOwner) revert NotOwner();
         address previous = owner;
@@ -451,6 +452,9 @@ contract Offering is IERC1155Receiver {
         emit OwnershipTransferred(previous, msg.sender);
     }
 
+    /// @notice Accepts cap-table units only while the raise is live: refund
+    /// reclaims (self-operated) always land; anything else must be a top-up of
+    /// this offering's own token id during Funding.
     function onERC1155Received(address operator, address, uint256 id, uint256, bytes calldata)
         external
         view
