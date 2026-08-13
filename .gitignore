@@ -3,6 +3,7 @@
 .env.*
 !.env.example
 node_modules/
+.vercel/
 dist/
 data/
 .tmp/
