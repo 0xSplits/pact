@@ -51,3 +51,18 @@ contract MockSplitMain {
         return address(uint160(uint256(keccak256(abi.encode(address(this), ++nonce)))));
     }
 }
+
+/// @notice ERC-1271 wallet that approves digests explicitly and ignores the
+/// signature bytes — from the verifier's side this is exactly what a
+/// passkey/WebAuthn smart wallet looks like (an opaque, non-ECDSA blob).
+contract MockERC1271Wallet {
+    mapping(bytes32 => bool) public approved;
+
+    function approveDigest(bytes32 digest) external {
+        approved[digest] = true;
+    }
+
+    function isValidSignature(bytes32 digest, bytes calldata) external view returns (bytes4) {
+        return approved[digest] ? bytes4(0x1626ba7e) : bytes4(0xffffffff);
+    }
+}

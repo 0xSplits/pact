@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-interface IERC20 {
-    function transfer(address to, uint256 amount) external returns (bool);
-    function transferFrom(address from, address to, uint256 amount) external returns (bool);
-    function balanceOf(address account) external view returns (uint256);
-}
+import {ECDSA} from "solady/utils/ECDSA.sol";
+import {EIP712} from "solady/utils/EIP712.sol";
+import {ReentrancyGuard} from "solady/utils/ReentrancyGuard.sol";
+import {SafeTransferLib} from "solady/utils/SafeTransferLib.sol";
+import {SignatureCheckerLib} from "solady/utils/SignatureCheckerLib.sol";
 
 interface IERC1155 {
     function balanceOf(address account, uint256 id) external view returns (uint256);
@@ -43,7 +43,7 @@ interface IERC1155Receiver {
 /// reputational). `setTreasury` is likewise unrestricted mid-raise (M-6): the
 /// owner is the party being funded either way, and re-pointing to a multisig
 /// is the legitimate use.
-contract Offering is IERC1155Receiver {
+contract Offering is IERC1155Receiver, EIP712, ReentrancyGuard {
     enum State {
         Funding,
         Failed,
@@ -53,7 +53,7 @@ contract Offering is IERC1155Receiver {
     uint256 public constant TOKEN_ID = 0;
     /// @notice Base mainnet USDC, hardcoded so a wrong or fee-on-transfer
     /// payment token can't be configured (audit H-3/M-2).
-    IERC20 public constant USDC = IERC20(0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913);
+    address public constant USDC = 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913;
 
     uint256 public immutable raiseMin;
     uint64 public immutable closeDate;
@@ -82,8 +82,6 @@ contract Offering is IERC1155Receiver {
     mapping(address => uint256) public unitsBought;
     mapping(bytes32 => bool) public allocationConsumed;
 
-    bool private locked;
-
     struct Voucher {
         bytes32 allocationId;
         string buyerName;
@@ -91,8 +89,6 @@ contract Offering is IERC1155Receiver {
         address linkKey;
     }
 
-    bytes32 private constant DOMAIN_TYPEHASH =
-        keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)");
     bytes32 private constant VOUCHER_TYPEHASH =
         keccak256("Voucher(bytes32 allocationId,string buyerName,uint256 amountCapUsdc,address linkKey)");
 
@@ -112,7 +108,6 @@ contract Offering is IERC1155Receiver {
 
     error NotOwner();
     error NotFactory();
-    error Reentrant();
     error InvalidAddress();
     error InvalidConfig();
     error AlreadyInitialized();
@@ -134,18 +129,10 @@ contract Offering is IERC1155Receiver {
     error UnitsNotReturned();
     error Slippage();
     error BadTokenId();
-    error TransferFailed();
 
     modifier onlyOwner() {
         if (msg.sender != owner) revert NotOwner();
         _;
-    }
-
-    modifier nonReentrant() {
-        if (locked) revert Reentrant();
-        locked = true;
-        _;
-        locked = false;
     }
 
     constructor(
@@ -216,7 +203,9 @@ contract Offering is IERC1155Receiver {
     /// carries an unbound capability.
     /// @dev Verifies against the live `owner()`, so rotating ownership
     /// mass-revokes outstanding allocation links (the right default under key
-    /// compromise; re-issuing links is free).
+    /// compromise; re-issuing links is free). The owner check accepts EOA and
+    /// ERC-1271 signatures, so passkey/smart-wallet issuers work; the link key
+    /// is always a raw browser-generated key, so the claim check is pure ECDSA.
     function buyPrivate(
         Voucher calldata voucher,
         bytes calldata ownerSig,
@@ -225,8 +214,10 @@ contract Offering is IERC1155Receiver {
         uint256 maxCost
     ) external nonReentrant returns (uint256 cost) {
         if (allocationConsumed[voucher.allocationId]) revert AllocationAlreadyConsumed();
-        if (_recover(voucherDigest(voucher), ownerSig) != owner) revert InvalidVoucherSignature();
-        if (_recover(claimDigest(voucher.allocationId, msg.sender), claimSig) != voucher.linkKey) {
+        if (!SignatureCheckerLib.isValidSignatureNowCalldata(owner, voucherDigest(voucher), ownerSig)) {
+            revert InvalidVoucherSignature();
+        }
+        if (ECDSA.recoverCalldata(claimDigest(voucher.allocationId, msg.sender), claimSig) != voucher.linkKey) {
             revert InvalidClaimSignature();
         }
         // One-shot: the first claim consumes the allocation even if under-spent.
@@ -256,7 +247,7 @@ contract Offering is IERC1155Receiver {
         unitsSold += unitsWanted;
         if (!minMet && raised >= raiseMin) minMet = true;
 
-        _safeTransferFrom(USDC, msg.sender, address(this), cost);
+        SafeTransferLib.safeTransferFrom(USDC, msg.sender, address(this), cost);
         IERC1155(pactToken).safeTransferFrom(address(this), msg.sender, TOKEN_ID, unitsWanted, "");
         emit Bought(msg.sender, allocationId, unitsWanted, cost, buyerName);
     }
@@ -287,7 +278,7 @@ contract Offering is IERC1155Receiver {
                 voucher.linkKey
             )
         );
-        return keccak256(abi.encodePacked("\x19\x01", _domainSeparator(), structHash));
+        return _hashTypedData(structHash);
     }
 
     /// @notice Digest the link key signs to endorse the claiming buyer.
@@ -295,19 +286,8 @@ contract Offering is IERC1155Receiver {
         return keccak256(abi.encode(address(this), allocationId, buyer));
     }
 
-    function _domainSeparator() private view returns (bytes32) {
-        return keccak256(
-            abi.encode(DOMAIN_TYPEHASH, keccak256("PACT"), keccak256("1"), block.chainid, address(this))
-        );
-    }
-
-    function _recover(bytes32 digest, bytes calldata sig) private pure returns (address signer) {
-        if (sig.length != 65) revert InvalidVoucherSignature();
-        bytes32 r = bytes32(sig[0:32]);
-        bytes32 s = bytes32(sig[32:64]);
-        uint8 v = uint8(sig[64]);
-        signer = ecrecover(digest, v, r, s);
-        if (signer == address(0)) revert InvalidVoucherSignature();
+    function _domainNameAndVersion() internal pure override returns (string memory, string memory) {
+        return ("PACT", "1");
     }
 
     /// @notice Marks the offering failed once the close date passes without meeting the minimum.
@@ -334,7 +314,7 @@ contract Offering is IERC1155Receiver {
         unitsBought[msg.sender] = 0;
         raised -= amount;
         if (units > 0) IERC1155(pactToken).safeTransferFrom(msg.sender, address(this), TOKEN_ID, units, "");
-        _safeTransfer(USDC, msg.sender, amount);
+        SafeTransferLib.safeTransfer(USDC, msg.sender, amount);
         emit RefundPaid(msg.sender, amount);
     }
 
@@ -383,7 +363,7 @@ contract Offering is IERC1155Receiver {
         amount = raised - withdrawn;
         if (amount == 0) revert NothingToWithdraw();
         withdrawn += amount;
-        _safeTransfer(USDC, treasury, amount);
+        SafeTransferLib.safeTransfer(USDC, treasury, amount);
         emit Withdrawn(treasury, amount);
     }
 
@@ -396,7 +376,7 @@ contract Offering is IERC1155Receiver {
         uint256 amount = raised - withdrawn;
         if (amount > 0) {
             withdrawn += amount;
-            _safeTransfer(USDC, treasury, amount);
+            SafeTransferLib.safeTransfer(USDC, treasury, amount);
             emit Withdrawn(treasury, amount);
         }
 
@@ -410,10 +390,10 @@ contract Offering is IERC1155Receiver {
     /// @notice Recovers tokens that are not the payment token or the cap table
     /// (audit M-1).
     function rescue(address token, address to) external onlyOwner nonReentrant {
-        if (token == address(USDC) || token == pactToken || to == address(0)) revert InvalidAddress();
-        uint256 balance = IERC20(token).balanceOf(address(this));
+        if (token == USDC || token == pactToken || to == address(0)) revert InvalidAddress();
+        uint256 balance = SafeTransferLib.balanceOf(token, address(this));
         if (balance == 0) revert NothingToWithdraw();
-        _safeTransfer(IERC20(token), to, balance);
+        SafeTransferLib.safeTransfer(token, to, balance);
     }
 
     /// @notice Sweeps USDC in excess of the buyer liability to treasury —
@@ -421,10 +401,10 @@ contract Offering is IERC1155Receiver {
     /// SplitMain's permissionless withdraw (audit M-1).
     function skimUsdc() external onlyOwner nonReentrant returns (uint256 amount) {
         uint256 liability = raised - withdrawn;
-        uint256 balance = USDC.balanceOf(address(this));
+        uint256 balance = SafeTransferLib.balanceOf(USDC, address(this));
         if (balance <= liability) revert NothingToWithdraw();
         amount = balance - liability;
-        _safeTransfer(USDC, treasury, amount);
+        SafeTransferLib.safeTransfer(USDC, treasury, amount);
     }
 
     /// @notice Updates the treasury address that receives withdrawals and unsold units.
@@ -490,17 +470,11 @@ contract Offering is IERC1155Receiver {
         return interfaceId == type(IERC1155Receiver).interfaceId || interfaceId == 0x01ffc9a7;
     }
 
-    function _safeTransfer(IERC20 token, address to, uint256 amount) private {
-        if (!_tryTransfer(token, to, amount)) revert TransferFailed();
-    }
-
-    function _tryTransfer(IERC20 token, address to, uint256 amount) private returns (bool) {
-        (bool ok, bytes memory data) = address(token).call(abi.encodeCall(IERC20.transfer, (to, amount)));
+    // Solady has no non-reverting ERC20 transfer; refundAll needs one to skip
+    // blocklisted buyers instead of bricking the whole batch.
+    function _tryTransfer(address token, address to, uint256 amount) private returns (bool) {
+        (bool ok, bytes memory data) =
+            token.call(abi.encodeWithSignature("transfer(address,uint256)", to, amount));
         return ok && (data.length == 0 || abi.decode(data, (bool)));
-    }
-
-    function _safeTransferFrom(IERC20 token, address from, address to, uint256 amount) private {
-        (bool ok, bytes memory data) = address(token).call(abi.encodeCall(IERC20.transferFrom, (from, to, amount)));
-        if (!ok || (data.length != 0 && !abi.decode(data, (bool)))) revert TransferFailed();
     }
 }

@@ -96,6 +96,9 @@ export function encodeVoucherFragment({ voucher, ownerSig, linkPrivateKey }: { v
 }
 
 const isHex = (value: unknown, bytes: number) => new RegExp('^0x[0-9a-fA-F]{' + bytes * 2 + '}$').test(String(value || ''));
+// Owner signatures vary by wallet: 65 bytes from an EOA, an opaque ERC-1271
+// blob (WebAuthn payload and all) from a passkey/smart wallet.
+const isSignatureHex = (value: unknown) => /^0x(?:[0-9a-fA-F]{2}){65,4096}$/.test(String(value || ''));
 
 export interface DecodedVoucherLink {
   voucher: Voucher & { amountCapUsdc: bigint };
@@ -107,7 +110,7 @@ export interface DecodedVoucherLink {
 export function decodeVoucherFragment(fragment: string): DecodedVoucherLink {
   const payload = JSON.parse(fromBase64Url(String(fragment || '').replace(/^#/, '')));
   if (payload.v !== FRAGMENT_VERSION) throw new Error('Unsupported link version.');
-  if (!isHex(payload.a, 32) || !isHex(payload.k, 32) || !isHex(payload.s, 65)) throw new Error('Malformed link.');
+  if (!isHex(payload.a, 32) || !isHex(payload.k, 32) || !isSignatureHex(payload.s)) throw new Error('Malformed link.');
   if (typeof payload.n !== 'string' || !/^\d+$/.test(String(payload.c))) throw new Error('Malformed link.');
   return {
     voucher: {
