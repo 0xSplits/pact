@@ -9,6 +9,9 @@ optimizer_runs = 200
 via_ir = true
 fs_permissions = [{ access = "read", path = "../tests/fixtures" }]
 
+[etherscan]
+base = { key = "${ETHERSCAN_API_KEY}" }
+
 [profile.default.invariant]
 runs = 1000
 depth = 100

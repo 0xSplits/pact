@@ -15,6 +15,7 @@
     "test": "node --test \"src/**/*.test.ts\"",
     "typecheck": "tsc --noEmit",
     "test:contracts": "forge test --root contracts",
+    "deploy:factory": "forge script contracts/script/Deploy.s.sol:Deploy --root contracts --rpc-url https://mainnet.base.org --broadcast --verify",
     "test:e2e": "vite build && playwright test"
   },
   "dependencies": {
