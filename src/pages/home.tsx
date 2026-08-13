@@ -1,0 +1,189 @@
+import { useEffect, useState } from 'react';
+import type { ReactNode } from 'react';
+import { createRoot } from 'react-dom/client';
+import './home.css';
+import { injectChrome } from '../lib/ui/chrome.ts';
+import { fmtDollars, fmtTokens, usdcBaseUnitsToDollars } from '../lib/format.ts';
+import { PactSettings } from '../lib/settings.ts';
+import { useWallet } from '../hooks/use-wallet.ts';
+import { buyPath, createPath, statusPath } from '../lib/routes.ts';
+import { listOfferings, listPurchases } from '../lib/chain/offerings.ts';
+import { readMany } from '../lib/chain/onchain.ts';
+import type { OfferingRecord, Purchase } from '../lib/chain/onchain.ts';
+import type { Abi } from 'viem';
+import { costForUnits } from '../lib/chain/curve.ts';
+import { OFFERING_ABI } from '../generated/offering-contracts.ts';
+
+const PAPER = 'paper px-10 py-12 sm:px-14 sm:py-16';
+
+function Explainer() {
+  return (
+    <>
+      <div className={PAPER}>
+        <div className="mb-9">
+          <h1 className="text-2xl font-bold">PACT</h1>
+          <p className="mt-1 text-sm t-muted">Purchase Agreement for Community Tokens</p>
+        </div>
+
+        <div className="mb-10">
+          <section className="overview-section">
+            <h2>Why</h2>
+            <p>
+              Every project starts before incorporation. Capital can be raised at this stage, but it&rsquo;s clunky: receipts are email threads, working capital sits in personal accounts, and the cap table is undefined. Deals at this stage don&rsquo;t need legal paperwork, since it&rsquo;s trust, reputation, and the repeat game that holds participants accountable.
+            </p>
+          </section>
+          <section className="overview-section">
+            <h2>What</h2>
+            <p>
+              PACT is a lightweight tool for raising capital without a legal framework. It&rsquo;s a placeholder for future value: equity, tokens, revenue share, or whatever the project turns into. Creators get a funded treasury and a programmable cap table; backers get public receipts and a claim on the project&rsquo;s future value.
+            </p>
+          </section>
+          <section className="overview-section">
+            <h2>How</h2>
+            <ol className="list-decimal">
+              <li>Create a private issuance with a cap table, target amount, valuation, and close date. Holders receive their tokens; the rest go on a bonding curve to be purchased by backers.</li>
+              <li>Send each backer a private allocation link, or share the public buy link. Backers purchase their allocations and receive tokens in return.</li>
+              <li>If the round hits its minimum, the treasury withdraws and the round closes. If it doesn&rsquo;t, backers are refunded.</li>
+            </ol>
+          </section>
+        </div>
+
+        <div className="flex justify-end">
+          <a className="cta inline-flex items-center justify-center px-6 py-3 text-base font-semibold" href={createPath()}>Create PACT</a>
+        </div>
+      </div>
+
+      <p className="mt-6 text-sm t-muted text-center">Experimental and unaudited — use with caution.</p>
+    </>
+  );
+}
+
+function DashboardTable({ title, empty, children }: { title: string; empty: string; children?: ReactNode }) {
+  return (
+    <section className="mb-8">
+      <div className="font-bold mb-2">{title}</div>
+      {children || <p className="t-muted text-sm">{empty}</p>}
+    </section>
+  );
+}
+
+const isSame = (a: string | null | undefined, b: string | null | undefined) => String(a || '').toLowerCase() === String(b || '').toLowerCase();
+
+// Live raised/target per issuance in one multicall: target is what the curve
+// yields if every remaining unit sells from the current position.
+async function loadIssuanceTotals(records: OfferingRecord[]) {
+  const calls = records.flatMap(record => ['raised', 'unitsSold', 'remainingUnits'].map(functionName => ({
+    address: record.offering,
+    abi: OFFERING_ABI as Abi,
+    functionName,
+  })));
+  const values = (await readMany(calls)).map(Number);
+  return records.map((record, i) => {
+    const [raised, unitsSold, remainingUnits] = values.slice(i * 3, i * 3 + 3);
+    const curve = { priceStart: record.priceStart, priceSlope: record.priceSlope };
+    return { ...record, raised, target: raised + costForUnits(curve, unitsSold, remainingUnits) };
+  });
+}
+
+interface DashboardRecords {
+  status: 'loading' | 'loaded';
+  pacts?: Array<OfferingRecord & { raised?: number; target?: number }>;
+  purchases?: Array<Purchase & { record: OfferingRecord }>;
+}
+
+function Dashboard({ records }: { records: DashboardRecords }) {
+  const pacts = records.pacts || [];
+  const purchases = records.purchases || [];
+  return (
+    <div className={PAPER}>
+      <div className="mb-8 flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold">Your PACTs</h1>
+          <p className="mt-1 text-sm t-muted">Issuances and purchase receipts connected to this wallet.</p>
+        </div>
+        <a className="cta inline-flex items-center justify-center px-4 py-2 text-sm font-semibold whitespace-nowrap" href={createPath()}>Create PACT</a>
+      </div>
+
+      <DashboardTable title="Issuances" empty="No issuances yet.">
+        {pacts.length ? (
+          <table className="exhibit">
+            <thead><tr><th>Project</th><th className="num">Raised</th><th className="num">Target</th></tr></thead>
+            <tbody>
+              {pacts.map(pact => (
+                <tr key={pact.offering}>
+                  <td><a className="linkbtn" href={statusPath(pact.offering)}>{pact.projectName || 'Untitled issuance'}</a></td>
+                  <td className="num">{fmtDollars(usdcBaseUnitsToDollars(pact.raised || 0))}</td>
+                  <td className="num">{fmtDollars(usdcBaseUnitsToDollars(pact.target || 0))}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : null}
+      </DashboardTable>
+
+      <DashboardTable title="Purchases" empty="No purchases yet.">
+        {purchases.length ? (
+          <table className="exhibit">
+            <thead><tr><th>Project</th><th className="num">Amount</th><th className="num">Tokens</th></tr></thead>
+            <tbody>
+              {purchases.map(purchase => (
+                <tr key={purchase.txHash + ':' + purchase.logIndex}>
+                  <td><a className="linkbtn" href={buyPath(purchase.offering)}>{(purchase.record && purchase.record.projectName) || 'Untitled purchase'}</a></td>
+                  <td className="num">{fmtDollars(usdcBaseUnitsToDollars(purchase.cost))}</td>
+                  <td className="num">{fmtTokens(purchase.units)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : null}
+      </DashboardTable>
+    </div>
+  );
+}
+
+function HomeApp() {
+  const wallet = useWallet();
+  const [records, setRecords] = useState<DashboardRecords | null>(null);
+
+  useEffect(() => {
+    if (!wallet) {
+      setRecords(null);
+      return;
+    }
+    let cancelled = false;
+    setRecords({ status: 'loading' });
+    (async () => {
+      try {
+        const offerings = await listOfferings();
+        const mine = offerings.filter(r => isSame(r.issuer, wallet) || isSame(r.treasury, wallet));
+        const [pacts, purchases] = await Promise.all([
+          mine.length ? loadIssuanceTotals(mine).catch(() => mine) : [],
+          listPurchases({ wallet, offerings }).catch(() => []),
+        ]);
+        if (!cancelled) setRecords({ status: 'loaded', pacts, purchases });
+      } catch (err) {
+        if (!cancelled) setRecords({ status: 'loaded', pacts: [], purchases: [] });
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [wallet]);
+
+  if (records && records.status === 'loading') {
+    return (
+      <div className={PAPER}>
+        <h1 className="text-2xl font-bold">Your PACTs</h1>
+        <p className="mt-3 t-muted">Loading onchain records…</p>
+      </div>
+    );
+  }
+
+  if (records && records.status === 'loaded' && ((records.pacts || []).length || (records.purchases || []).length)) {
+    return <Dashboard records={records} />;
+  }
+
+  return <Explainer />;
+}
+
+injectChrome();
+PactSettings.init({ buttonId: 'settingsToggle' });
+createRoot(document.getElementById('app')!).render(<HomeApp />);
