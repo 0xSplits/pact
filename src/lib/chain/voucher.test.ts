@@ -55,6 +55,20 @@ test('fragment decode rejects malformed payloads', () => {
   // Bad hex lengths and non-numeric cap
   assert.throws(() => decodeVoucherFragment(encode({ ...payload, v: 1, a: '0xdead' })));
   assert.throws(() => decodeVoucherFragment(encode({ ...payload, v: 1, c: '12.5' })));
+  // Owner sigs shorter than one ECDSA signature or of odd byte length
+  assert.throws(() => decodeVoucherFragment(encode({ ...payload, v: 1, s: '0x' + '00'.repeat(64) })));
+  assert.throws(() => decodeVoucherFragment(encode({ ...payload, v: 1, s: '0x' + '00'.repeat(65) + '0' })));
+});
+
+test('fragment decode accepts an ERC-1271 smart-wallet owner sig blob', () => {
+  const { linkPrivateKey, linkKey, allocationId } = newAllocationKey();
+  const ownerSig = ('0x' + 'cd'.repeat(736)) as `0x${string}`;
+  const fragment = encodeVoucherFragment({
+    voucher: { allocationId, buyerName: 'Abram', amountCapUsdc: '5000000', linkKey },
+    ownerSig,
+    linkPrivateKey,
+  });
+  assert.equal(decodeVoucherFragment(fragment).ownerSig, ownerSig);
 });
 
 test('allocation ids are unique per link key', () => {

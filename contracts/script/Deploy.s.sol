@@ -13,7 +13,7 @@ contract Deploy is Script {
     /// @dev Canonical 0xSplits SplitMain v1 on Base (same address on mainnet, Polygon, etc.).
     address internal constant SPLIT_MAIN = 0x2ed6c4B5dA6378c7897AC67Ba9e43102Feb694EE;
 
-    bytes32 internal constant SALT = bytes32("PACT OfferingFactory v1");
+    bytes32 internal constant SALT = bytes32("PACT OfferingFactory v2");
 
     function run() external returns (OfferingFactory factory) {
         vm.startBroadcast();

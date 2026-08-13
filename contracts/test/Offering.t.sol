@@ -3,7 +3,7 @@ pragma solidity ^0.8.24;
 
 import {BaseTest} from "./Base.t.sol";
 import {Offering} from "../src/Offering.sol";
-import {MockUSDC} from "./Mocks.sol";
+import {MockUSDC, MockERC1271Wallet} from "./Mocks.sol";
 
 contract OfferingTest is BaseTest {
     /*//////////////////////////////////////////////////////////////
@@ -92,6 +92,41 @@ contract OfferingTest is BaseTest {
         vm.prank(buyer2);
         vm.expectRevert(Offering.AllocationAlreadyConsumed.selector);
         offering.buyPrivate(voucher, ownerSig, claimSig, 1, type(uint256).max);
+    }
+
+    function testBuyPrivateWithSmartWalletOwner() public {
+        MockERC1271Wallet wallet = new MockERC1271Wallet();
+        vm.prank(treasury);
+        offering.transferOwnership(address(wallet));
+        vm.prank(address(wallet));
+        offering.acceptOwnership();
+
+        Offering.Voucher memory voucher = _voucher("Alice", 200e6);
+        wallet.approveDigest(offering.voucherDigest(voucher));
+        // Opaque 736-byte blob, the shape a WebAuthn wallet returns from
+        // eth_signTypedData_v4 — only the wallet's ERC-1271 answer matters.
+        bytes memory ownerSig = new bytes(736);
+        bytes memory claimSig = _claimSig(offering, voucher.allocationId, buyer2);
+
+        vm.prank(buyer2);
+        uint256 cost = offering.buyPrivate(voucher, ownerSig, claimSig, 150, type(uint256).max);
+        assertLe(cost, 200e6, "cap respected");
+        assertEq(token.balanceOf(buyer2, 0), 150, "buyer units");
+    }
+
+    function testBuyPrivateSmartWalletRejectsUnapprovedDigest() public {
+        MockERC1271Wallet wallet = new MockERC1271Wallet();
+        vm.prank(treasury);
+        offering.transferOwnership(address(wallet));
+        vm.prank(address(wallet));
+        offering.acceptOwnership();
+
+        Offering.Voucher memory voucher = _voucher("Alice", 200e6);
+        bytes memory claimSig = _claimSig(offering, voucher.allocationId, buyer2);
+
+        vm.prank(buyer2);
+        vm.expectRevert(Offering.InvalidVoucherSignature.selector);
+        offering.buyPrivate(voucher, new bytes(736), claimSig, 10, type(uint256).max);
     }
 
     function testBuyPrivateRejectsWrongClaimer() public {

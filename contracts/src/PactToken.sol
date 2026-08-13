@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
+import {Base64} from "solady/utils/Base64.sol";
+import {LibString} from "solady/utils/LibString.sol";
 import {ERC1155} from "./vendor/ERC1155.sol";
 import {LiquidSplit} from "./vendor/LiquidSplit.sol";
-import {Base64} from "./vendor/Base64.sol";
 
 /// @title PactToken
 /// @notice The PACT cap table: a custom liquid split ERC-1155 whose 1000 units
@@ -64,14 +65,14 @@ contract PactToken is ERC1155, LiquidSplit {
             "<svg xmlns='http://www.w3.org/2000/svg' width='600' height='600'>",
             "<rect width='100%' height='100%' fill='#101012'/>",
             "<text x='50%' y='47%' fill='#f4f1ea' font-family='Georgia,serif' font-size='36' text-anchor='middle'>",
-            _escapeXml(projectName),
+            LibString.escapeHTML(projectName),
             "</text>",
             "<text x='50%' y='56%' fill='#8a877f' font-family='Georgia,serif' font-size='18' text-anchor='middle'>PACT community tokens</text>",
             "</svg>"
         );
         string memory json = string.concat(
             '{"name":"',
-            _escapeJson(projectName),
+            LibString.escapeJSON(projectName),
             '","image":"data:image/svg+xml;base64,',
             Base64.encode(bytes(svg)),
             '"}'
@@ -79,37 +80,4 @@ contract PactToken is ERC1155, LiquidSplit {
         return string.concat("data:application/json;base64,", Base64.encode(bytes(json)));
     }
 
-    function _escapeJson(string memory s) private pure returns (string memory) {
-        bytes memory b = bytes(s);
-        bytes memory out = new bytes(b.length * 2);
-        uint256 n = 0;
-        for (uint256 i = 0; i < b.length; i++) {
-            bytes1 c = b[i];
-            if (c == '"' || c == "\\") out[n++] = "\\";
-            out[n++] = c;
-        }
-        assembly ("memory-safe") {
-            mstore(out, n)
-        }
-        return string(out);
-    }
-
-    function _escapeXml(string memory s) private pure returns (string memory) {
-        bytes memory b = bytes(s);
-        bytes memory out = new bytes(b.length * 5);
-        uint256 n = 0;
-        for (uint256 i = 0; i < b.length; i++) {
-            bytes1 c = b[i];
-            if (c == "<" || c == ">" || c == "&" || c == "'") {
-                bytes memory rep = c == "<" ? bytes("&lt;") : c == ">" ? bytes("&gt;") : c == "&" ? bytes("&amp;") : bytes("&#39;");
-                for (uint256 j = 0; j < rep.length; j++) out[n++] = rep[j];
-            } else {
-                out[n++] = c;
-            }
-        }
-        assembly ("memory-safe") {
-            mstore(out, n)
-        }
-        return string(out);
-    }
 }
