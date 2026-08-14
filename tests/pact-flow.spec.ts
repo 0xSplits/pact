@@ -223,15 +223,10 @@ test('wallet menu only offers detected wallets plus the Splits store link', asyn
   await expect(menu.getByRole('button')).toHaveCount(0);
 });
 
-test('settings menu exposes style options', async ({ page }) => {
+test('dark palette applies when the system prefers dark', async ({ page }) => {
+  await page.emulateMedia({ colorScheme: 'dark' });
   await page.goto('/');
-  await page.getByRole('button', { name: 'Settings' }).click();
-  const menu = page.locator('.settings-menu');
-  await expect(menu).toBeVisible();
-  await expect(menu).toContainText('Style');
-  await expect(menu).toContainText('Clarity');
-  await expect(menu).toContainText('Cipher');
-  await expect(menu).toContainText('Chambers');
+  await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(11, 12, 15)');
 });
 
 test('wallet picker can choose among multiple announced providers', async ({ browser }) => {
