@@ -9,6 +9,10 @@ optimizer_runs = 200
 via_ir = true
 fs_permissions = [{ access = "read", path = "../tests/fixtures" }]
 
+[fmt]
+# Vendored upstream snapshots stay byte-identical to their source; don't reformat.
+ignore = ["src/vendor/*.sol"]
+
 [etherscan]
 base = { key = "${ETHERSCAN_API_KEY}" }
 

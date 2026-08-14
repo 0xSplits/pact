@@ -58,7 +58,16 @@ contract BaseTest is Test {
         uint32[] memory allocations = new uint32[](1);
         allocations[0] = 800;
         return factory.createOffering(
-            "Test Project", raiseMin, uint64(block.timestamp + 7 days), 1e6, 1000, publicUnits, treasury, holders, allocations, 200
+            "Test Project",
+            raiseMin,
+            uint64(block.timestamp + 7 days),
+            1e6,
+            1000,
+            publicUnits,
+            treasury,
+            holders,
+            allocations,
+            200
         );
     }
 
