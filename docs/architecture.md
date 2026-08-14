@@ -1,82 +1,108 @@
 # Architecture
 
-PACT is intentionally small: a Vite-built multi-page frontend, a minimal Node
-API, and SQLite storage.
+PACT is intentionally small: a static Vite-built multi-page frontend with the
+chain as its only backend. There is no server, no database, and no API — every
+read comes from Base RPC and every durable write is a transaction.
 
 ## Runtime
 
-- `npm run dev` starts Vite with the Express API mounted as dev middleware
-  (single process, HMR included).
-- In production, `server.js` starts one Express process serving the Vite build
-  output from `dist/`.
-- `/api` endpoints persist PACT and allocation records in SQLite.
-- `/api/liquid-splits/:address/holders` proxies Splits Explorer GraphQL for cap
-  table holder reads.
-- `PACT_DB_PATH` controls the SQLite file path.
-
-The production shape is one Node process serving both the built static files
-and API routes.
+- `npm run dev` starts Vite (HMR included).
+- `npm run build` emits the static site into `dist/`; production is that
+  directory on Vercel (`cleanUrls` routing, no server code, no rewrites).
+- A dev/preview middleware in `vite.config.ts` mirrors Vercel's `cleanUrls`
+  (`/create` → `create.html` etc.) so local routing matches production.
 
 ## Repository Layout
 
 ```text
-contracts/            Offering + OfferingFactory Solidity sources
-test/                 Foundry tests for the contracts
-server.js             production entry point (thin: starts server/app.js)
-server/
-  app.js              Express wiring: /api routes + static serving
-  pacts.js            domain operations over PACT records
-  explorer.js         Splits Explorer GraphQL proxy
-  db.js               SQLite open/read/write + id generation
-  parse.js            tolerant parsing of client-supplied values
+contracts/            self-contained Foundry project (run forge with --root contracts)
+  src/                Offering, OfferingFactory, PactToken
+  src/vendor/         pinned upstream snapshots (0xSplits LiquidSplit base, ERC-1155)
+  test/               Foundry suite: Base.t.sol + per-contract files, fuzz,
+                      invariant handler, golden-vector check
+  script/Deploy.s.sol CREATE2 factory deploy
+  foundry.toml        solc pin, fmt ignore for vendor, invariant profile
 index.html            page shells (one per route; minimal head + mount point)
 create.html
 status.html
 buy.html
 src/
   pages/              one React app per page (+ its page-specific CSS)
-  components/ui.jsx   shared React primitives (Button, Field, Notice, ...)
-  lib/                shared browser modules (several also used by server/)
-  generated/          contract ABIs exported from Foundry artifacts
+  components/         shared React primitives (ui.tsx) and the wallet button
+  hooks/              React bridges (use-wallet, use-offering-state)
+  lib/chain/          everything onchain: wagmi config, viem interaction,
+                      event-scan listings + delta cache, vouchers, curve math
+  lib/ui/             framework-free widgets (chrome, toast, chart, debug menu)
+  lib/                small shared utils (routes, validate, format, settings)
+  generated/          contract ABIs + factory pin exported from Foundry artifacts
   app.css             Tailwind entry + design tokens + component classes
-tests/                node:test suites and the Playwright browser flow
+scripts/              contract export + voucher golden-vector generation
+tests/                Playwright e2e (anvil-backed) + the shared golden fixture
 docs/                 this documentation
 ```
 
+Unit tests are colocated with the modules they cover (`src/**/*.test.ts`);
+`tests/` holds only the browser flow and the JS↔Solidity fixture.
+
 ## Browser Surfaces
 
-- `/` shows a connected-wallet dashboard when records exist; otherwise it
+- `/` shows a connected-wallet dashboard when offerings exist; otherwise it
   explains what PACT is and links into the issuance flow.
 - `/create` creates a PACT. It validates form fields, previews the
-  capitalization/curve, connects a wallet, deploys the onchain offering, then
-  saves the record through the API.
-- `/pacts/:id` is the issuer dashboard. It shows offering details/state,
-  lifecycle actions, allocation links, and the cap table.
-- `/pacts/:id/allocations/:allocationId` is the buyer page. It quotes the
-  allocation against current onchain offering state, submits USDC approval if
-  needed, calls `Offering.buy`, and renders receipt/refund states.
+  capitalization/curve, connects a wallet, and calls
+  `OfferingFactory.createOffering` — there is nothing to save anywhere else.
+- `/status?offering=0x…` is the issuer dashboard: offering state, lifecycle
+  actions, allocation links, and the cap table.
+- `/buy?offering=0x…` is the buyer page for public purchases; a private
+  allocation link appends `#<fragment>` carrying the voucher payload.
+
+The offering contract address is the record id — routes are query-param style
+so static hosting needs no path rewrites. Route construction/parsing lives in
+`src/lib/routes.ts`.
 
 Each page is a React app under `src/pages/`, mounted into its page's `#app`
-element and built on the shared primitives in `src/components/ui.jsx`, which
-map onto the design-system classes in `src/app.css`. The wallet, settings, and
-debug-menu widgets are framework-free modules bridged into React through
-hooks. Shared browser modules live under `src/lib/`:
+element and built on the shared primitives in `src/components/ui.tsx`, which
+map onto the design-system classes in `src/app.css`.
 
-- `api.js` wraps local API calls.
-- `routes.js` owns route construction and parsing.
-- `wallet.js` owns wallet connection (EIP-6963 discovery) and the wallet menu;
-  `use-wallet.js` exposes the connected account to React.
-- `use-offering-state.js` polls the offering contract while the tab is
-  visible so onchain changes appear without a manual reload.
-- `onchain.js` performs all contract interaction (via viem). Reads go through
-  the public Base RPC; the wallet only switches chains and signs.
-- `chain.js`, `curve.js`, `liquid-split.js`, `validate.js`, `access.js` hold
-  constants, bonding-curve math, factory-input construction, and shared
-  validation — all framework-free and importable from the server.
-- `chrome.js` injects the shared top-right controls; `toast.js` renders
-  transient confirmations; `settings.js` owns the style switcher;
-  `chart.js` renders the issuance creation curve chart; `debug-menu.js` is the
-  localhost-only offering-state preview; `format.js` holds display formatting.
+## Wallets and RPC
+
+Wallet plumbing is wagmi (`src/lib/chain/wagmi.ts`): injected/EIP-6963
+discovery plus Coinbase Wallet, and WalletConnect when
+`VITE_WALLETCONNECT_PROJECT_ID` is set. All contract interaction flows through
+`wagmi/actions` in `src/lib/chain/onchain.ts` — reads use the app's own Base
+transport so they work without a wallet and regardless of which chain the
+wallet is on; the wallet only switches chains and signs. Buys batch
+approve+buy via EIP-5792 `sendCalls` when the wallet supports it.
+
+The app transport resolves in `chain.ts`/`wagmi.ts`: a `PACT_RPC_URL` global
+(e2e/manual override) wins outright, then Alchemy when `VITE_ALCHEMY_API_KEY`
+is set (with the public RPC as fallback), else the rate-limited public Base
+RPC. Wallet `wallet_addEthereumChain` metadata stays on the public RPC so a
+keyed URL never enters a wallet.
+
+## Data Sources
+
+Two onchain sources of truth, plus localStorage as display convenience:
+
+- **Offering contract**: offering state, units sold, remaining units, raised
+  USDC, withdrawn USDC, minimum status, close date, owner, and treasury.
+- **PactToken (the cap table)**: holder balances, read by scanning transfer
+  events and confirming with `balanceOf` over Base RPC.
+- **localStorage**: two distinct roles —
+  - the *delta cache* for listings (`src/lib/chain/offerings.ts`): the public
+    RPC caps `eth_getLogs` at 10k-block ranges, so `OfferingCreated`/`Bought`
+    scans are chunked; results are cached with the last scanned block and
+    later visits only scan the delta. Cold scan on first visit per device.
+  - the *allocation ledger* (`src/lib/chain/voucher.ts`): the issuer's private
+    allocation links (including revoked rows). Losing it loses unclaimed
+    links; claims themselves are `Bought` events and survive.
+
+Events are the truth, localStorage is convenience — a corrupt or missing
+cache falls back to a full rescan, never to wrong data.
+
+The status and buy pages read the offering contract on load and poll while
+visible (`use-offering-state.ts`); server-state caching in React is
+react-query.
 
 ## Styling
 
@@ -86,48 +112,15 @@ color tokens in `@theme`, the CSS-variable design system (with the
 Clarity/Cipher/Chambers presets), and the shared component classes.
 Page-specific styles live next to each page (`src/pages/*.css`).
 
-## Data Sources
-
-The UI deliberately separates three sources of truth:
-
-- **Local SQLite**: PACT records, allocation records, buyer names, intended
-  allocation amounts, purchase receipts, and cached onchain snapshots.
-- **Offering contract**: offering state, units sold, remaining units, raised
-  USDC, withdrawn USDC, minimum status, close date, owner, and treasury.
-- **Liquid Split**: cap table ownership. Holder balances are read through
-  Splits Explorer first, with a direct Base RPC fallback in the browser.
-
-The status and buy pages read the offering contract on load and then poll
-while visible. Fresh reads are cached server-side (`onchainOffering`,
-`onchainCapTable`) so the next page view can render immediately, but display
-state always prefers the live read. The cached snapshots are client-reported
-and unauthenticated — they are a display convenience, never a source of truth.
-
-If a purchase settles onchain but the browser dies before the local record is
-written, the buyer page recovers it: when the connected wallet has a deposit
-in the offering but no recorded purchase, the `Bought` event is looked up and
-the allocation is marked funded.
-
 ## Generated Files
 
-- `src/generated/offering-contracts.js` is generated from Foundry artifacts by
-  `scripts/export-contracts.js` (`npm run build:contracts`). It is checked in
-  so frontend builds do not require Foundry.
-- `dist/` is the Vite build output (`npm run build`), ignored by git and built
-  inside the Docker image.
+- `src/generated/offering-contracts.ts` is generated from Foundry artifacts by
+  `scripts/export-contracts.ts` (`npm run build:contracts`). It carries the
+  ABIs (`as const`) plus the pinned factory address and deploy block, and is
+  checked in so frontend builds do not require Foundry.
+- `dist/` is the Vite build output (`npm run build`), ignored by git.
 
 ## Local Runtime Files
 
-These are intentionally ignored by git:
-
-- `dist/`
-- `data/`
-- `.tmp/`
-- `cache/`
-- `out/`
-- `broadcast/`
-- `test-results/`
-- `playwright-report/`
-
-An empty database is valid; the server creates the required schema on boot
-(and renames the pre-rename `raises` table to `pacts` if it finds one).
+These are intentionally ignored by git: `dist/`, `cache/`, `out/`,
+`broadcast/`, `test-results/`, `playwright-report/`.

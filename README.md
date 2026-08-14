@@ -1,28 +1,31 @@
 # splits-pact
 
 PACT (Purchase Agreement for Community Tokens) is a prototype for raising
-small rounds by creating a cap table and selling a slice of the project's tokens (ERC-1155) along a bonding curve. A
-minimum threshold makes the raise refundable if it is not met by the close
-date.
+small rounds by creating a cap table and selling a slice of the project's
+tokens (ERC-1155) along a bonding curve. A minimum threshold makes the raise
+refundable if it is not met by the close date.
 
-The app currently targets Base mainnet and uses USDC for purchases.
+The app targets Base mainnet, uses USDC for purchases, and is fully
+serverless: a static site whose only backend is the chain.
 
-> **Status: prototype.** The contracts are unaudited and the lifecycle flows
-> have only been exercised with small amounts. Use at your own risk and with caution.
+> **Status: prototype.** The contracts are unaudited beyond a first review and
+> the lifecycle flows have only been exercised with small amounts. Use at your
+> own risk and with caution.
 
 ## App Surfaces
 
 - `/` — connected-wallet dashboard, or a short explainer for what PACT is and how it works.
 - `/create` — issuer form for creating a PACT and deploying the onchain offering.
-- `/pacts/:id` — issuer dashboard for allocations, offering state, lifecycle actions, and cap table.
-- `/pacts/:id/allocations/:allocationId` — buyer-facing purchase and receipt page.
+- `/status?offering=0x…` — issuer dashboard for allocations, offering state, lifecycle actions, and cap table.
+- `/buy?offering=0x…` — buyer-facing purchase and receipt page; private allocation links append `#<fragment>`.
 
 Under the hood:
 
-- `src/pages/` + `src/lib/` — the ES modules behind each page (built with Vite; styling is Tailwind v4 compiled at build time).
-- `server.js` + `server/` — single Node process serving the Vite build (`dist/`) plus `/api`.
-- `contracts/` — the `Offering` and `OfferingFactory` Solidity sources.
-- `data/pact.sqlite` — local runtime database, ignored by git.
+- `src/pages/` + `src/lib/` — the modules behind each page (React + strict
+  TypeScript, built with Vite; wallets via wagmi; styling is Tailwind v4
+  compiled at build time).
+- `contracts/` — self-contained Foundry project: `Offering`,
+  `OfferingFactory`, and the `PactToken` cap table.
 
 More detail:
 
@@ -33,83 +36,50 @@ More detail:
 
 ## Local Development
 
-Use Node 22.15.1 or newer. With `asdf`:
+Use Node 22.18 or newer (`.nvmrc` / `.tool-versions` pin 22.20.0). With `asdf`:
 
 ```sh
 asdf install
-asdf local nodejs 22.15.1
 ```
 
-Install dependencies:
+Install dependencies and start the dev server:
 
 ```sh
 npm install
-```
-
-Start the dev server (Vite with the API mounted in-process):
-
-```sh
 npm run dev
 ```
 
 Open the URL Vite prints (<http://localhost:5173/> by default).
 
-To run the production shape locally, build and start the Node server:
+To run the production shape locally, build and preview the static output:
 
 ```sh
 npm run build
-npm start
-```
-
-Open <http://localhost:7228/>.
-
-By default the SQLite database is stored at `data/pact.sqlite`. Override it with:
-
-```sh
-PACT_DB_PATH=/tmp/pact.sqlite npm start
-```
-
-Reset a local database on boot with:
-
-```sh
-PACT_RESET_DB=1 npm start
+npx vite preview
 ```
 
 ## Environment
 
-Local defaults are enough to run the app. Production should set:
+No environment variables are required — without them the app uses the
+rate-limited public Base RPC and skips the WalletConnect connector. Optional
+(build-time, see `.env.example`):
 
 ```sh
-PACT_DB_PATH=/data/pact.sqlite
-SPLITS_EXPLORER_API_KEY=...
+VITE_ALCHEMY_API_KEY=...            # Base RPC via Alchemy (domain-restrict it; it ships in the bundle)
+VITE_WALLETCONNECT_PROJECT_ID=...   # enables the WalletConnect connector
 ```
-
-Optional:
-
-```sh
-PORT=7228
-SPLITS_EXPLORER_GRAPHQL_URL=https://api.splits.org/graphql
-PACT_RESET_DB=1
-```
-
-Do not use `PACT_RESET_DB=1` in production unless intentionally clearing data.
 
 ## Onchain Configuration
 
-The browser code reads contract ABIs and the deployed OfferingFactory address
-from `src/generated/offering-contracts.js`. All contract reads go through the
-public Base RPC; the connected wallet is only asked to switch chains and sign.
+The browser code reads contract ABIs and the pinned `OfferingFactory` address
+and deploy block from `src/generated/offering-contracts.ts`. All contract
+reads go through the app's own Base transport; the connected wallet is only
+asked to switch chains and sign.
 
-Current Base OfferingFactory (unaudited — see status note above):
-
-```text
-0x8bE9950470e0faC28Ed0fa590D972b466a6E0FE3
-```
-
-Official Base Liquid Split factory:
+Current Base OfferingFactory (see status note above):
 
 ```text
-0xdEcd8B99b7F763e16141450DAa5EA414B7994831
+0xE07b04A47945DC6BEF217660F772b4D411Cd57fC
 ```
 
 Regenerate the contract exports (requires Foundry) with:
@@ -118,48 +88,33 @@ Regenerate the contract exports (requires Foundry) with:
 npm run build:contracts
 ```
 
-The generated file is checked in so frontend builds do not require Foundry.
-
 ## Tests
 
-Run Solidity tests:
-
 ```sh
-forge test
+forge test --root contracts   # Solidity: unit, fuzz, invariants
+npm test                      # colocated unit tests against fakes
+npm run typecheck             # tsc --noEmit
+npm run test:e2e              # anvil-backed Playwright browser flow
 ```
 
-Run API/domain tests:
+CI runs all of these plus `forge fmt --check` on every PR and push to `main`.
 
-```sh
-npm test
-```
+## Deployment
 
-Run browser flow tests:
-
-```sh
-npm run test:e2e
-```
-
-`npm run test:e2e` builds the app with Vite before running Playwright.
-
-## Fly.io Deployment
-
-See [Deployment](docs/deployment.md). The short version:
-
-1. Fly app `splits-pact` runs from the checked-in `fly.toml`.
-2. Persistent volume `pact_data` is mounted at `/data`.
-3. `SPLITS_EXPLORER_API_KEY` is set as a Fly secret.
-4. GitHub secret `FLY_API_TOKEN` enables auto-deploys from `main`.
-5. Manual deploys still work with `fly deploy -a splits-pact`.
+See [Deployment](docs/deployment.md). The short version: Vercel serves the
+static build and auto-deploys `main` (`https://pact.splits.org`); contracts
+redeploy rarely via `npm run deploy:factory`, followed by re-pinning the
+factory address in `src/generated/offering-contracts.ts`.
 
 ## Current Limitations
 
 - Base mainnet only.
-- SQLite is the persistence layer; Fly deployment needs a persistent volume.
-- Allocation links are unauthenticated and rely on unguessable IDs.
-- Issuer/buyer authorization is wallet-address gated in the UI, not
-  signature-authenticated, and the cached onchain snapshots (`offering-state`,
-  `cap-table-state`) are client-reported. Both are display conveniences; the
-  contract remains the source of truth.
+- The issuer's private allocation links live only in that browser's
+  localStorage ledger; losing it loses unclaimed links (claims are onchain
+  events and survive). Links rely on being unguessable and one-shot.
+- Issuer/buyer authorization is wallet-address gated in the UI plus
+  `onlyOwner` onchain; there is no signature login.
+- First cold visit per device scans factory events over RPC before listings
+  appear; later visits only scan the delta.
 - Lifecycle flows have been manually tested with dust, but still need broader
   real-world testing before public use.
