@@ -129,7 +129,7 @@ export function drawCurve(canvas: HTMLCanvasElement, cfg: CurveChartConfig): voi
   ctx.fillStyle = P.caption; ctx.font = mono(28); ctx.textAlign = 'center';
   ctx.fillText('0', sx(0), y0 + 40);
   ctx.fillText(Math.round(F * totalTokens).toLocaleString('en-US'), sx(F), y0 + 40);
-  ctx.fillText('Tokens sold', (x0 + x1) / 2, H - 22);
+  ctx.fillText('Units sold', (x0 + x1) / 2, H - 22);
   ctx.save();
   ctx.translate(28, (y0 + y1) / 2); ctx.rotate(-Math.PI / 2);
   ctx.fillText('Post-money valuation', 0, 0);
@@ -144,7 +144,7 @@ export function drawCurve(canvas: HTMLCanvasElement, cfg: CurveChartConfig): voi
     ctx.beginPath(); ctx.moveTo(x0, hy); ctx.lineTo(hx, hy); ctx.stroke(); ctx.setLineDash([]);
     ctx.fillStyle = P.curve; ctx.beginPath(); ctx.arc(hx, hy, 7, 0, 7); ctx.fill();
     const primary = cmoney(vAt) + ' post-money';
-    const secondary = '$' + (vAt / totalTokens).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' / token';
+    const secondary = '$' + (vAt / totalTokens).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' / unit';
     ctx.font = `500 ${mono(25)}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     const primaryWidth = ctx.measureText(primary).width;
     ctx.font = mono(25);

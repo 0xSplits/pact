@@ -4,3 +4,19 @@
 .disabled-tip-wrap:hover .disabled-tip { opacity: 1; }
 .disabled-tip:empty { display: none; }
 .curve-frame { border: 0; }
+.exhibit .holder-column { width: 58%; }
+.exhibit .before-column { min-width: 68px; }
+.exhibit .before-input { width: 56px; }
+
+.signature-block { width: min(100%, 280px); margin-top: 44px; }
+.signature-preview {
+  height: 38px; display: flex; align-items: flex-end; overflow: hidden;
+  padding: 0 5px; border-bottom: 2px solid var(--line-strong);
+  color: var(--ink); font-family: 'Caveat', cursive; font-size: 26px;
+  font-weight: 500; line-height: 1; white-space: nowrap;
+}
+.signature-input {
+  display: block; width: calc(100% - 32px); box-sizing: border-box;
+  margin: 8px 16px 0 0;
+}
+.signature-project { margin-top: 7px; font-size: var(--text-base); }

@@ -12,7 +12,7 @@ export function showToast(message: string): void {
   toast.textContent = message;
   toast.classList.add('show');
   clearTimeout(hideTimer);
-  hideTimer = setTimeout(() => toast!.classList.remove('show'), 1600);
+  hideTimer = setTimeout(() => toast!.classList.remove('show'), 2500);
 }
 
 export function copyText(text: string, message: string = 'Copied'): void {

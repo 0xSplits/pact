@@ -41,8 +41,8 @@ function Explainer() {
           <section className="overview-section">
             <h2>How</h2>
             <ol className="list-decimal">
-              <li>Create a private issuance with a cap table, target amount, valuation, and close date. Holders receive their tokens; the rest go on a bonding curve to be purchased by backers.</li>
-              <li>Send each backer a private allocation link, or share the public buy link. Backers purchase their allocations and receive tokens in return.</li>
+              <li>Create a private issuance with a cap table, target amount, valuation, and close date. Holders receive their units; the rest go on a bonding curve to be purchased by backers.</li>
+              <li>Send each backer a private allocation link, or share the public buy link. Backers purchase their allocations and receive units in return.</li>
               <li>If the round hits its minimum, the treasury withdraws and the round closes. If it doesn&rsquo;t, backers are refunded.</li>
             </ol>
           </section>
@@ -122,7 +122,7 @@ function Dashboard({ records }: { records: DashboardRecords }) {
       <DashboardTable title="Purchases" empty="No purchases yet.">
         {purchases.length ? (
           <table className="exhibit">
-            <thead><tr><th>Project</th><th className="num">Amount</th><th className="num">Tokens</th></tr></thead>
+            <thead><tr><th>Project</th><th className="num">Amount</th><th className="num">Units</th></tr></thead>
             <tbody>
               {purchases.map(purchase => (
                 <tr key={purchase.txHash + ':' + purchase.logIndex}>

@@ -11,7 +11,10 @@ import type { Connector } from 'wagmi';
 import { wagmiConfig } from '../lib/chain/wagmi.ts';
 import { listOfferings, listPurchases } from '../lib/chain/offerings.ts';
 import type { OfferingRecord, Purchase } from '../lib/chain/onchain.ts';
-import { buyPath, createPath, currentCreatePage, currentOfferingAddress, statusPath } from '../lib/routes.ts';
+import {
+  buyPath, createPath, currentBuyPage, currentCreatePage,
+  currentOfferingAddress, currentStatusPage, statusPath,
+} from '../lib/routes.ts';
 import { showToast } from '../lib/ui/toast.ts';
 
 const queryClient = new QueryClient();
@@ -58,7 +61,10 @@ function WalletRecordGroups() {
         const wallet = String(account).toLowerCase();
         const mine = offerings.filter(r => r.issuer.toLowerCase() === wallet || r.treasury.toLowerCase() === wallet);
         const bought = await listPurchases({ wallet: account!, offerings });
-        return { pacts: mine, purchases: bought };
+        const purchases = Array.from(new Map(
+          bought.map(purchase => [purchase.offering.toLowerCase(), purchase]),
+        ).values());
+        return { pacts: mine, purchases };
       } catch (err) {
         // Scan failures degrade to empty groups rather than a stuck loader.
         return { pacts: [] as OfferingRecord[], purchases: [] as Array<Purchase & { record: OfferingRecord }> };
@@ -69,6 +75,8 @@ function WalletRecordGroups() {
   const purchases = data ? data.purchases : null;
 
   const activeOffering = String(currentOfferingAddress() || '').toLowerCase();
+  const viewingIssuance = currentStatusPage();
+  const viewingPurchase = currentBuyPage();
   return (
     <>
       <div className="wallet-menu-group">
@@ -78,7 +86,7 @@ function WalletRecordGroups() {
         {pacts && pacts.map(pact => (
           <a key={pact.offering} href={statusPath(pact.offering)}>
             <span>{pact.projectName || 'Untitled issuance'}</span>
-            <MenuCheck active={pact.offering.toLowerCase() === activeOffering} />
+            <MenuCheck active={viewingIssuance && pact.offering.toLowerCase() === activeOffering} />
           </a>
         ))}
         {!currentCreatePage() && <a href={createPath()} className="wallet-menu-action">+ New issuance</a>}
@@ -88,9 +96,9 @@ function WalletRecordGroups() {
           <div className="wallet-menu-label">Your purchases</div>
           {!purchases && <div className="wallet-menu-note">Loading purchases…</div>}
           {purchases && purchases.map(purchase => (
-            <a key={purchase.offering + purchase.allocationId} href={buyPath(purchase.offering)}>
+            <a key={purchase.offering} href={buyPath(purchase.offering)}>
               <span>{(purchase.record && purchase.record.projectName) || 'Untitled purchase'}</span>
-              <MenuCheck active={purchase.offering.toLowerCase() === activeOffering} />
+              <MenuCheck active={viewingPurchase && purchase.offering.toLowerCase() === activeOffering} />
             </a>
           ))}
         </div>
