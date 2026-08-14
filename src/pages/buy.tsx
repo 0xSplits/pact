@@ -167,7 +167,10 @@ function BuyApp() {
     (async () => {
       try {
         const bought = await listBought({ offering: offeringAddress });
-        const mine = bought.filter(p => p.buyer.toLowerCase() === String(wallet).toLowerCase());
+        // Voucher mode is allocation-scoped: only this link's purchase counts,
+        // so a wallet's earlier claim doesn't shadow a fresh allocation.
+        const mine = bought.filter(p => p.buyer.toLowerCase() === String(wallet).toLowerCase()
+          && (!voucherPayload || String(p.allocationId).toLowerCase() === String(voucherPayload.voucher.allocationId).toLowerCase()));
         if (mine.length) {
           setReceipt({
             units: mine.reduce((s, p) => s + p.units, 0),

@@ -56,6 +56,7 @@ interface RawReceipt {
   status?: string | number;
   logs?: RawLog[];
   blockNumber: string;
+  transactionHash?: Hex;
 }
 
 // One read in a readMany batch. The ABI is deliberately widened to `Abi` so
@@ -562,32 +563,92 @@ export function cancelAllocation(options: OfferingTxOptions & { allocationId: st
   });
 }
 
-async function ensureUsdcAllowance({ provider, buyer, offering, amount, rpcUrl, timeoutMs, pollMs }: TxWaitOptions & {
+// EIP-5792: does this wallet execute batched calls atomically on Base?
+// Unsupported/unknown methods just mean "no" — the two-transaction flow works everywhere.
+export async function atomicBatchSupported(provider: Eip1193Provider, account: Address): Promise<boolean> {
+  try {
+    const capabilities = await provider.request({ method: 'wallet_getCapabilities', params: [account, [BASE_CHAIN_ID_HEX]] });
+    const status = capabilities && capabilities[BASE_CHAIN_ID_HEX] && capabilities[BASE_CHAIN_ID_HEX].atomic
+      && capabilities[BASE_CHAIN_ID_HEX].atomic.status;
+    return status === 'supported' || status === 'ready';
+  } catch (err) {
+    return false;
+  }
+}
+
+// EIP-5792 wallet_sendCalls + wallet_getCallsStatus poll. Returns the final
+// receipt (the batch lands as one transaction when atomic).
+export async function sendBatchedCalls({ provider, from, calls, timeoutMs, pollMs }: TxWaitOptions & {
+  provider: Eip1193Provider;
+  from: Address;
+  calls: Array<{ to: Address; data: Hex }>;
+}): Promise<RawReceipt> {
+  const sent = await provider.request({
+    method: 'wallet_sendCalls',
+    params: [{ version: '2.0.0', chainId: BASE_CHAIN_ID_HEX, from, atomicRequired: true, calls }],
+  });
+  const batchId = typeof sent === 'string' ? sent : sent && sent.id;
+  if (!batchId) throw new Error('Wallet did not return a batch id.');
+
+  const deadline = Date.now() + (timeoutMs || 120000);
+  while (Date.now() < deadline) {
+    const result = await provider.request({ method: 'wallet_getCallsStatus', params: [batchId] }).catch(() => null);
+    const status = result && Number(result.status);
+    if (status >= 400) throw new Error('Batched transaction failed in the wallet.');
+    const receipt = result && result.receipts && result.receipts[result.receipts.length - 1];
+    if (status === 200 && receipt) return receipt;
+    await sleep(pollMs || 1500);
+  }
+  throw new Error('Timed out waiting for the batched transaction.');
+}
+
+const usdcAllowance = async (buyer: Address, offering: Address, rpcUrl?: string) => await readContract({
+  address: BASE_USDC_ADDRESS,
+  abi: ERC20_ABI as Abi,
+  functionName: 'allowance',
+  args: [buyer, offering],
+  rpcUrl,
+}) as bigint;
+
+const approveCall = (offering: Address, amount: number) => ({
+  to: BASE_USDC_ADDRESS as Address,
+  data: encodeFunctionData({ abi: ERC20_ABI, functionName: 'approve', args: [offering, BigInt(amount)] }),
+});
+
+// Approve (when needed) and buy. One wallet prompt via an EIP-5792 atomic
+// batch when the wallet supports it, else the sequential two-transaction flow.
+async function payWithApproval({ provider, buyer, offering, amount, buyData, rpcUrl, timeoutMs, pollMs }: TxWaitOptions & {
   provider: Eip1193Provider;
   buyer: Address;
   offering: Address;
   amount: number;
-}): Promise<Hex | null> {
-  const allowance = await readContract({
-    address: BASE_USDC_ADDRESS,
-    abi: ERC20_ABI as Abi,
-    functionName: 'allowance',
-    args: [buyer, offering],
-    rpcUrl,
-  }) as bigint;
-  if (allowance >= BigInt(amount)) return null;
-  const approveTxHash = await provider.request({
+  buyData: Hex;
+}): Promise<{ approveTxHash: Hex | null; buyTxHash: Hex; buyReceipt: RawReceipt }> {
+  const buyCall = { to: offering, data: buyData };
+  const needsApproval = await usdcAllowance(buyer, offering, rpcUrl) < BigInt(amount);
+
+  if (needsApproval && await atomicBatchSupported(provider, buyer)) {
+    const buyReceipt = await sendBatchedCalls({
+      provider, from: buyer, calls: [approveCall(offering, amount), buyCall], timeoutMs, pollMs,
+    });
+    return { approveTxHash: null, buyTxHash: buyReceipt.transactionHash as Hex, buyReceipt };
+  }
+
+  let approveTxHash: Hex | null = null;
+  if (needsApproval) {
+    approveTxHash = await provider.request({
+      method: 'eth_sendTransaction',
+      params: [{ from: buyer, ...approveCall(offering, amount), chainId: BASE_CHAIN_ID_HEX }],
+    });
+    const approveReceipt = await waitForReceipt(approveTxHash!, { provider, rpcUrl, timeoutMs, pollMs });
+    assertNotReverted(approveReceipt, 'USDC approval reverted.');
+  }
+  const buyTxHash = await provider.request({
     method: 'eth_sendTransaction',
-    params: [{
-      from: buyer,
-      to: BASE_USDC_ADDRESS,
-      data: encodeFunctionData({ abi: ERC20_ABI, functionName: 'approve', args: [offering, BigInt(amount)] }),
-      chainId: BASE_CHAIN_ID_HEX,
-    }],
+    params: [{ from: buyer, ...buyCall, chainId: BASE_CHAIN_ID_HEX }],
   });
-  const approveReceipt = await waitForReceipt(approveTxHash, { provider, rpcUrl, timeoutMs, pollMs });
-  assertNotReverted(approveReceipt, 'USDC approval reverted.');
-  return approveTxHash;
+  const buyReceipt = await waitForReceipt(buyTxHash, { provider, rpcUrl, timeoutMs, pollMs });
+  return { approveTxHash, buyTxHash, buyReceipt };
 }
 
 function purchaseFromReceipt(receipt: RawReceipt, offering: string, buyer: string): Purchase | null {
@@ -635,27 +696,17 @@ export async function buyPublicOffering({ provider, buyer, offeringAddress, amou
   const normalizedBuyer = getAddress(buyer);
   const offering = getAddress(offeringAddress);
   const quote = await quoteOfferingPurchase({ offeringAddress, amountUsd, publicOnly: true, rpcUrl });
-  const approveTxHash = await ensureUsdcAllowance({
+  const { approveTxHash, buyTxHash, buyReceipt } = await payWithApproval({
     provider, buyer: normalizedBuyer, offering, amount: quote.maxCost, rpcUrl, timeoutMs, pollMs,
+    buyData: encodeFunctionData({
+      abi: OFFERING_ABI,
+      functionName: 'buyPublic',
+      args: [BigInt(quote.units), BigInt(quote.maxCost), buyerName],
+    }),
   });
-
-  const buyTxHash = await provider.request({
-    method: 'eth_sendTransaction',
-    params: [{
-      from: normalizedBuyer,
-      to: offering,
-      data: encodeFunctionData({
-        abi: OFFERING_ABI,
-        functionName: 'buyPublic',
-        args: [BigInt(quote.units), BigInt(quote.maxCost), buyerName],
-      }),
-      chainId: BASE_CHAIN_ID_HEX,
-    }],
-  });
-  const buyReceipt = await waitForReceipt(buyTxHash, { provider, rpcUrl, timeoutMs, pollMs });
   assertNotReverted(buyReceipt, 'Offering purchase reverted.');
   const purchase = purchaseFromReceipt(buyReceipt, offering, normalizedBuyer);
-  return { ...quote, ...(purchase || {}), approveTxHash, buyTxHash: buyTxHash as Hex };
+  return { ...quote, ...(purchase || {}), approveTxHash, buyTxHash };
 }
 
 // Claims a private allocation: the buyer's wallet sends buyPrivate carrying
@@ -690,36 +741,26 @@ export async function buyPrivateOffering({ provider, buyer, offeringAddress, vou
     allocationId: voucher.allocationId,
     buyer: normalizedBuyer,
   });
-  const approveTxHash = await ensureUsdcAllowance({
+  const { approveTxHash, buyTxHash, buyReceipt } = await payWithApproval({
     provider, buyer: normalizedBuyer, offering, amount: maxCost, rpcUrl, timeoutMs, pollMs,
+    buyData: encodeFunctionData({
+      abi: OFFERING_ABI,
+      functionName: 'buyPrivate',
+      args: [
+        {
+          allocationId: voucher.allocationId,
+          buyerName: voucher.buyerName,
+          amountCapUsdc: BigInt(voucher.amountCapUsdc),
+          linkKey: voucher.linkKey,
+        },
+        ownerSig,
+        claimSig,
+        BigInt(units),
+        BigInt(maxCost),
+      ],
+    }),
   });
-
-  const buyTxHash = await provider.request({
-    method: 'eth_sendTransaction',
-    params: [{
-      from: normalizedBuyer,
-      to: offering,
-      data: encodeFunctionData({
-        abi: OFFERING_ABI,
-        functionName: 'buyPrivate',
-        args: [
-          {
-            allocationId: voucher.allocationId,
-            buyerName: voucher.buyerName,
-            amountCapUsdc: BigInt(voucher.amountCapUsdc),
-            linkKey: voucher.linkKey,
-          },
-          ownerSig,
-          claimSig,
-          BigInt(units),
-          BigInt(maxCost),
-        ],
-      }),
-      chainId: BASE_CHAIN_ID_HEX,
-    }],
-  });
-  const buyReceipt = await waitForReceipt(buyTxHash, { provider, rpcUrl, timeoutMs, pollMs });
   assertNotReverted(buyReceipt, 'Allocation claim reverted.');
   const purchase = purchaseFromReceipt(buyReceipt, offering, normalizedBuyer);
-  return { state, units, cost, maxCost, ...(purchase || {}), approveTxHash, buyTxHash: buyTxHash as Hex };
+  return { state, units, cost, maxCost, ...(purchase || {}), approveTxHash, buyTxHash };
 }
