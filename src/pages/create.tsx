@@ -248,7 +248,7 @@ function CreateApp() {
     days: '30',
     dilution: '20',
     spread: '20',
-    publicPct: '10',
+    publicPct: '0',
     proceeds: '',
   }));
   const uidRef = useRef(2);

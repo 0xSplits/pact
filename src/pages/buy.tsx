@@ -316,7 +316,9 @@ function BuyApp() {
   } else if (raiseClosed) {
     action = <Notice className="mt-10">{offeringFailed ? 'This project failed to meet the minimum before the close date.' : 'This offering has closed.'} No further buy-ins can be made.</Notice>;
   } else if (!voucherPayload && publicRemaining <= 0) {
-    action = <Notice className="mt-10">The public allocation of this offering is fully subscribed. Ask the issuer for a private allocation link.</Notice>;
+    action = <Notice className="mt-10">{offeringState.publicUnits === 0
+      ? 'This offering is private.'
+      : 'The public allocation of this offering is fully subscribed.'} Ask the issuer for a private allocation link.</Notice>;
   } else if (!wallet) {
     action = (
       <>

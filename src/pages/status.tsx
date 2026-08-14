@@ -387,8 +387,9 @@ function allocationRows(bought: Purchase[], ledger: AllocationLedgerRow[]): { fu
   return { funded, open };
 }
 
-function AllocationsTable({ rows, entryOpen, onOpenEntry, onCancelEntry, onAdd, onRevoke }: {
+function AllocationsTable({ rows, hasPublicTranche, entryOpen, onOpenEntry, onCancelEntry, onAdd, onRevoke }: {
   rows: { funded: FundedRow[]; open: OpenRow[] };
+  hasPublicTranche: boolean;
   entryOpen: boolean;
   onOpenEntry: () => void;
   onCancelEntry: () => void;
@@ -442,7 +443,7 @@ function AllocationsTable({ rows, entryOpen, onOpenEntry, onCancelEntry, onAdd, 
               ))}
             </>
           ) : (
-            <tr><td colSpan={4} className="px-2 py-5 text-center t-muted">No purchases yet. Create a private allocation using the row below, or share the public buy link.</td></tr>
+            <tr><td colSpan={4} className="px-2 py-5 text-center t-muted">No purchases yet. Create a private allocation using the row below{hasPublicTranche ? ', or share the public buy link' : ''}.</td></tr>
           )}
           {entryOpen
             ? <AllocationEntryRow onCancel={onCancelEntry} onAdd={onAdd} />
@@ -771,6 +772,7 @@ function StatusApp() {
   const minPct = Math.min(100, minUsd / progressMax * 100);
   const over = raisedTotal + allocatedTotal - progressMax; // committed beyond live capacity
 
+  const hasPublicTranche = (onchainOffering ? onchainOffering.publicUnits : record.publicUnits) > 0;
   const publicTreasury = onchainOffering ? onchainOffering.treasury : record.treasury;
   const publicOwner = onchainOffering && onchainOffering.owner;
   const showOwner = publicOwner && !isSameAddress(publicOwner, publicTreasury);
@@ -850,12 +852,15 @@ function StatusApp() {
             )}
             maxLabel={offeringLoading ? '' : fmtMoney(progressMax)}
           />
-          <div className="no-print mt-3 text-sm t-muted">
-            Public buy link: <button className="linkbtn" type="button" onClick={() => copyText(new URL(buyPath(record.offering), location.origin).href, 'Public link copied')}>copy</button>
-          </div>
+          {hasPublicTranche ? (
+            <div className="no-print mt-3 text-sm t-muted">
+              Public buy link: <button className="linkbtn" type="button" onClick={() => copyText(new URL(buyPath(record.offering), location.origin).href, 'Public link copied')}>copy</button>
+            </div>
+          ) : null}
           <OfferingActions actions={actionItems} busyAction={busyAction} onAction={handleOfferingAction} />
           <AllocationsTable
             rows={rows}
+            hasPublicTranche={hasPublicTranche}
             entryOpen={entryOpen}
             onOpenEntry={() => setEntryOpen(true)}
             onCancelEntry={() => setEntryOpen(false)}
