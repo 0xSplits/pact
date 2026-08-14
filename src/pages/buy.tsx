@@ -4,7 +4,6 @@ import { createRoot } from 'react-dom/client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { injectChrome } from '../lib/ui/chrome.ts';
 import { showToast } from '../lib/ui/toast.ts';
-import { PactSettings } from '../lib/settings.ts';
 import { AppProviders } from '../components/wallet.tsx';
 import { useWallet } from '../hooks/use-wallet.ts';
 import { useOfferingState } from '../hooks/use-offering-state.ts';
@@ -448,5 +447,4 @@ function BuyApp() {
 }
 
 injectChrome();
-PactSettings.init({ buttonId: 'settingsToggle' });
 createRoot(document.getElementById('app')!).render(<AppProviders><BuyApp /></AppProviders>);

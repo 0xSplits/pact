@@ -5,7 +5,6 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import './status.css';
 import { injectChrome } from '../lib/ui/chrome.ts';
 import { showToast, copyText } from '../lib/ui/toast.ts';
-import { PactSettings } from '../lib/settings.ts';
 import { AppProviders } from '../components/wallet.tsx';
 import { useWallet } from '../hooks/use-wallet.ts';
 import { useOfferingState } from '../hooks/use-offering-state.ts';
@@ -880,5 +879,4 @@ function StatusApp() {
 }
 
 injectChrome();
-PactSettings.init({ buttonId: 'settingsToggle' });
 createRoot(document.getElementById('app')!).render(<AppProviders><StatusApp /></AppProviders>);

@@ -110,8 +110,8 @@ react-query.
 
 Tailwind v4 is compiled at build time through `@tailwindcss/vite` — there is
 no runtime styling dependency. `src/app.css` declares the type scale and
-color tokens in `@theme`, the CSS-variable design system (with the
-Clarity/Cipher/Chambers presets), and the shared component classes.
+color tokens in `@theme`, the CSS-variable design system (light plus a
+`prefers-color-scheme: dark` palette), and the shared component classes.
 Page-specific styles live next to each page (`src/pages/*.css`).
 
 ## Generated Files
