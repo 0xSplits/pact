@@ -387,9 +387,10 @@ function allocationRows(bought: Purchase[], ledger: AllocationLedgerRow[]): { fu
   return { funded, open };
 }
 
-function AllocationsTable({ rows, hasPublicTranche, entryOpen, onOpenEntry, onCancelEntry, onAdd, onRevoke }: {
+function AllocationsTable({ rows, hasPublicTranche, offeringOpen, entryOpen, onOpenEntry, onCancelEntry, onAdd, onRevoke }: {
   rows: { funded: FundedRow[]; open: OpenRow[] };
   hasPublicTranche: boolean;
+  offeringOpen: boolean;
   entryOpen: boolean;
   onOpenEntry: () => void;
   onCancelEntry: () => void;
@@ -429,7 +430,9 @@ function AllocationsTable({ rows, hasPublicTranche, entryOpen, onOpenEntry, onCa
                   <td>
                     {row.status === 'revoked'
                       ? <span className="badge revoked">Revoked</span>
-                      : <><span className="badge allocated">Allocated</span> {row.createdAt ? <span>{fmtShort(row.createdAt)}</span> : null}</>}
+                      : !offeringOpen
+                        ? <span className="badge revoked">Expired</span>
+                        : <><span className="badge allocated">Allocated</span> {row.createdAt ? <span>{fmtShort(row.createdAt)}</span> : null}</>}
                   </td>
                   <td className="num whitespace-nowrap">
                     {row.status === 'revoked' ? null : (
@@ -443,9 +446,9 @@ function AllocationsTable({ rows, hasPublicTranche, entryOpen, onOpenEntry, onCa
               ))}
             </>
           ) : (
-            <tr><td colSpan={4} className="px-2 py-5 text-center t-muted">No purchases yet. Create a private allocation using the row below{hasPublicTranche ? ', or share the public buy link' : ''}.</td></tr>
+            <tr><td colSpan={4} className="px-2 py-5 text-center t-muted">{offeringOpen ? `No purchases yet. Create a private allocation using the row below${hasPublicTranche ? ', or share the public buy link' : ''}.` : 'No purchases.'}</td></tr>
           )}
-          {entryOpen
+          {!offeringOpen ? null : entryOpen
             ? <AllocationEntryRow onCancel={onCancelEntry} onAdd={onAdd} />
             : <tr className="addrow no-print"><td colSpan={4}><button data-act="open-add" type="button" onClick={onOpenEntry}>+ New allocation</button></td></tr>}
         </tbody>
@@ -854,13 +857,14 @@ function StatusApp() {
           />
           {hasPublicTranche ? (
             <div className="no-print mt-3 text-sm t-muted">
-              Public buy link: <button className="linkbtn" type="button" onClick={() => copyText(new URL(buyPath(record.offering), location.origin).href, 'Public link copied')}>copy</button>
+              Public buy link: <button className="linkbtn" type="button" onClick={() => copyText(new URL(buyPath(record.offering), location.origin).href, 'Public link copied')}>copy</button>{open ? null : <> · <span className="badge revoked">Expired</span></>}
             </div>
           ) : null}
           <OfferingActions actions={actionItems} busyAction={busyAction} onAction={handleOfferingAction} />
           <AllocationsTable
             rows={rows}
             hasPublicTranche={hasPublicTranche}
+            offeringOpen={open}
             entryOpen={entryOpen}
             onOpenEntry={() => setEntryOpen(true)}
             onCancelEntry={() => setEntryOpen(false)}
