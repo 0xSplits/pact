@@ -9,7 +9,7 @@ import {
   decodeVoucherFragment,
   listAllocationLedger,
   saveAllocationLedgerRow,
-  removeAllocationLedgerRow,
+  markAllocationLedgerRowRevoked,
 } from './voucher.ts';
 import { buildGoldenFixture } from '../../../scripts/generate-voucher-fixture.ts';
 
@@ -87,7 +87,7 @@ test('golden vector matches the checked-in fixture byte for byte', async () => {
   assert.deepEqual(regenerated, checkedIn);
 });
 
-test('allocation ledger add/list/remove round-trips', () => {
+test('allocation ledger add/list/revoke round-trips', () => {
   const storage = fakeStorage();
   const offering = '0x' + '99'.repeat(20);
   const row = { allocationId: '0x' + '11'.repeat(32), name: 'Bob', amountCapUsd: 50, link: 'https://x/#f', createdAt: 1 };
@@ -97,6 +97,9 @@ test('allocation ledger add/list/remove round-trips', () => {
   saveAllocationLedgerRow(offering, { ...row, name: 'Bobby' }, storage);
   assert.equal(listAllocationLedger(offering, storage).length, 1);
   assert.equal(listAllocationLedger(offering, storage)[0].name, 'Bobby');
-  removeAllocationLedgerRow(offering, row.allocationId, storage);
-  assert.deepEqual(listAllocationLedger(offering, storage), []);
+  markAllocationLedgerRowRevoked(offering, row.allocationId, 7, storage);
+  assert.deepEqual(listAllocationLedger(offering, storage), [{ ...row, name: 'Bobby', revokedAt: 7 }]);
+  // Marking an unknown id leaves the ledger untouched.
+  markAllocationLedgerRowRevoked(offering, '0x' + '22'.repeat(32), 8, storage);
+  assert.deepEqual(listAllocationLedger(offering, storage), [{ ...row, name: 'Bobby', revokedAt: 7 }]);
 });
