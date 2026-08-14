@@ -2,14 +2,23 @@
 // `PACT_RPC_URL` is the e2e/manual override hook: set it on globalThis before
 // any module loads (Playwright init script, console snippet) to point every
 // read and receipt poll at a local anvil instead of public Base RPC.
+// `VITE_ALCHEMY_API_KEY` is the build-time Alchemy key (domain-restrict it,
+// it ships in the bundle); absent both, the rate-limited public RPC keeps
+// zero-setup dev working. Optional-chained because node:test runs this file
+// where import.meta.env doesn't exist.
 export const BASE_CHAIN_ID = 8453;
 export const BASE_CHAIN_ID_HEX = '0x2105';
-export const BASE_RPC_URL: string = (globalThis as Record<string, any>).PACT_RPC_URL || 'https://mainnet.base.org';
+const ALCHEMY_API_KEY = import.meta.env?.VITE_ALCHEMY_API_KEY;
+export const BASE_RPC_URL: string =
+  (globalThis as Record<string, any>).PACT_RPC_URL ||
+  (ALCHEMY_API_KEY ? `https://base-mainnet.g.alchemy.com/v2/${ALCHEMY_API_KEY}` : 'https://mainnet.base.org');
+// Sent to wallets via wallet_addEthereumChain — always the public RPC, never
+// BASE_RPC_URL, so a keyed provider URL is never registered into a wallet.
 export const BASE_CHAIN_PARAMS = {
   chainId: BASE_CHAIN_ID_HEX,
   chainName: 'Base',
   nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
-  rpcUrls: [BASE_RPC_URL],
+  rpcUrls: ['https://mainnet.base.org'],
   blockExplorerUrls: ['https://basescan.org'],
 };
 
