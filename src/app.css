@@ -181,6 +181,12 @@ body { font-family: var(--font); font-size: var(--text-base); font-weight: var(-
 .wallet-toggle.connected { color: var(--cta-text); }
 .wallet-toggle.error { color: var(--danger); border-color: var(--danger); }
 .wallet-toggle.connecting { color: var(--pending); }
+/* The CTA pill inverts per scheme (light pill on dark pages), so its status
+   text needs the opposite scheme's pending/danger values. */
+@media (prefers-color-scheme: dark) {
+  .wallet-toggle.connecting { color: #b07d1a; }
+  .wallet-toggle.error { color: #b00020; border-color: #b00020; }
+}
 .wallet-menu { position: absolute; top: 44px; right: 0; min-width: 180px; display: none; padding: 2px; background: #262626; border: 0; border-radius: var(--radius-default); box-shadow: 0 4px 16px rgba(0,0,0,.22); }
 .wallet-menu.show { display: block; }
 .wallet-menu button, .wallet-menu a { width: 100%; min-height: 30px; display: flex; align-items: center; justify-content: space-between; box-sizing: border-box; border: 0; border-radius: var(--radius-small); background: transparent; color: #fff; font-family: var(--font); font-size: var(--text-sm); text-align: left; padding: 0 10px; cursor: pointer; text-decoration: none; }
