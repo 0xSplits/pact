@@ -215,11 +215,12 @@ test('private allocation link claims across two browser contexts', async ({ brow
   await buyerContext.close();
 });
 
-test('wallet menu still offers Coinbase Wallet when no extension is installed', async ({ page }) => {
+test('wallet menu only offers detected wallets plus the Splits store link', async ({ page }) => {
   await page.goto('/');
   await page.locator('#walletToggle').click();
-  await expect(page.getByRole('button', { name: 'Coinbase Wallet' })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Injected', exact: true })).toHaveCount(0);
+  const menu = page.locator('.wallet-menu');
+  await expect(menu.getByRole('link', { name: 'Splits', exact: true })).toBeVisible();
+  await expect(menu.getByRole('button')).toHaveCount(0);
 });
 
 test('settings menu exposes style options', async ({ page }) => {
