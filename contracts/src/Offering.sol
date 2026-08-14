@@ -450,11 +450,13 @@ contract Offering is IERC1155Receiver, EIP712, ReentrancyGuard {
         return IERC1155Receiver.onERC1155Received.selector;
     }
 
-    function onERC1155BatchReceived(address operator, address, uint256[] calldata ids, uint256[] calldata, bytes calldata)
-        external
-        view
-        returns (bytes4)
-    {
+    function onERC1155BatchReceived(
+        address operator,
+        address,
+        uint256[] calldata ids,
+        uint256[] calldata,
+        bytes calldata
+    ) external view returns (bytes4) {
         if (operator != address(this)) {
             if (state != State.Funding) revert ClosedOrFailed();
             if (block.timestamp > closeDate && !minMet) revert PastCloseDate();
@@ -473,8 +475,7 @@ contract Offering is IERC1155Receiver, EIP712, ReentrancyGuard {
     // Solady has no non-reverting ERC20 transfer; refundAll needs one to skip
     // blocklisted buyers instead of bricking the whole batch.
     function _tryTransfer(address token, address to, uint256 amount) private returns (bool) {
-        (bool ok, bytes memory data) =
-            token.call(abi.encodeWithSignature("transfer(address,uint256)", to, amount));
+        (bool ok, bytes memory data) = token.call(abi.encodeWithSignature("transfer(address,uint256)", to, amount));
         return ok && (data.length == 0 || abi.decode(data, (bool)));
     }
 }

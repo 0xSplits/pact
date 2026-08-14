@@ -65,8 +65,7 @@ contract OfferingFactory {
         }
         if (publicUnits > offeringUnits) revert InvalidConfig();
 
-        offering =
-            address(new Offering(raiseMin, closeDate, priceStart, priceSlope, publicUnits, treasury, treasury));
+        offering = address(new Offering(raiseMin, closeDate, priceStart, priceSlope, publicUnits, treasury, treasury));
         // An impossible raise is undeployable: the minimum must be reachable by
         // selling out the integer curve (audit M-5).
         if (raiseMin > Offering(offering).costFor(0, offeringUnits)) revert InvalidConfig();
@@ -75,9 +74,8 @@ contract OfferingFactory {
             if (holderAccounts[i] == address(0) || holderAccounts[i] == offering) revert InvalidAllocations();
         }
         // PactToken validates the 1000-unit total and mints offeringUnits to the escrow.
-        pactToken = address(
-            new PactToken(splitMain, projectName, holderAccounts, holderAllocations, offering, offeringUnits)
-        );
+        pactToken =
+            address(new PactToken(splitMain, projectName, holderAccounts, holderAllocations, offering, offeringUnits));
         Offering(offering).initialize(pactToken);
 
         emit OfferingCreated(
