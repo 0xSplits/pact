@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { getOfferingState } from '../lib/chain/onchain.ts';
 import type { OfferingState } from '../lib/chain/onchain.ts';
 import { errMsg } from '../lib/format.ts';
@@ -11,65 +12,38 @@ export type OfferingSnapshot =
   | ({ status: 'loaded' } & OfferingState)
   | { status: 'error'; error: string };
 
+const stateKey = (offeringAddress?: string | null, buyer?: string | null) =>
+  ['offering-state', offeringAddress || null, buyer ? String(buyer).toLowerCase() : null];
+
 // Live offering snapshot: loads immediately, then re-reads the contract on an
 // interval while the tab is visible and whenever the window regains focus, so
-// other buyers' purchases show up without a manual reload. Background polls
-// update silently — the last good snapshot stays on screen while a refresh is
-// in flight, and a failed poll never replaces loaded data with an error.
+// other buyers' purchases show up without a manual reload — react-query
+// pauses interval refetches in hidden tabs, refetches on focus, and keeps the
+// last good snapshot on screen through in-flight or failed background polls.
 //
 // Returns { offering, refresh }:
 //   offering: null | { status: 'loading' } | { status: 'loaded', ...state } | { status: 'error', error }
-export function useOfferingState({ offeringAddress, buyer, onLoaded }: {
+//   refresh: invalidates the query (used after transactions)
+export function useOfferingState({ offeringAddress, buyer }: {
   offeringAddress?: string | null;
   buyer?: string | null;
-  onLoaded?: (state: OfferingState) => void;
 } = {}) {
-  const [offering, setOffering] = useState<OfferingSnapshot>(null);
-  const offeringRef = useRef<OfferingSnapshot>(null);
-  const generationRef = useRef(0);
-  const onLoadedRef = useRef(onLoaded);
-  onLoadedRef.current = onLoaded;
+  const queryClient = useQueryClient();
+  const query = useQuery({
+    queryKey: stateKey(offeringAddress, buyer),
+    enabled: !!offeringAddress,
+    queryFn: () => getOfferingState({ offeringAddress: offeringAddress!, buyer }),
+    refetchInterval: POLL_MS,
+  });
 
-  const set = (state: OfferingSnapshot) => {
-    offeringRef.current = state;
-    setOffering(state);
-  };
+  const refresh = useCallback(
+    () => queryClient.invalidateQueries({ queryKey: stateKey(offeringAddress, buyer) }),
+    [queryClient, offeringAddress, buyer],
+  );
 
-  const refresh = useCallback(async () => {
-    if (!offeringAddress) return;
-    const generation = ++generationRef.current;
-    const previous = offeringRef.current;
-    if (!previous || previous.status !== 'loaded') set({ status: 'loading' });
-    try {
-      const state = await getOfferingState({ offeringAddress, buyer: buyer || undefined });
-      if (generation !== generationRef.current) return;
-      set({ status: 'loaded', ...state });
-      if (onLoadedRef.current) onLoadedRef.current(state);
-    } catch (err) {
-      if (generation !== generationRef.current) return;
-      if (!previous || previous.status !== 'loaded') {
-        set({ status: 'error', error: errMsg(err, 'Could not read onchain offering state.') });
-      }
-    }
-  }, [offeringAddress, buyer]);
-
-  useEffect(() => {
-    generationRef.current++;
-    set(null);
-    if (!offeringAddress) return;
-    refresh();
-    const tick = () => {
-      if (document.visibilityState === 'visible') refresh();
-    };
-    const interval = setInterval(tick, POLL_MS);
-    window.addEventListener('focus', tick);
-    document.addEventListener('visibilitychange', tick);
-    return () => {
-      clearInterval(interval);
-      window.removeEventListener('focus', tick);
-      document.removeEventListener('visibilitychange', tick);
-    };
-  }, [refresh, offeringAddress]);
-
+  const offering: OfferingSnapshot = !offeringAddress ? null
+    : query.data ? { status: 'loaded', ...query.data }
+    : query.isError ? { status: 'error', error: errMsg(query.error, 'Could not read onchain offering state.') }
+    : { status: 'loading' };
   return { offering, refresh };
 }

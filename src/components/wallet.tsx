@@ -5,7 +5,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query';
 import { WagmiProvider, useAccount, useConnect, useDisconnect } from 'wagmi';
 import type { Connector } from 'wagmi';
 import { wagmiConfig } from '../lib/chain/wagmi.ts';
@@ -49,28 +49,24 @@ function MenuCheck({ active }: { active: boolean }) {
 
 function WalletRecordGroups() {
   const account = useAccount().address ?? null;
-  const [pacts, setPacts] = useState<OfferingRecord[] | null>(null);
-  const [purchases, setPurchases] = useState<Array<Purchase & { record: OfferingRecord }> | null>(null);
-
-  useEffect(() => {
-    let stale = false;
-    (async () => {
+  const { data } = useQuery({
+    queryKey: ['wallet-records', account ? account.toLowerCase() : null],
+    enabled: !!account,
+    queryFn: async () => {
       try {
         const offerings = await listOfferings();
         const wallet = String(account).toLowerCase();
         const mine = offerings.filter(r => r.issuer.toLowerCase() === wallet || r.treasury.toLowerCase() === wallet);
         const bought = await listPurchases({ wallet: account!, offerings });
-        if (stale) return;
-        setPacts(mine);
-        setPurchases(bought);
+        return { pacts: mine, purchases: bought };
       } catch (err) {
-        if (stale) return;
-        setPacts(current => current || []);
-        setPurchases(current => current || []);
+        // Scan failures degrade to empty groups rather than a stuck loader.
+        return { pacts: [] as OfferingRecord[], purchases: [] as Array<Purchase & { record: OfferingRecord }> };
       }
-    })();
-    return () => { stale = true; };
-  }, [account]);
+    },
+  });
+  const pacts = data ? data.pacts : null;
+  const purchases = data ? data.purchases : null;
 
   const activeOffering = String(currentOfferingAddress() || '').toLowerCase();
   return (
