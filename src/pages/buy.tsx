@@ -3,8 +3,8 @@ import type { ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { injectChrome } from '../lib/ui/chrome.ts';
 import { showToast } from '../lib/ui/toast.ts';
-import { PactWallet } from '../lib/chain/wallet.ts';
 import { PactSettings } from '../lib/settings.ts';
+import { AppProviders } from '../components/wallet.tsx';
 import { useWallet } from '../hooks/use-wallet.ts';
 import { useOfferingState } from '../hooks/use-offering-state.ts';
 import {
@@ -113,9 +113,7 @@ function BuyApp() {
   const debugRef = useRef('live');
   const recoveringRef = useRef(false);
 
-  const wallet = useWallet({
-    onError: err => showToast(errMsg(err, 'Could not connect wallet.')),
-  });
+  const wallet = useWallet();
   const { offering, refresh: refreshOffering } = useOfferingState({
     offeringAddress,
     buyer: wallet,
@@ -198,7 +196,7 @@ function BuyApp() {
     }
     setBusy('refund');
     try {
-      await refundOffering({ provider: PactWallet.provider!, offeringAddress: offeringAddress!, from: wallet });
+      await refundOffering({ offeringAddress: offeringAddress!, from: wallet });
       await refreshOffering();
     } catch (err) {
       showToast(errMsg(err, 'Could not complete refund.'));
@@ -216,7 +214,6 @@ function BuyApp() {
       let purchase;
       if (voucherPayload) {
         purchase = await buyPrivateOffering({
-          provider: PactWallet.provider!,
           buyer: wallet,
           offeringAddress: offeringAddress!,
           voucher: voucherPayload.voucher,
@@ -225,7 +222,6 @@ function BuyApp() {
         });
       } else {
         purchase = await buyPublicOffering({
-          provider: PactWallet.provider!,
           buyer: wallet,
           offeringAddress: offeringAddress!,
           amountUsd: +String(amount).replace(/[^0-9.]/g, '') || 0,
@@ -445,4 +441,4 @@ function BuyApp() {
 
 injectChrome();
 PactSettings.init({ buttonId: 'settingsToggle' });
-createRoot(document.getElementById('app')!).render(<BuyApp />);
+createRoot(document.getElementById('app')!).render(<AppProviders><BuyApp /></AppProviders>);

@@ -5,7 +5,7 @@ import './status.css';
 import { injectChrome } from '../lib/ui/chrome.ts';
 import { showToast, copyText } from '../lib/ui/toast.ts';
 import { PactSettings } from '../lib/settings.ts';
-import { PactWallet } from '../lib/chain/wallet.ts';
+import { AppProviders } from '../components/wallet.tsx';
 import { useWallet } from '../hooks/use-wallet.ts';
 import { useOfferingState } from '../hooks/use-offering-state.ts';
 import {
@@ -631,8 +631,7 @@ function StatusApp() {
     }
     setBusyAction(action);
     try {
-      const provider = PactWallet.provider!;
-      const base = { provider, offeringAddress: record.offering, from: wallet };
+      const base = { offeringAddress: record.offering, from: wallet };
       if (action === 'withdraw') {
         await withdrawOffering(base);
         showToast('Proceeds withdrawn to treasury');
@@ -669,7 +668,6 @@ function StatusApp() {
     const { linkPrivateKey, linkKey, allocationId } = newAllocationKey();
     const voucher = { allocationId, buyerName: name, amountCapUsdc: String(toUsdcBaseUnits(amountUsd)), linkKey };
     const ownerSig = await signVoucher({
-      provider: PactWallet.provider!,
       owner: wallet,
       offeringAddress: record.offering,
       voucher,
@@ -688,7 +686,6 @@ function StatusApp() {
     if (!confirm('Revoke the allocation link for ' + row.name + '? This sends a transaction.')) return;
     try {
       await cancelAllocation({
-        provider: PactWallet.provider!,
         offeringAddress: record.offering,
         from: wallet,
         allocationId: row.allocationId,
@@ -881,4 +878,4 @@ function StatusApp() {
 
 injectChrome();
 PactSettings.init({ buttonId: 'settingsToggle' });
-createRoot(document.getElementById('app')!).render(<StatusApp />);
+createRoot(document.getElementById('app')!).render(<AppProviders><StatusApp /></AppProviders>);

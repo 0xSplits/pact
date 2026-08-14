@@ -5,6 +5,7 @@ import './home.css';
 import { injectChrome } from '../lib/ui/chrome.ts';
 import { fmtDollars, fmtTokens, usdcBaseUnitsToDollars } from '../lib/format.ts';
 import { PactSettings } from '../lib/settings.ts';
+import { AppProviders } from '../components/wallet.tsx';
 import { useWallet } from '../hooks/use-wallet.ts';
 import { buyPath, createPath, statusPath } from '../lib/routes.ts';
 import { listOfferings, listPurchases } from '../lib/chain/offerings.ts';
@@ -186,4 +187,4 @@ function HomeApp() {
 
 injectChrome();
 PactSettings.init({ buttonId: 'settingsToggle' });
-createRoot(document.getElementById('app')!).render(<HomeApp />);
+createRoot(document.getElementById('app')!).render(<AppProviders><HomeApp /></AppProviders>);

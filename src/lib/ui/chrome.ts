@@ -5,7 +5,7 @@ const SETTINGS_ICON = '<svg width="16" height="16" viewBox="0 0 24 24" fill="non
 export function injectChrome() {
   const controls = document.createElement('div');
   controls.className = 'top-controls';
-  controls.innerHTML = '<button id="walletToggle" class="wallet-toggle" type="button">Connect wallet</button>'
+  controls.innerHTML = '<span id="walletMount" style="display:contents"></span>'
     + `<button id="settingsToggle" class="settings-toggle" type="button" aria-label="Settings" title="Settings">${SETTINGS_ICON}</button>`;
   document.body.prepend(controls);
 }

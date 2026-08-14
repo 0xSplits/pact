@@ -14,7 +14,6 @@ export const fmtTokens = (n: number) => Math.round(n).toLocaleString('en-US');
 export const fmtPrice = (p: number) => '$' + p.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 export const fmtDate = (ts: number) => new Date(ts).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 export const usdcBaseUnitsToDollars = (n: number | null | undefined) => Number(n || 0) / 1000000;
-export const esc = (s: unknown) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 export const shortAddr = (a: string | null | undefined) => a && a.length > 12 ? a.slice(0, 6) + '…' + a.slice(-4) : (a || '');
 export const basescanTx = (hash: string) => 'https://basescan.org/tx/' + encodeURIComponent(hash);
 export const basescanAddress = (address: string) => 'https://basescan.org/address/' + encodeURIComponent(address);

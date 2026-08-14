@@ -1,14 +1,13 @@
 // All contract interaction for the browser. Reads always go through the
 // public Base RPC so they work without a wallet and never depend on which
-// chain the wallet is pointed at; the wallet provider is only asked to
-// switch chains, sign transactions, and sign allocation vouchers.
+// chain the wallet is pointed at; the wallet — reached through wagmi actions
+// against the shared config — is only asked to switch chains, sign
+// transactions, and sign allocation vouchers.
 //
 // Amounts are plain numbers in USDC base units. That is safe well past any
 // raise size this prototype targets (Number stays exact below ~$9B).
 import {
   BASE_CHAIN_ID,
-  BASE_CHAIN_ID_HEX,
-  BASE_CHAIN_PARAMS,
   BASE_RPC_URL,
   BASE_USDC_ADDRESS,
   toUsdcBaseUnits,
@@ -27,22 +26,27 @@ import {
 
 import { decodeEventLog, decodeFunctionResult, encodeFunctionData, getAddress, numberToHex } from 'viem';
 import type { Abi, Address, Hex } from 'viem';
+import {
+  getAccount,
+  getCapabilities,
+  sendCalls,
+  sendTransaction,
+  signTypedData,
+  switchChain,
+  waitForCallsStatus,
+} from 'wagmi/actions';
+import { wagmiConfig } from './wagmi.ts';
 
-// The slice of EIP-1193 the app uses. Deliberately looser than viem's typed
-// provider: wallet RPCs are called with hand-built params objects.
-export interface Eip1193Provider {
-  request(args: { method: string; params?: unknown }): Promise<any>;
-  on?(event: string, handler: (...args: any[]) => void): void;
-}
-
-// A raw eth_getLogs entry (quantities still hex-encoded).
+// A raw eth_getLogs entry. Quantities are hex-encoded strings from our own
+// rpcCall, but receipts surfaced by wagmi/viem carry them as bigint/number,
+// so the decode helpers accept all three.
 export interface RawLog {
   address: string;
   topics: Hex[];
   data: Hex;
-  blockNumber?: string | null;
+  blockNumber?: string | number | bigint | null;
   transactionHash?: string | null;
-  logIndex?: string | null;
+  logIndex?: string | number | bigint | null;
 }
 
 export type GetLogsFn = (args: {
@@ -55,7 +59,7 @@ export type GetLogsFn = (args: {
 interface RawReceipt {
   status?: string | number;
   logs?: RawLog[];
-  blockNumber: string;
+  blockNumber: string | number | bigint;
   transactionHash?: Hex;
 }
 
@@ -180,36 +184,18 @@ const ERC20_ABI = [
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-function normalizeChainId(chainId: unknown): number {
-  if (typeof chainId === 'number') return chainId;
-  if (typeof chainId === 'string' && chainId.startsWith('0x')) return parseInt(chainId, 16);
-  return Number(chainId);
+// Hex string, decimal number, or bigint → number (RawLog quantity fields).
+function num(value: string | number | bigint | null | undefined): number | null {
+  if (value == null) return null;
+  if (typeof value === 'string') return parseInt(value, 16);
+  return Number(value);
 }
 
-async function ensureBase(provider: Eip1193Provider): Promise<void> {
-  const current = await provider.request({ method: 'eth_chainId' });
-  if (normalizeChainId(current) === BASE_CHAIN_ID) return;
-
-  try {
-    await provider.request({
-      method: 'wallet_switchEthereumChain',
-      params: [{ chainId: BASE_CHAIN_ID_HEX }],
-    });
-  } catch (err) {
-    if (err && typeof err === 'object' && (err as { code?: number }).code === 4902) {
-      await provider.request({
-        method: 'wallet_addEthereumChain',
-        params: [BASE_CHAIN_PARAMS],
-      });
-      // Some wallets add a chain without selecting it, so switch again explicitly.
-      await provider.request({
-        method: 'wallet_switchEthereumChain',
-        params: [{ chainId: BASE_CHAIN_ID_HEX }],
-      });
-      return;
-    }
-    throw err;
-  }
+// wagmi's switchChain adds the chain (with viem's public-RPC base metadata,
+// never our keyed transport URL) when the wallet lacks it.
+async function ensureBase(): Promise<void> {
+  if (getAccount(wagmiConfig).chainId === BASE_CHAIN_ID) return;
+  await switchChain(wagmiConfig, { chainId: BASE_CHAIN_ID });
 }
 
 async function rpcCall(method: string, params: unknown[], rpcUrl: string = BASE_RPC_URL): Promise<any> {
@@ -241,19 +227,13 @@ export async function getLogs(
   }], rpcUrl);
 }
 
-// The wallet usually learns about its own transaction first, but some wallets
-// serve read requests unreliably (or against the wrong chain), so every poll
-// also asks the public RPC. The transaction hash is public either way.
-async function waitForReceipt(txHash: Hex, options: TxWaitOptions & { provider?: Eip1193Provider } = {}): Promise<RawReceipt> {
+async function waitForReceipt(txHash: Hex, options: TxWaitOptions = {}): Promise<RawReceipt> {
   const timeoutMs = options.timeoutMs || 120000;
   const pollMs = options.pollMs || 1500;
   const started = Date.now();
 
   while (Date.now() - started < timeoutMs) {
-    const receipt = (options.provider
-      ? await options.provider.request({ method: 'eth_getTransactionReceipt', params: [txHash] }).catch(() => null)
-      : null)
-      || await rpcCall('eth_getTransactionReceipt', [txHash], options.rpcUrl).catch(() => null);
+    const receipt = await rpcCall('eth_getTransactionReceipt', [txHash], options.rpcUrl).catch(() => null);
     if (receipt) return receipt;
     await sleep(pollMs);
   }
@@ -261,8 +241,12 @@ async function waitForReceipt(txHash: Hex, options: TxWaitOptions & { provider?:
   throw new Error('Timed out waiting for the transaction receipt.');
 }
 
+// Handles both raw receipts ('0x0'/'0x1') and viem-formatted ones ('reverted'/'success').
 function assertNotReverted(receipt: RawReceipt, message: string): void {
-  if (receipt.status && normalizeChainId(receipt.status) === 0) throw new Error(message);
+  const status = receipt.status;
+  if (status === 'reverted' || (status != null && status !== 'success' && num(status as string | number) === 0)) {
+    throw new Error(message);
+  }
 }
 
 export async function readContract({ address, abi, functionName, args = [], rpcUrl }: ContractCall & { rpcUrl?: string }): Promise<unknown> {
@@ -317,7 +301,7 @@ export function decodeOfferingCreatedLog(log: RawLog): OfferingRecord | null {
     priceStart: Number(event.args.priceStart),
     priceSlope: Number(event.args.priceSlope),
     publicUnits: Number(event.args.publicUnits),
-    blockNumber: log.blockNumber != null ? parseInt(log.blockNumber, 16) : null,
+    blockNumber: num(log.blockNumber),
     txHash: log.transactionHash || null,
   };
 }
@@ -345,14 +329,13 @@ export function decodeBoughtLog(log: RawLog): Purchase | null {
     units: Number(event.args.units),
     cost: Number(event.args.cost),
     buyerName: event.args.buyerName || '',
-    blockNumber: log.blockNumber != null ? parseInt(log.blockNumber, 16) : null,
+    blockNumber: num(log.blockNumber),
     txHash: log.transactionHash || null,
-    logIndex: log.logIndex != null ? parseInt(log.logIndex, 16) : 0,
+    logIndex: num(log.logIndex) ?? 0,
   };
 }
 
-export async function createOffering({ provider, pact, owner, factoryAddress, rpcUrl, timeoutMs, pollMs }: {
-  provider: Eip1193Provider;
+export async function createOffering({ pact, owner, factoryAddress, rpcUrl, timeoutMs, pollMs }: {
   pact: Pact;
   owner: string;
   factoryAddress?: string;
@@ -360,13 +343,12 @@ export async function createOffering({ provider, pact, owner, factoryAddress, rp
   const factory = factoryAddress
     || (typeof globalThis !== 'undefined' && (globalThis as Record<string, any>).PACT_OFFERING_FACTORY_ADDRESS)
     || OFFERING_FACTORY_ADDRESS;
-  if (!provider) throw new Error('Wallet provider is required.');
   if (!owner) throw new Error('Connected wallet is required.');
   if (!factory) throw new Error('Offering factory has not been deployed yet.');
   const curve = deriveOfferingCurve(pact);
   if (!curve) throw new Error('Valid valuation band and offering units are required.');
 
-  await ensureBase(provider);
+  await ensureBase();
   const normalizedOwner = getAddress(owner);
   const treasury = getAddress(pact.proceedsAddress);
   const closeDate = Math.floor(Date.now() / 1000) + Number(pact.minimum.deadlineDays) * 86400;
@@ -389,27 +371,24 @@ export async function createOffering({ provider, pact, owner, factoryAddress, rp
     ],
   });
 
-  const txHash = await provider.request({
-    method: 'eth_sendTransaction',
-    params: [{
-      from: normalizedOwner,
-      to: getAddress(factory),
-      data,
-      chainId: BASE_CHAIN_ID_HEX,
-    }],
+  const txHash = await sendTransaction(wagmiConfig, {
+    account: normalizedOwner,
+    to: getAddress(factory),
+    data,
+    chainId: BASE_CHAIN_ID,
   });
-  const receipt = await waitForReceipt(txHash, { provider, rpcUrl, timeoutMs, pollMs });
+  const receipt = await waitForReceipt(txHash, { rpcUrl, timeoutMs, pollMs });
   assertNotReverted(receipt, 'Offering creation transaction reverted.');
   const created = decodeOfferingCreated(receipt, factory);
   return {
     chainId: BASE_CHAIN_ID,
     factoryAddress: getAddress(factory),
-    transactionHash: txHash as Hex,
+    transactionHash: txHash,
     curve,
     ...created,
     blockNumber: created.blockNumber != null
       ? created.blockNumber
-      : parseInt(receipt.blockNumber, 16),
+      : num(receipt.blockNumber),
   };
 }
 
@@ -474,52 +453,42 @@ export async function isAllocationConsumed({ offeringAddress, allocationId, rpcU
 
 // Signs an allocation voucher with the offering owner's wallet. Returns the
 // hex signature; the caller assembles the share link.
-export async function signVoucher({ provider, owner, offeringAddress, voucher }: {
-  provider: Eip1193Provider;
+export async function signVoucher({ owner, offeringAddress, voucher }: {
   owner: string;
   offeringAddress: string;
   voucher: Voucher;
 }): Promise<Hex> {
-  if (!provider) throw new Error('Wallet provider is required.');
-  await ensureBase(provider);
+  await ensureBase();
   const typedData = voucherTypedData({
     offering: getAddress(offeringAddress),
     chainId: BASE_CHAIN_ID,
     voucher,
   });
-  return provider.request({
-    method: 'eth_signTypedData_v4',
-    params: [getAddress(owner), JSON.stringify(typedData, (key, value) => typeof value === 'bigint' ? value.toString() : value)],
-  });
+  return signTypedData(wagmiConfig, { account: getAddress(owner), ...typedData });
 }
 
 // Options shared by every state-changing offering call.
 export interface OfferingTxOptions extends TxWaitOptions {
-  provider: Eip1193Provider;
   from: string;
   offeringAddress: string;
 }
 
-async function sendOfferingFunction({ provider, from, offeringAddress, functionName, args = [], rpcUrl, timeoutMs, pollMs }: OfferingTxOptions & {
+async function sendOfferingFunction({ from, offeringAddress, functionName, args = [], rpcUrl, timeoutMs, pollMs }: OfferingTxOptions & {
   functionName: string;
   args?: readonly unknown[];
 }) {
-  if (!provider) throw new Error('Wallet provider is required.');
   if (!from) throw new Error('Connected wallet is required.');
   const offering = getAddress(offeringAddress);
-  await ensureBase(provider);
-  const txHash = await provider.request({
-    method: 'eth_sendTransaction',
-    params: [{
-      from: getAddress(from),
-      to: offering,
-      data: encodeFunctionData({ abi: OFFERING_ABI as Abi, functionName, args }),
-      chainId: BASE_CHAIN_ID_HEX,
-    }],
+  await ensureBase();
+  const txHash = await sendTransaction(wagmiConfig, {
+    account: getAddress(from),
+    to: offering,
+    data: encodeFunctionData({ abi: OFFERING_ABI as Abi, functionName, args }),
+    chainId: BASE_CHAIN_ID,
   });
-  const receipt = await waitForReceipt(txHash, { provider, rpcUrl, timeoutMs, pollMs });
+  const receipt = await waitForReceipt(txHash, { rpcUrl, timeoutMs, pollMs });
   assertNotReverted(receipt, 'Offering transaction reverted.');
-  return { txHash: txHash as Hex, receipt };
+  return { txHash, receipt };
 }
 
 export function withdrawOffering(options: OfferingTxOptions) {
@@ -565,41 +534,33 @@ export function cancelAllocation(options: OfferingTxOptions & { allocationId: st
 
 // EIP-5792: does this wallet execute batched calls atomically on Base?
 // Unsupported/unknown methods just mean "no" — the two-transaction flow works everywhere.
-export async function atomicBatchSupported(provider: Eip1193Provider, account: Address): Promise<boolean> {
+async function atomicBatchSupported(account: Address): Promise<boolean> {
   try {
-    const capabilities = await provider.request({ method: 'wallet_getCapabilities', params: [account, [BASE_CHAIN_ID_HEX]] });
-    const status = capabilities && capabilities[BASE_CHAIN_ID_HEX] && capabilities[BASE_CHAIN_ID_HEX].atomic
-      && capabilities[BASE_CHAIN_ID_HEX].atomic.status;
+    const capabilities = await getCapabilities(wagmiConfig, { account, chainId: BASE_CHAIN_ID });
+    const status = capabilities.atomic?.status;
     return status === 'supported' || status === 'ready';
   } catch (err) {
     return false;
   }
 }
 
-// EIP-5792 wallet_sendCalls + wallet_getCallsStatus poll. Returns the final
+// EIP-5792 batch via wagmi sendCalls + waitForCallsStatus. Returns the final
 // receipt (the batch lands as one transaction when atomic).
-export async function sendBatchedCalls({ provider, from, calls, timeoutMs, pollMs }: TxWaitOptions & {
-  provider: Eip1193Provider;
+async function sendBatchedCalls({ from, calls, timeoutMs }: TxWaitOptions & {
   from: Address;
   calls: Array<{ to: Address; data: Hex }>;
 }): Promise<RawReceipt> {
-  const sent = await provider.request({
-    method: 'wallet_sendCalls',
-    params: [{ version: '2.0.0', chainId: BASE_CHAIN_ID_HEX, from, atomicRequired: true, calls }],
+  const { id } = await sendCalls(wagmiConfig, {
+    account: from,
+    chainId: BASE_CHAIN_ID,
+    forceAtomic: true,
+    calls,
   });
-  const batchId = typeof sent === 'string' ? sent : sent && sent.id;
-  if (!batchId) throw new Error('Wallet did not return a batch id.');
-
-  const deadline = Date.now() + (timeoutMs || 120000);
-  while (Date.now() < deadline) {
-    const result = await provider.request({ method: 'wallet_getCallsStatus', params: [batchId] }).catch(() => null);
-    const status = result && Number(result.status);
-    if (status >= 400) throw new Error('Batched transaction failed in the wallet.');
-    const receipt = result && result.receipts && result.receipts[result.receipts.length - 1];
-    if (status === 200 && receipt) return receipt;
-    await sleep(pollMs || 1500);
-  }
-  throw new Error('Timed out waiting for the batched transaction.');
+  const result = await waitForCallsStatus(wagmiConfig, { id, timeout: timeoutMs || 120000 });
+  if (result.status !== 'success') throw new Error('Batched transaction failed in the wallet.');
+  const receipt = result.receipts && result.receipts[result.receipts.length - 1];
+  if (!receipt) throw new Error('Wallet did not return a batch receipt.');
+  return receipt as unknown as RawReceipt;
 }
 
 const usdcAllowance = async (buyer: Address, offering: Address, rpcUrl?: string) => await readContract({
@@ -617,8 +578,7 @@ const approveCall = (offering: Address, amount: number) => ({
 
 // Approve (when needed) and buy. One wallet prompt via an EIP-5792 atomic
 // batch when the wallet supports it, else the sequential two-transaction flow.
-async function payWithApproval({ provider, buyer, offering, amount, buyData, rpcUrl, timeoutMs, pollMs }: TxWaitOptions & {
-  provider: Eip1193Provider;
+async function payWithApproval({ buyer, offering, amount, buyData, rpcUrl, timeoutMs, pollMs }: TxWaitOptions & {
   buyer: Address;
   offering: Address;
   amount: number;
@@ -627,27 +587,25 @@ async function payWithApproval({ provider, buyer, offering, amount, buyData, rpc
   const buyCall = { to: offering, data: buyData };
   const needsApproval = await usdcAllowance(buyer, offering, rpcUrl) < BigInt(amount);
 
-  if (needsApproval && await atomicBatchSupported(provider, buyer)) {
+  if (needsApproval && await atomicBatchSupported(buyer)) {
     const buyReceipt = await sendBatchedCalls({
-      provider, from: buyer, calls: [approveCall(offering, amount), buyCall], timeoutMs, pollMs,
+      from: buyer, calls: [approveCall(offering, amount), buyCall], timeoutMs,
     });
     return { approveTxHash: null, buyTxHash: buyReceipt.transactionHash as Hex, buyReceipt };
   }
 
   let approveTxHash: Hex | null = null;
   if (needsApproval) {
-    approveTxHash = await provider.request({
-      method: 'eth_sendTransaction',
-      params: [{ from: buyer, ...approveCall(offering, amount), chainId: BASE_CHAIN_ID_HEX }],
+    approveTxHash = await sendTransaction(wagmiConfig, {
+      account: buyer, ...approveCall(offering, amount), chainId: BASE_CHAIN_ID,
     });
-    const approveReceipt = await waitForReceipt(approveTxHash!, { provider, rpcUrl, timeoutMs, pollMs });
+    const approveReceipt = await waitForReceipt(approveTxHash, { rpcUrl, timeoutMs, pollMs });
     assertNotReverted(approveReceipt, 'USDC approval reverted.');
   }
-  const buyTxHash = await provider.request({
-    method: 'eth_sendTransaction',
-    params: [{ from: buyer, ...buyCall, chainId: BASE_CHAIN_ID_HEX }],
+  const buyTxHash = await sendTransaction(wagmiConfig, {
+    account: buyer, ...buyCall, chainId: BASE_CHAIN_ID,
   });
-  const buyReceipt = await waitForReceipt(buyTxHash, { provider, rpcUrl, timeoutMs, pollMs });
+  const buyReceipt = await waitForReceipt(buyTxHash, { rpcUrl, timeoutMs, pollMs });
   return { approveTxHash, buyTxHash, buyReceipt };
 }
 
@@ -682,22 +640,20 @@ export async function quoteOfferingPurchase({ offeringAddress, amountUsd, public
   return { state, units, cost, maxCost };
 }
 
-export async function buyPublicOffering({ provider, buyer, offeringAddress, amountUsd, buyerName = '', rpcUrl, timeoutMs, pollMs }: TxWaitOptions & {
-  provider: Eip1193Provider;
+export async function buyPublicOffering({ buyer, offeringAddress, amountUsd, buyerName = '', rpcUrl, timeoutMs, pollMs }: TxWaitOptions & {
   buyer: string;
   offeringAddress: string;
   amountUsd: number;
   buyerName?: string;
 }) {
-  if (!provider) throw new Error('Wallet provider is required.');
   if (!buyer) throw new Error('Connected wallet is required.');
 
-  await ensureBase(provider);
+  await ensureBase();
   const normalizedBuyer = getAddress(buyer);
   const offering = getAddress(offeringAddress);
   const quote = await quoteOfferingPurchase({ offeringAddress, amountUsd, publicOnly: true, rpcUrl });
   const { approveTxHash, buyTxHash, buyReceipt } = await payWithApproval({
-    provider, buyer: normalizedBuyer, offering, amount: quote.maxCost, rpcUrl, timeoutMs, pollMs,
+    buyer: normalizedBuyer, offering, amount: quote.maxCost, rpcUrl, timeoutMs, pollMs,
     buyData: encodeFunctionData({
       abi: OFFERING_ABI,
       functionName: 'buyPublic',
@@ -711,18 +667,16 @@ export async function buyPublicOffering({ provider, buyer, offeringAddress, amou
 
 // Claims a private allocation: the buyer's wallet sends buyPrivate carrying
 // the owner-signed voucher and a fresh link-key signature over the buyer.
-export async function buyPrivateOffering({ provider, buyer, offeringAddress, voucher, ownerSig, linkPrivateKey, rpcUrl, timeoutMs, pollMs }: TxWaitOptions & {
-  provider: Eip1193Provider;
+export async function buyPrivateOffering({ buyer, offeringAddress, voucher, ownerSig, linkPrivateKey, rpcUrl, timeoutMs, pollMs }: TxWaitOptions & {
   buyer: string;
   offeringAddress: string;
   voucher: Voucher;
   ownerSig: Hex;
   linkPrivateKey: Hex;
 }) {
-  if (!provider) throw new Error('Wallet provider is required.');
   if (!buyer) throw new Error('Connected wallet is required.');
 
-  await ensureBase(provider);
+  await ensureBase();
   const normalizedBuyer = getAddress(buyer);
   const offering = getAddress(offeringAddress);
   const state = await getOfferingState({ offeringAddress, rpcUrl });
@@ -742,7 +696,7 @@ export async function buyPrivateOffering({ provider, buyer, offeringAddress, vou
     buyer: normalizedBuyer,
   });
   const { approveTxHash, buyTxHash, buyReceipt } = await payWithApproval({
-    provider, buyer: normalizedBuyer, offering, amount: maxCost, rpcUrl, timeoutMs, pollMs,
+    buyer: normalizedBuyer, offering, amount: maxCost, rpcUrl, timeoutMs, pollMs,
     buyData: encodeFunctionData({
       abi: OFFERING_ABI,
       functionName: 'buyPrivate',
