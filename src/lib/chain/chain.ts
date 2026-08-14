@@ -15,7 +15,6 @@ const ALCHEMY_API_KEY = import.meta.env?.VITE_ALCHEMY_API_KEY;
 export const ALCHEMY_RPC_URL: string | undefined =
   ALCHEMY_API_KEY ? `https://base-mainnet.g.alchemy.com/v2/${ALCHEMY_API_KEY}` : undefined;
 
-export const LIQUID_SPLIT_FACTORY_ADDRESS = '0xdEcd8B99b7F763e16141450DAa5EA414B7994831';
 export const BASE_USDC_ADDRESS = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' as const;
 export const USDC_SCALE = 1000000;
 

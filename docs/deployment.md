@@ -1,128 +1,77 @@
 # Deployment
 
-The app is designed to deploy on Fly.io as one Node process serving both static
-files and `/api`.
+Two independent deployables: the static app on Vercel, and the contracts on
+Base mainnet. There is no server to operate.
 
-## Required Production Shape
+## App (Vercel)
 
-- Docker image from `Dockerfile`
-- Persistent volume mounted at `/data`
-- SQLite path set to `/data/pact.sqlite`
-- Splits Explorer API key configured as a secret
-- Base mainnet wallet interactions happen in the user's browser wallet
+Production is `https://pact.splits.org`, served by Vercel as static files.
+The GitHub integration auto-deploys `main` (and builds previews for PRs);
+`vercel.json` is just `{ "cleanUrls": true }`, which maps `/create` →
+`create.html` etc. — no rewrites, no functions.
 
-## Environment Variables
-
-Required:
+Build-time environment variables (both optional; set them in the Vercel
+project, mirror `.env.example` locally):
 
 ```sh
-PACT_DB_PATH=/data/pact.sqlite
-SPLITS_EXPLORER_API_KEY=...
+VITE_ALCHEMY_API_KEY=...            # Base RPC via Alchemy; falls back to the
+                                    # rate-limited public RPC when unset
+VITE_WALLETCONNECT_PROJECT_ID=...   # enables the WalletConnect connector
 ```
 
-Optional:
+Both ship in the bundle, so the Alchemy key must be domain-restricted in the
+Alchemy dashboard. Wallet `wallet_addEthereumChain` metadata is pinned to the
+public RPC, so the keyed URL never enters a wallet.
 
-```sh
-PORT=7228
-SPLITS_EXPLORER_GRAPHQL_URL=https://api.splits.org/graphql
-PACT_RESET_DB=1
-```
+## Contracts (Base)
 
-Do not set `PACT_RESET_DB=1` in production unless intentionally deleting the
-SQLite database on next boot.
+The live pin is the v2 `OfferingFactory` at
+`0xE07b04A47945DC6BEF217660F772b4D411Cd57fC` (deploy block 49935597,
+Basescan-verified). Redeploying is only needed for contract changes, and
+orphans every offering created through the old factory — the frontend only
+scans the pinned factory's events.
 
-## Fly.io Setup
+To deploy a new factory:
 
-The repository includes the production `fly.toml` for the `splits-pact` Fly
-app; adapt the app name and region to deploy your own.
-
-1. Create the app:
-
-   ```sh
-   fly apps create splits-pact
-   ```
-
-2. Create the persistent volume:
+1. Bump the CREATE2 salt in `contracts/script/Deploy.s.sol`
+   (`"PACT OfferingFactory vN"`).
+2. Run the deploy (broadcasts and verifies; needs a funded key and
+   `ETHERSCAN_API_KEY` in the environment):
 
    ```sh
-   fly volumes create pact_data --size 1 --region sjc
+   npm run deploy:factory
    ```
 
-3. Confirm `fly.toml` includes:
+3. Pin the new address and deploy block in
+   `src/generated/offering-contracts.ts` from the broadcast output
+   (`contracts/broadcast/Deploy.s.sol/8453/run-latest.json`), regenerating
+   via `npm run build:contracts` and editing the pin if needed.
+4. Ship the frontend pin change through a normal PR.
 
-   ```toml
-   [env]
-     PORT = "7228"
-     PACT_DB_PATH = "/data/pact.sqlite"
+## CI
 
-   [[mounts]]
-     source = "pact_data"
-     destination = "/data"
-   ```
+`.github/workflows/ci.yml` runs three jobs on PRs and pushes to `main`:
+contracts (`forge fmt --check` + `forge test`), app (`typecheck` + unit
+tests), and the anvil-backed Playwright e2e. There is no deploy step — Vercel
+deploys independently of CI, so a red check does not block a push from going
+live. Solidity deps (forge-std, solady) install with `npm ci`;
+foundry-toolchain provides forge/anvil.
 
-4. Set Fly app secrets:
+## Pre-Release Checklist
 
-   ```sh
-   fly secrets set SPLITS_EXPLORER_API_KEY=...
-   ```
-
-5. Deploy manually when needed:
-
-   ```sh
-   fly deploy
-   ```
-
-6. Check health:
-
-   ```sh
-   curl https://<app-name>.fly.dev/healthz
-   ```
-
-## GitHub Auto-Deploy
-
-Pushes to `main` deploy automatically through `.github/workflows/deploy.yml`.
-The workflow:
-
-1. Installs Node dependencies.
-2. Installs Foundry.
-3. Runs `npm audit --omit=dev`.
-4. Runs `npm test`.
-5. Runs `forge test`.
-6. Runs `flyctl deploy --remote-only --config fly.toml`.
-
-GitHub Actions requires the repository secret:
-
-```sh
-FLY_API_TOKEN=...
-```
-
-The current secret is an app-scoped Fly deploy token for `splits-pact`, expiring
-after one year. Rotate it with:
-
-```sh
-fly tokens create deploy -a splits-pact -n github-actions-main-deploy -x 8760h
-gh secret set FLY_API_TOKEN -R abramdawson/splits-pact
-```
-
-## Pre-Deploy Checklist
-
-- `git status` is clean.
-- `npm test` passes.
-- `forge test` passes.
-- `npm run test:e2e` passes or is intentionally skipped with a reason.
-- `npm audit --omit=dev` passes.
-- `src/generated/offering-contracts.js` contains the intended Base
-  `OFFERING_FACTORY_ADDRESS`.
-- `PACT_DB_PATH` points at the mounted volume path.
-- `SPLITS_EXPLORER_API_KEY` is set as a Fly secret.
-- App boots against an empty DB.
+- `npm run typecheck`, `npm test`, `forge test --root contracts`, and
+  `npm run test:e2e` pass.
+- `src/generated/offering-contracts.ts` contains the intended factory address
+  and deploy block (and is regenerated after any Solidity change).
+- Manual Base dust checklist (see testing doc) for changes touching money
+  flows.
 
 ## Operational Notes
 
-SQLite is acceptable for the prototype, but it makes the Fly volume the durable
-source for local application state. Losing the volume loses issuance/allocation
-records, though onchain offerings and Liquid Split state remain on Base.
+Durable state is onchain (offerings, purchases, cap table) — losing a browser
+profile loses only display caches and the issuer's unclaimed allocation
+links, which can be re-issued.
 
-The app currently has no signature-based login. It gates dashboard actions by
-connected wallet address in the browser UI and relies on unguessable allocation
-links for buyer pages.
+The app has no login. Issuer actions are gated by the connected wallet
+address in the UI (and by `onlyOwner` onchain); private allocations rely on
+the voucher link being unguessable and one-shot.
