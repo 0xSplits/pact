@@ -67,8 +67,10 @@ map onto the design-system classes in `src/app.css`.
 ## Wallets and RPC
 
 Wallet plumbing is wagmi (`src/lib/chain/wagmi.ts`): injected/EIP-6963
-discovery plus Coinbase Wallet, and WalletConnect when
-`VITE_WALLETCONNECT_PROJECT_ID` is set. All contract interaction flows through
+discovery, plus WalletConnect when `VITE_WALLETCONNECT_PROJECT_ID` is set —
+the menu only lists wallets the browser actually has. The one exception is
+Splits Connect: pinned first when its extension is installed, shown as a
+Chrome Web Store link when not. All contract interaction flows through
 `wagmi/actions` in `src/lib/chain/onchain.ts` — reads use the app's own Base
 transport so they work without a wallet and regardless of which chain the
 wallet is on; the wallet only switches chains and signs. Buys batch

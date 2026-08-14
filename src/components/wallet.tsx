@@ -29,13 +29,19 @@ export function AppProviders({ children }: { children: ReactNode }) {
 
 const short = (address: string) => address.slice(0, 6) + '…' + address.slice(-4);
 
+// The Splits Connect extension, keyed by its EIP-6963 rdns: pinned first when
+// installed, offered as a Chrome Web Store link when not.
+const SPLITS_CONNECT_ID = 'org.splits.teams.connect';
+const SPLITS_CONNECT_STORE_URL = 'https://chromewebstore.google.com/detail/splits/ghfacfafnbcgkielpaeifdpoggfeakif';
+
 // EIP-6963-announced wallets appear as their own connectors (id = rdns), so
 // the generic window.ethereum fallback is redundant next to them — and dead
 // weight when no injected provider exists at all.
 function visibleConnectors(connectors: readonly Connector[]): Connector[] {
   const announced = connectors.some(c => c.type === 'injected' && c.id !== 'injected');
-  return connectors.filter(c =>
-    c.id !== 'injected' || (!announced && !!(window as { ethereum?: unknown }).ethereum));
+  return connectors
+    .filter(c => c.id !== 'injected' || (!announced && !!(window as { ethereum?: unknown }).ethereum))
+    .sort((a, b) => Number(b.id === SPLITS_CONNECT_ID) - Number(a.id === SPLITS_CONNECT_ID));
 }
 
 function MenuCheck({ active }: { active: boolean }) {
@@ -134,14 +140,6 @@ function WalletButton() {
   }
 
   function handleToggle() {
-    if (account) {
-      setOpen(current => !current);
-      return;
-    }
-    if (!options.length) {
-      setError('No wallet found');
-      return;
-    }
     setOpen(current => !current);
   }
 
@@ -161,7 +159,6 @@ function WalletButton() {
     : 'Connect wallet';
   const title = account ? 'Connected wallet: ' + account
     : isPending ? 'Waiting for wallet approval'
-    : error === 'No wallet found' ? 'Install or enable an Ethereum wallet extension'
     : error ? 'Wallet connection was not approved'
     : 'Connect wallet';
   const stateClass = account ? ' connected' : isPending ? ' connecting' : error ? ' error' : '';
@@ -173,11 +170,21 @@ function WalletButton() {
         {label}
       </button>
       <div className={'wallet-menu' + (open ? ' show' : '')} role="menu">
-        {open && !account && options.map(connector => (
-          <button key={connector.uid} type="button" onClick={() => handleConnect(connector)}>
-            {connector.name}
-          </button>
-        ))}
+        {open && !account && (
+          <>
+            {options.map(connector => (
+              <button key={connector.uid} type="button" onClick={() => handleConnect(connector)}>
+                {connector.name}
+              </button>
+            ))}
+            {!options.some(c => c.id === SPLITS_CONNECT_ID) && (
+              <a href={SPLITS_CONNECT_STORE_URL} target="_blank" rel="noreferrer"
+                onClick={() => setOpen(false)}>
+                Splits
+              </a>
+            )}
+          </>
+        )}
         {open && account && (
           <>
             <div className="wallet-menu-group">
