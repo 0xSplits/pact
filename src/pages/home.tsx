@@ -1,16 +1,16 @@
-import { useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
+import { useQuery } from '@tanstack/react-query';
 import './home.css';
 import { injectChrome } from '../lib/ui/chrome.ts';
 import { fmtDollars, fmtTokens, usdcBaseUnitsToDollars } from '../lib/format.ts';
 import { PactSettings } from '../lib/settings.ts';
+import { AppProviders } from '../components/wallet.tsx';
 import { useWallet } from '../hooks/use-wallet.ts';
 import { buyPath, createPath, statusPath } from '../lib/routes.ts';
 import { listOfferings, listPurchases } from '../lib/chain/offerings.ts';
 import { readMany } from '../lib/chain/onchain.ts';
 import type { OfferingRecord, Purchase } from '../lib/chain/onchain.ts';
-import type { Abi } from 'viem';
 import { costForUnits } from '../lib/chain/curve.ts';
 import { OFFERING_ABI } from '../generated/offering-contracts.ts';
 
@@ -74,7 +74,7 @@ const isSame = (a: string | null | undefined, b: string | null | undefined) => S
 async function loadIssuanceTotals(records: OfferingRecord[]) {
   const calls = records.flatMap(record => ['raised', 'unitsSold', 'remainingUnits'].map(functionName => ({
     address: record.offering,
-    abi: OFFERING_ABI as Abi,
+    abi: OFFERING_ABI,
     functionName,
   })));
   const values = (await readMany(calls)).map(Number);
@@ -86,14 +86,12 @@ async function loadIssuanceTotals(records: OfferingRecord[]) {
 }
 
 interface DashboardRecords {
-  status: 'loading' | 'loaded';
-  pacts?: Array<OfferingRecord & { raised?: number; target?: number }>;
-  purchases?: Array<Purchase & { record: OfferingRecord }>;
+  pacts: Array<OfferingRecord & { raised?: number; target?: number }>;
+  purchases: Array<Purchase & { record: OfferingRecord }>;
 }
 
 function Dashboard({ records }: { records: DashboardRecords }) {
-  const pacts = records.pacts || [];
-  const purchases = records.purchases || [];
+  const { pacts, purchases } = records;
   return (
     <div className={PAPER}>
       <div className="mb-8 flex items-start justify-between gap-4">
@@ -143,32 +141,26 @@ function Dashboard({ records }: { records: DashboardRecords }) {
 
 function HomeApp() {
   const wallet = useWallet();
-  const [records, setRecords] = useState<DashboardRecords | null>(null);
-
-  useEffect(() => {
-    if (!wallet) {
-      setRecords(null);
-      return;
-    }
-    let cancelled = false;
-    setRecords({ status: 'loading' });
-    (async () => {
+  const { data: records, isPending } = useQuery({
+    queryKey: ['home-records', wallet ? wallet.toLowerCase() : null],
+    enabled: !!wallet,
+    queryFn: async (): Promise<DashboardRecords> => {
       try {
         const offerings = await listOfferings();
         const mine = offerings.filter(r => isSame(r.issuer, wallet) || isSame(r.treasury, wallet));
         const [pacts, purchases] = await Promise.all([
           mine.length ? loadIssuanceTotals(mine).catch(() => mine) : [],
-          listPurchases({ wallet, offerings }).catch(() => []),
+          listPurchases({ wallet: wallet!, offerings }).catch(() => []),
         ]);
-        if (!cancelled) setRecords({ status: 'loaded', pacts, purchases });
+        return { pacts, purchases };
       } catch (err) {
-        if (!cancelled) setRecords({ status: 'loaded', pacts: [], purchases: [] });
+        // Scan failures degrade to the explainer rather than a stuck loader.
+        return { pacts: [], purchases: [] };
       }
-    })();
-    return () => { cancelled = true; };
-  }, [wallet]);
+    },
+  });
 
-  if (records && records.status === 'loading') {
+  if (wallet && isPending) {
     return (
       <div className={PAPER}>
         <h1 className="text-2xl font-bold">Your PACTs</h1>
@@ -177,7 +169,7 @@ function HomeApp() {
     );
   }
 
-  if (records && records.status === 'loaded' && ((records.pacts || []).length || (records.purchases || []).length)) {
+  if (wallet && records && (records.pacts.length || records.purchases.length)) {
     return <Dashboard records={records} />;
   }
 
@@ -186,4 +178,4 @@ function HomeApp() {
 
 injectChrome();
 PactSettings.init({ buttonId: 'settingsToggle' });
-createRoot(document.getElementById('app')!).render(<HomeApp />);
+createRoot(document.getElementById('app')!).render(<AppProviders><HomeApp /></AppProviders>);

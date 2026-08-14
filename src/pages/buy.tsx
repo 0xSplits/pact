@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { injectChrome } from '../lib/ui/chrome.ts';
 import { showToast } from '../lib/ui/toast.ts';
-import { PactWallet } from '../lib/chain/wallet.ts';
 import { PactSettings } from '../lib/settings.ts';
+import { AppProviders } from '../components/wallet.tsx';
 import { useWallet } from '../hooks/use-wallet.ts';
 import { useOfferingState } from '../hooks/use-offering-state.ts';
 import {
@@ -102,9 +103,7 @@ function formatAmountInput(value: string) {
 }
 
 function BuyApp() {
-  const [projectName, setProjectName] = useState<string | null>(null);
   const [receipt, setReceipt] = useState<{ units: number; cost: number; txHash: string | null } | null>(null); // for the connected wallet
-  const [consumed, setConsumed] = useState<boolean | null>(null); // voucher mode: allocation already claimed?
   const [amount, setAmount] = useState('');
   const [buyerName, setBuyerName] = useState('');
   const [debugState, setDebugState] = useState('live');
@@ -113,9 +112,8 @@ function BuyApp() {
   const debugRef = useRef('live');
   const recoveringRef = useRef(false);
 
-  const wallet = useWallet({
-    onError: err => showToast(errMsg(err, 'Could not connect wallet.')),
-  });
+  const wallet = useWallet();
+  const queryClient = useQueryClient();
   const { offering, refresh: refreshOffering } = useOfferingState({
     offeringAddress,
     buyer: wallet,
@@ -139,22 +137,28 @@ function BuyApp() {
   }, []);
 
   const pactToken = offering && offering.status === 'loaded' ? offering.pactToken : null;
-  useEffect(() => {
-    if (!pactToken) return;
-    getProjectName({ pactToken }).then(setProjectName).catch(() => setProjectName(''));
-  }, [pactToken]);
+  const projectName = useQuery({
+    queryKey: ['project-name', pactToken],
+    enabled: !!pactToken,
+    // A failed read degrades to the generic heading, matching the old catch.
+    queryFn: () => getProjectName({ pactToken: pactToken! }).catch(() => ''),
+  }).data ?? null;
 
   useEffect(() => {
     if (projectName) document.title = `${projectName} | PACT`;
   }, [projectName]);
 
-  // Voucher mode: check whether the allocation was already claimed.
+  // Voucher mode: check whether the allocation was already claimed,
+  // rechecking whenever units sell.
   const unitsSoldTick = offering && offering.status === 'loaded' ? offering.unitsSold : null;
+  const consumed = useQuery({
+    queryKey: ['allocation-consumed', offeringAddress, voucherPayload?.voucher.allocationId ?? null],
+    enabled: !!voucherPayload && !!offeringAddress,
+    queryFn: () => isAllocationConsumed({ offeringAddress: offeringAddress!, allocationId: voucherPayload!.voucher.allocationId }),
+  }).data ?? null;
   useEffect(() => {
-    if (!voucherPayload || !offeringAddress) return;
-    isAllocationConsumed({ offeringAddress, allocationId: voucherPayload.voucher.allocationId })
-      .then(setConsumed)
-      .catch(() => {});
+    if (unitsSoldTick == null) return;
+    queryClient.invalidateQueries({ queryKey: ['allocation-consumed', offeringAddress] });
   }, [unitsSoldTick]);
 
   // Self-heal: the receipt lives onchain, not in a local database. A wallet
@@ -198,7 +202,7 @@ function BuyApp() {
     }
     setBusy('refund');
     try {
-      await refundOffering({ provider: PactWallet.provider!, offeringAddress: offeringAddress!, from: wallet });
+      await refundOffering({ offeringAddress: offeringAddress!, from: wallet });
       await refreshOffering();
     } catch (err) {
       showToast(errMsg(err, 'Could not complete refund.'));
@@ -216,7 +220,6 @@ function BuyApp() {
       let purchase;
       if (voucherPayload) {
         purchase = await buyPrivateOffering({
-          provider: PactWallet.provider!,
           buyer: wallet,
           offeringAddress: offeringAddress!,
           voucher: voucherPayload.voucher,
@@ -225,7 +228,6 @@ function BuyApp() {
         });
       } else {
         purchase = await buyPublicOffering({
-          provider: PactWallet.provider!,
           buyer: wallet,
           offeringAddress: offeringAddress!,
           amountUsd: +String(amount).replace(/[^0-9.]/g, '') || 0,
@@ -445,4 +447,4 @@ function BuyApp() {
 
 injectChrome();
 PactSettings.init({ buttonId: 'settingsToggle' });
-createRoot(document.getElementById('app')!).render(<BuyApp />);
+createRoot(document.getElementById('app')!).render(<AppProviders><BuyApp /></AppProviders>);

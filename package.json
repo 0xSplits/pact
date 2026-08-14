@@ -19,9 +19,11 @@
     "test:e2e": "vite build && playwright test"
   },
   "dependencies": {
+    "@tanstack/react-query": "^5.101.4",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
-    "viem": "^2.54.0"
+    "viem": "^2.54.0",
+    "wagmi": "^3.7.6"
   },
   "overrides": {
     "ws": "8.21.0"

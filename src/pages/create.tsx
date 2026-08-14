@@ -3,8 +3,8 @@ import { createRoot } from 'react-dom/client';
 import { flushSync } from 'react-dom';
 import './create.css';
 import { injectChrome } from '../lib/ui/chrome.ts';
-import { PactWallet } from '../lib/chain/wallet.ts';
 import { PactSettings } from '../lib/settings.ts';
+import { AppProviders } from '../components/wallet.tsx';
 import { useWallet } from '../hooks/use-wallet.ts';
 import { drawCurve, attachCurveHover } from '../lib/ui/chart.ts';
 import type { CurveChartConfig } from '../lib/ui/chart.ts';
@@ -264,7 +264,7 @@ function CreateApp() {
   const [themeTick, setThemeTick] = useState(0);
   const errTipRef = useRef<HTMLDivElement | null>(null);
 
-  const wallet = useWallet({ onError: err => showToast(errMsg(err, 'Could not connect wallet.')) });
+  const wallet = useWallet();
   useEffect(() => { setFormError(''); }, [wallet]);
 
   useEffect(() => {
@@ -398,7 +398,6 @@ function CreateApp() {
       const data = buildPact(form, holders, wallet!);
       // validate() already required a connected wallet, so both are present.
       const deployment = await createOffering({
-        provider: PactWallet.provider!,
         pact: data,
         owner: wallet!,
       });
@@ -547,4 +546,4 @@ function CreateApp() {
 }
 
 injectChrome();
-createRoot(document.getElementById('app')!).render(<CreateApp />);
+createRoot(document.getElementById('app')!).render(<AppProviders><CreateApp /></AppProviders>);

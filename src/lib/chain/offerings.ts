@@ -2,8 +2,8 @@
 // incremental localStorage cache, replacing the server's PACT store. Cold scan
 // on first visit per device, delta chunks after. Takes `getLogs` and `storage`
 // as parameters so tests run against fakes and never hit real RPC.
-import { encodeEventTopics, getAddress } from 'viem';
-import type { Abi, Address, Hex } from 'viem';
+import { getAbiItem, getAddress, zeroAddress } from 'viem';
+import type { Address } from 'viem';
 import {
   OFFERING_FACTORY_ABI,
   OFFERING_ABI,
@@ -14,8 +14,8 @@ import {
 import {
   getLogs as rpcGetLogs,
   getLatestBlockNumber,
-  decodeOfferingCreatedLog,
-  decodeBoughtLog,
+  offeringRecordFromLog,
+  purchaseFromLog,
   readMany,
 } from './onchain.ts';
 import type { OfferingRecord, Purchase } from './onchain.ts';
@@ -47,14 +47,14 @@ function readCache<T>(storage: KVStorage, key: string): { lastScannedBlock: numb
 }
 
 // The scan is transport-agnostic: logs flow straight from getLogs into `map`,
-// so their shape is the fake's business in tests and the RPC's in production.
+// so their shape is the fake's business in tests and viem's in production.
 export interface CachedScanOptions<T> {
   key: string;
-  filter: { address?: string; topics?: unknown };
+  filter: Record<string, unknown>;
   fromBlock: number;
   map: (log: any) => T | null;
   dedupeKey: (item: T) => string;
-  getLogs?: (args: { address?: string; topics?: any; fromBlock: number; toBlock: number }) => Promise<any[]>;
+  getLogs?: (args: Record<string, unknown> & { fromBlock: number; toBlock: number }) => Promise<any[]>;
   latestBlock?: number;
   storage?: KVStorage;
 }
@@ -79,7 +79,7 @@ export async function cachedScan<T>({
   const to = latestBlock != null ? latestBlock : await getLatestBlockNumber();
 
   for (const [start, end] of chunkRanges(from, to)) {
-    const logs = await getLogs({ ...filter, topics: filter.topics, fromBlock: start, toBlock: end });
+    const logs = await getLogs({ ...filter, fromBlock: start, toBlock: end });
     for (const log of logs || []) {
       let item: T | null = null;
       try {
@@ -96,6 +96,9 @@ export async function cachedScan<T>({
 }
 
 const offeringsKey = (factory: string) => 'pact:offerings:' + String(factory).toLowerCase();
+
+const offeringCreatedEvent = getAbiItem({ abi: OFFERING_FACTORY_ABI, name: 'OfferingCreated' });
+const boughtEvent = getAbiItem({ abi: OFFERING_ABI, name: 'Bought' });
 
 // E2E/manual override hooks, same convention as PACT_RPC_URL (chain.ts) and
 // the PACT_OFFERING_FACTORY_ADDRESS global createOffering honors: set on
@@ -123,12 +126,9 @@ export async function listOfferings({
 }: ScanOptions & { factory?: string; deployBlock?: number } = {}): Promise<OfferingRecord[]> {
   return cachedScan<OfferingRecord>({
     key: offeringsKey(factory),
-    filter: {
-      address: factory,
-      topics: [encodeEventTopics({ abi: OFFERING_FACTORY_ABI, eventName: 'OfferingCreated' })[0]],
-    },
+    filter: { address: getAddress(factory), event: offeringCreatedEvent },
     fromBlock: deployBlock,
-    map: decodeOfferingCreatedLog,
+    map: offeringRecordFromLog,
     dedupeKey: record => record.offering.toLowerCase(),
     ...options,
   });
@@ -156,7 +156,6 @@ export function findOffering(offerings: OfferingRecord[] | null | undefined, off
   return (offerings || []).find(record => record.offering.toLowerCase() === target) || null;
 }
 
-const boughtTopic = () => encodeEventTopics({ abi: OFFERING_ABI, eventName: 'Bought' })[0];
 const boughtDedupeKey = (purchase: Purchase) => purchase.txHash + ':' + purchase.logIndex;
 
 // All purchases on one offering, public and private alike.
@@ -166,9 +165,9 @@ export async function listBought({ offering, deployBlock = deployBlockDefault(),
 }): Promise<Purchase[]> {
   return cachedScan<Purchase>({
     key: 'pact:bought:' + String(offering).toLowerCase(),
-    filter: { address: offering, topics: [boughtTopic()] },
+    filter: { address: getAddress(offering), event: boughtEvent },
     fromBlock: deployBlock,
-    map: decodeBoughtLog,
+    map: purchaseFromLog,
     dedupeKey: boughtDedupeKey,
     ...options,
   });
@@ -190,11 +189,9 @@ export async function listPurchases({
   const known = new Map((offerings || []).map(record => [record.offering.toLowerCase(), record]));
   const items = await cachedScan<Purchase>({
     key: 'pact:purchases:' + String(wallet).toLowerCase(),
-    filter: {
-      topics: encodeEventTopics({ abi: OFFERING_ABI, eventName: 'Bought', args: { buyer: getAddress(wallet) } }),
-    },
+    filter: { event: boughtEvent, args: { buyer: getAddress(wallet) } },
     fromBlock: deployBlock,
-    map: decodeBoughtLog,
+    map: purchaseFromLog,
     dedupeKey: boughtDedupeKey,
     ...options,
   });
@@ -202,6 +199,11 @@ export async function listPurchases({
     .filter(purchase => known.has(purchase.offering.toLowerCase()))
     .map(purchase => ({ ...purchase, record: known.get(purchase.offering.toLowerCase())! }));
 }
+
+const transferEvents = [
+  getAbiItem({ abi: PACT_TOKEN_ABI, name: 'TransferSingle' }),
+  getAbiItem({ abi: PACT_TOKEN_ABI, name: 'TransferBatch' }),
+];
 
 // Every address currently holding PactToken units, discovered from transfer
 // logs (bounded from the token's deploy block) and confirmed with batched
@@ -212,29 +214,22 @@ export async function getPactTokenHolders({
   tokenId = 0,
   getLogs = rpcGetLogs,
   latestBlock,
-  rpcUrl,
 }: {
   pactToken: string;
   deployBlock?: number;
   tokenId?: number;
   getLogs?: typeof rpcGetLogs;
   latestBlock?: number;
-  rpcUrl?: string;
 }): Promise<Array<{ address: Address; balance: number }>> {
   const address = getAddress(pactToken);
-  const singleTopic = encodeEventTopics({ abi: PACT_TOKEN_ABI, eventName: 'TransferSingle' })[0];
-  const batchTopic = encodeEventTopics({ abi: PACT_TOKEN_ABI, eventName: 'TransferBatch' })[0];
-  const to = latestBlock != null ? latestBlock : await getLatestBlockNumber(rpcUrl);
+  const to = latestBlock != null ? latestBlock : await getLatestBlockNumber();
 
   const addresses = new Set<Address>();
   for (const [start, end] of chunkRanges(deployBlock, to)) {
-    const logs = await getLogs({ address, topics: [[singleTopic, batchTopic] as Hex[]], fromBlock: start, toBlock: end });
+    const logs = await getLogs({ address, events: transferEvents, fromBlock: start, toBlock: end });
     for (const log of logs || []) {
-      // from/to are indexed topics 2 and 3 for both transfer events.
-      if (!log.topics || log.topics.length < 4) continue;
-      for (const topic of [log.topics[2], log.topics[3]]) {
-        const account = getAddress('0x' + topic.slice(-40));
-        if (account !== '0x0000000000000000000000000000000000000000') addresses.add(account);
+      for (const account of [log.args.from, log.args.to]) {
+        if (account && account !== zeroAddress) addresses.add(getAddress(account));
       }
     }
   }
@@ -243,10 +238,10 @@ export async function getPactTokenHolders({
   if (!sorted.length) return [];
   const balances = await readMany(sorted.map(account => ({
     address,
-    abi: PACT_TOKEN_ABI as Abi,
+    abi: PACT_TOKEN_ABI,
     functionName: 'balanceOf',
     args: [account, BigInt(tokenId)],
-  })), rpcUrl);
+  })));
   return sorted
     .map((account, index) => ({ address: account, balance: Number(balances[index]) }))
     .filter(holder => holder.balance > 0);

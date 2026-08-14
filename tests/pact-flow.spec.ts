@@ -4,7 +4,7 @@
 // the EIP-712 voucher signatures, so the private-claim scenario exercises the
 // real Solidity verifier (second coverage of the golden-vector boundary).
 import { test, expect } from '@playwright/test';
-import type { BrowserContext } from '@playwright/test';
+import type { BrowserContext, Page } from '@playwright/test';
 import { encodeFunctionData, getAddress } from 'viem';
 import type { Address } from 'viem';
 import { OFFERING_FACTORY_ABI } from '../src/generated/offering-contracts.ts';
@@ -12,7 +12,8 @@ import { RPC_URL, e2eAccounts, e2eFactory, sendTx } from './e2e-setup.ts';
 
 test.describe.configure({ timeout: 60_000 });
 
-const short = (address: string) => address.slice(0, 6) + '…' + address.slice(-4);
+// wagmi surfaces checksummed addresses regardless of the mock's casing.
+const short = (address: string) => getAddress(address).slice(0, 6) + '…' + getAddress(address).slice(-4);
 
 async function installWallet(context: BrowserContext, account: string) {
   await context.addInitScript(({ rpcUrl, factory, account }) => {
@@ -41,8 +42,18 @@ async function installWallet(context: BrowserContext, account: string) {
         return rpc(method, params);
       },
       on: () => {},
+      removeListener: () => {},
     };
   }, { rpcUrl: RPC_URL, factory: e2eFactory(), account });
+}
+
+// wagmi never auto-connects a wallet the user hasn't chosen, so each fresh
+// context connects once through the picker (the mock is the generic injected
+// provider); reloads within a context then restore automatically.
+async function connectWallet(page: Page, account: string, connectorName = 'Injected') {
+  await page.locator('#walletToggle').click();
+  await page.getByRole('button', { name: connectorName, exact: true }).click();
+  await expect(page.locator('#walletToggle')).toContainText(short(account));
 }
 
 // Seeds an offering straight through the factory: scenarios that aren't about
@@ -81,7 +92,7 @@ test('issuer creates a PACT through the UI and lands on its status page', async 
   const page = await context.newPage();
 
   await page.goto('/create');
-  await expect(page.locator('#walletToggle')).toContainText(short(issuer));
+  await connectWallet(page, issuer);
 
   // leaving a required field empty flags it, and min > max flags both raise fields
   await page.locator('#proceeds').focus();
@@ -141,6 +152,7 @@ test('buyer purchases from the public tranche with real transactions', async ({ 
   await page.goto('/buy?offering=' + offering);
 
   await expect(page.getByRole('heading', { name: 'Public Round' })).toBeVisible();
+  await connectWallet(page, buyer);
   await expect(page.getByRole('definition').filter({ hasText: '100 tokens' })).toBeVisible();
   await page.getByPlaceholder('0.00').fill('60');
   await page.getByPlaceholder('Optional, public').fill('Alice');
@@ -162,6 +174,7 @@ test('private allocation link claims across two browser contexts', async ({ brow
   const issuerPage = await issuerContext.newPage();
   await issuerPage.goto('/status?offering=' + offering);
   await expect(issuerPage.getByRole('heading', { name: 'Private Round' })).toBeVisible();
+  await connectWallet(issuerPage, issuer);
 
   // Owner signs the voucher (EIP-712 via anvil); the link is the capability.
   await issuerPage.locator('button[data-act="open-add"]').click();
@@ -181,6 +194,7 @@ test('private allocation link claims across two browser contexts', async ({ brow
   const buyerPage = await buyerContext.newPage();
   await buyerPage.goto(link);
   await expect(buyerPage.getByRole('heading', { name: 'Private Round | Buyer One' })).toBeVisible();
+  await connectWallet(buyerPage, buyer);
   await expect(buyerPage.getByText('Allocation details')).toBeVisible();
   await buyerPage.locator('button[data-act="pay"]').click();
 
@@ -197,10 +211,11 @@ test('private allocation link claims across two browser contexts', async ({ brow
   await buyerContext.close();
 });
 
-test('wallet button shows a visible error when no provider is available', async ({ page }) => {
+test('wallet menu still offers Coinbase Wallet when no extension is installed', async ({ page }) => {
   await page.goto('/');
   await page.locator('#walletToggle').click();
-  await expect(page.locator('#walletToggle')).toContainText('No wallet found');
+  await expect(page.getByRole('button', { name: 'Coinbase Wallet' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Injected', exact: true })).toHaveCount(0);
 });
 
 test('settings menu exposes style options', async ({ page }) => {
@@ -229,19 +244,22 @@ test('wallet picker can choose among multiple announced providers', async ({ bro
           return [account];
         }
         if (method === 'eth_accounts') return localStorage.getItem(key) === '1' ? [account] : [];
+        if (method === 'eth_chainId') return '0x2105';
         throw new Error('Unsupported wallet method: ' + method);
       },
       on: () => {},
+      removeListener: () => {},
     });
     const first = makeProvider(accounts.first, 'mock-default-connected', true);
     const second = makeProvider(accounts.second, 'mock-second-connected', false);
     w.ethereum = first;
+    // wagmi keys EIP-6963 connectors by rdns, so the announcements carry one.
     window.addEventListener('eip6963:requestProvider', () => {
       window.dispatchEvent(new CustomEvent('eip6963:announceProvider', {
-        detail: { info: { uuid: 'default-wallet', name: 'Default Wallet' }, provider: first },
+        detail: { info: { uuid: 'default-wallet', rdns: 'test.default', name: 'Default Wallet' }, provider: first },
       }));
       window.dispatchEvent(new CustomEvent('eip6963:announceProvider', {
-        detail: { info: { uuid: 'second-wallet', name: 'Second Wallet' }, provider: second },
+        detail: { info: { uuid: 'second-wallet', rdns: 'test.second', name: 'Second Wallet' }, provider: second },
       }));
     });
   }, { accounts: { first: e2eAccounts()[5], second: e2eAccounts()[6] }, rpcUrl: RPC_URL, factory: e2eFactory() });

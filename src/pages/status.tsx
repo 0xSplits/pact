@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import './status.css';
 import { injectChrome } from '../lib/ui/chrome.ts';
 import { showToast, copyText } from '../lib/ui/toast.ts';
 import { PactSettings } from '../lib/settings.ts';
-import { PactWallet } from '../lib/chain/wallet.ts';
+import { AppProviders } from '../components/wallet.tsx';
 import { useWallet } from '../hooks/use-wallet.ts';
 import { useOfferingState } from '../hooks/use-offering-state.ts';
 import {
@@ -519,45 +520,54 @@ function CapTable({ record, capTable, buyerNames, canManage }: {
 }
 
 function StatusApp() {
-  // `undefined` = still scanning (render nothing), `null` = not found.
-  const [record, setRecord] = useState<OfferingRecord | null | undefined>(undefined);
-  const [bought, setBought] = useState<Purchase[]>([]);
   const [ledger, setLedger] = useState<AllocationLedgerRow[]>([]);
-  const [capTable, setCapTable] = useState<CapTableState | null>(null);
   const [debugState, setDebugState] = useState('live');
   const [entryOpen, setEntryOpen] = useState(false);
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const debugRef = useRef('live');
 
   const wallet = useWallet();
+  const queryClient = useQueryClient();
   const { offering, refresh: refreshOffering } = useOfferingState({ offeringAddress });
 
-  async function refreshBought(current: OfferingRecord | null) {
-    if (!current) return;
-    try {
-      setBought(await listBought({ offering: current.offering, deployBlock: current.blockNumber || undefined }));
-    } catch (err) {
-      console.warn('Could not read purchase events', err);
-    }
-  }
+  const recordQuery = useQuery({
+    queryKey: ['offering-record', offeringAddress],
+    enabled: !!offeringAddress,
+    queryFn: async () => {
+      try {
+        return findOffering(await listOfferings(), offeringAddress);
+      } catch (err) {
+        console.warn('Could not scan offerings', err);
+        return null;
+      }
+    },
+    staleTime: Infinity,
+  });
+  // `undefined` = still scanning (render nothing), `null` = not found.
+  const record: OfferingRecord | null | undefined = !offeringAddress ? null : recordQuery.data;
 
-  async function refreshCapTable(current: OfferingRecord | null, pactToken?: string) {
-    if (!current) return;
-    setCapTable(prev => ({ ...(prev || {}), status: 'loading' }));
-    try {
-      const holders = await getPactTokenHolders({
-        pactToken: pactToken || current.pactToken,
-        deployBlock: current.blockNumber || undefined,
-      });
-      setCapTable({ status: 'loaded', holders });
-    } catch (err) {
-      setCapTable(prev => ({
-        ...(prev || {}),
-        status: 'error',
-        error: errMsg(err, 'Could not read onchain cap table.'),
-      }));
-    }
-  }
+  const boughtQuery = useQuery({
+    queryKey: ['bought', record?.offering ?? null],
+    enabled: !!record,
+    queryFn: () => listBought({ offering: record!.offering, deployBlock: record!.blockNumber || undefined }),
+  });
+  const bought = boughtQuery.data ?? [];
+
+  const capTableQuery = useQuery({
+    queryKey: ['cap-table', record?.offering ?? null],
+    enabled: !!record,
+    queryFn: () => getPactTokenHolders({ pactToken: record!.pactToken, deployBlock: record!.blockNumber || undefined }),
+  });
+  const capTable: CapTableState | null = !record ? null : {
+    status: capTableQuery.isError ? 'error' : capTableQuery.data ? 'loaded' : 'loading',
+    holders: capTableQuery.data,
+    error: capTableQuery.isError ? errMsg(capTableQuery.error, 'Could not read onchain cap table.') : undefined,
+  };
+
+  const refreshRecordDetails = (current: OfferingRecord) => {
+    queryClient.invalidateQueries({ queryKey: ['bought', current.offering] });
+    queryClient.invalidateQueries({ queryKey: ['cap-table', current.offering] });
+  };
 
   useEffect(() => {
     initDebugMenu({
@@ -577,25 +587,11 @@ function StatusApp() {
         setDebugState(state);
       },
     });
-    (async () => {
-      if (!offeringAddress) {
-        setRecord(null);
-        return;
-      }
-      let loaded: OfferingRecord | null = null;
-      try {
-        loaded = findOffering(await listOfferings(), offeringAddress);
-      } catch (err) {
-        console.warn('Could not scan offerings', err);
-      }
-      setRecord(loaded);
-      if (loaded) {
-        setLedger(listAllocationLedger(loaded.offering));
-        refreshBought(loaded);
-        refreshCapTable(loaded);
-      }
-    })();
   }, []);
+
+  useEffect(() => {
+    if (record) setLedger(listAllocationLedger(record.offering));
+  }, [record]);
 
   // The cap table and purchase list shift whenever units sell.
   const soldUnits = offering && offering.status === 'loaded' ? offering.unitsSold : null;
@@ -606,8 +602,7 @@ function StatusApp() {
       firstCapRefreshRef.current = false;
       return;
     }
-    refreshBought(record);
-    refreshCapTable(record);
+    refreshRecordDetails(record);
   }, [soldUnits]);
 
   async function handleOfferingAction(action: string) {
@@ -631,8 +626,7 @@ function StatusApp() {
     }
     setBusyAction(action);
     try {
-      const provider = PactWallet.provider!;
-      const base = { provider, offeringAddress: record.offering, from: wallet };
+      const base = { offeringAddress: record.offering, from: wallet };
       if (action === 'withdraw') {
         await withdrawOffering(base);
         showToast('Proceeds withdrawn to treasury');
@@ -654,8 +648,7 @@ function StatusApp() {
         showToast('Public allocation updated');
       }
       await refreshOffering();
-      refreshBought(record);
-      refreshCapTable(record);
+      refreshRecordDetails(record);
     } catch (err) {
       showToast(errMsg(err, 'Transaction failed'));
     }
@@ -669,7 +662,6 @@ function StatusApp() {
     const { linkPrivateKey, linkKey, allocationId } = newAllocationKey();
     const voucher = { allocationId, buyerName: name, amountCapUsdc: String(toUsdcBaseUnits(amountUsd)), linkKey };
     const ownerSig = await signVoucher({
-      provider: PactWallet.provider!,
       owner: wallet,
       offeringAddress: record.offering,
       voucher,
@@ -688,7 +680,6 @@ function StatusApp() {
     if (!confirm('Revoke the allocation link for ' + row.name + '? This sends a transaction.')) return;
     try {
       await cancelAllocation({
-        provider: PactWallet.provider!,
         offeringAddress: record.offering,
         from: wallet,
         allocationId: row.allocationId,
@@ -881,4 +872,4 @@ function StatusApp() {
 
 injectChrome();
 PactSettings.init({ buttonId: 'settingsToggle' });
-createRoot(document.getElementById('app')!).render(<StatusApp />);
+createRoot(document.getElementById('app')!).render(<AppProviders><StatusApp /></AppProviders>);
