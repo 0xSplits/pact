@@ -36,8 +36,6 @@ import {
 } from 'wagmi/actions';
 import { wagmiConfig } from './wagmi.ts';
 
-const TX_TIMEOUT_MS = 120_000;
-
 const client = () => getPublicClient(wagmiConfig);
 
 // A block-range log request with the event(s) to decode. Callers chunk
@@ -260,7 +258,7 @@ export async function createOffering({ pact, owner, factoryAddress }: {
     ],
     chainId: BASE_CHAIN_ID,
   });
-  const receipt = await waitForTransactionReceipt(wagmiConfig, { hash: txHash, timeout: TX_TIMEOUT_MS });
+  const receipt = await waitForTransactionReceipt(wagmiConfig, { hash: txHash });
   assertNotReverted(receipt, 'Offering creation transaction reverted.');
   const created = decodeOfferingCreated(receipt, factory);
   return {
@@ -368,7 +366,7 @@ async function sendOfferingFunction({ from, offeringAddress, functionName, args 
     args,
     chainId: BASE_CHAIN_ID,
   });
-  const receipt = await waitForTransactionReceipt(wagmiConfig, { hash: txHash, timeout: TX_TIMEOUT_MS });
+  const receipt = await waitForTransactionReceipt(wagmiConfig, { hash: txHash });
   assertNotReverted(receipt, 'Offering transaction reverted.');
   return { txHash, receipt };
 }
@@ -440,7 +438,7 @@ async function sendBatchedCalls({ from, calls }: {
     forceAtomic: true,
     calls,
   });
-  const result = await waitForCallsStatus(wagmiConfig, { id, timeout: TX_TIMEOUT_MS });
+  const result = await waitForCallsStatus(wagmiConfig, { id });
   if (result.status !== 'success') throw new Error('Batched transaction failed in the wallet.');
   const receipt = result.receipts && result.receipts[result.receipts.length - 1];
   if (!receipt) throw new Error('Wallet did not return a batch receipt.');
@@ -492,13 +490,13 @@ async function payWithApproval({ buyer, offering, amount, buyCall }: {
     approveTxHash = await writeContract(wagmiConfig, {
       account: buyer, chainId: BASE_CHAIN_ID, address: BASE_USDC_ADDRESS, ...approveArgs,
     });
-    const approveReceipt = await waitForTransactionReceipt(wagmiConfig, { hash: approveTxHash, timeout: TX_TIMEOUT_MS });
+    const approveReceipt = await waitForTransactionReceipt(wagmiConfig, { hash: approveTxHash });
     assertNotReverted(approveReceipt, 'USDC approval reverted.');
   }
   const buyTxHash = await writeContract(wagmiConfig, {
     account: buyer, chainId: BASE_CHAIN_ID, ...buyCall,
   });
-  const buyReceipt: TransactionReceipt = await waitForTransactionReceipt(wagmiConfig, { hash: buyTxHash, timeout: TX_TIMEOUT_MS });
+  const buyReceipt: TransactionReceipt = await waitForTransactionReceipt(wagmiConfig, { hash: buyTxHash });
   return { approveTxHash, buyTxHash, buyReceipt };
 }
 
