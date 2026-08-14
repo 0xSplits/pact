@@ -424,27 +424,6 @@ async function atomicBatchSupported(account: Address): Promise<boolean> {
   }
 }
 
-type BatchCalls = Parameters<typeof sendCalls>[1]['calls'];
-
-// EIP-5792 batch via wagmi sendCalls + waitForCallsStatus. Returns the final
-// receipt (the batch lands as one transaction when atomic).
-async function sendBatchedCalls({ from, calls }: {
-  from: Address;
-  calls: BatchCalls;
-}): Promise<ReceiptLike> {
-  const { id } = await sendCalls(wagmiConfig, {
-    account: from,
-    chainId: BASE_CHAIN_ID,
-    forceAtomic: true,
-    calls,
-  });
-  const result = await waitForCallsStatus(wagmiConfig, { id });
-  if (result.status !== 'success') throw new Error('Batched transaction failed in the wallet.');
-  const receipt = result.receipts && result.receipts[result.receipts.length - 1];
-  if (!receipt) throw new Error('Wallet did not return a batch receipt.');
-  return receipt as ReceiptLike;
-}
-
 const usdcAllowance = (buyer: Address, offering: Address) => client().readContract({
   address: BASE_USDC_ADDRESS,
   abi: erc20Abi,
@@ -475,13 +454,19 @@ async function payWithApproval({ buyer, offering, amount, buyCall }: {
   const needsApproval = await usdcAllowance(buyer, offering) < BigInt(amount);
 
   if (needsApproval && await atomicBatchSupported(buyer)) {
-    const buyReceipt = await sendBatchedCalls({
-      from: buyer,
+    const { id } = await sendCalls(wagmiConfig, {
+      account: buyer,
+      chainId: BASE_CHAIN_ID,
+      forceAtomic: true,
       calls: [
         { to: BASE_USDC_ADDRESS, ...approveArgs },
         { to: buyCall.address, abi: buyCall.abi, functionName: buyCall.functionName, args: buyCall.args },
       ],
     });
+    const { receipts } = await waitForCallsStatus(wagmiConfig, { id, throwOnFailure: true });
+    // The batch lands as one transaction when atomic; the last receipt carries it.
+    const buyReceipt = receipts?.[receipts.length - 1] as ReceiptLike | undefined;
+    if (!buyReceipt) throw new Error('Wallet did not return a batch receipt.');
     return { approveTxHash: null, buyTxHash: buyReceipt.transactionHash, buyReceipt };
   }
 
