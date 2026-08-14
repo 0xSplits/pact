@@ -124,8 +124,12 @@ test('issuer creates a PACT through the UI and lands on its status page', async 
   );
   expect(cached.items.map((item: { offering: string }) => item.offering.toLowerCase())).toContain(offering.toLowerCase());
 
-  // Live contract state: 20% dilution of 1000 units, 10% of that public.
-  await expect(page.getByRole('definition').filter({ hasText: '200 tokens, 20 public' })).toBeVisible();
+  // Live contract state: 20% dilution of 1000 units, none public by default.
+  await expect(page.getByRole('definition').filter({ hasText: '200 tokens, 0 public' })).toBeVisible();
+
+  // With no public tranche, the public-buy affordances stay hidden.
+  await expect(page.getByText('Public buy link')).toHaveCount(0);
+  await expect(page.getByText('No purchases yet. Create a private allocation using the row below.')).toBeVisible();
 
   // Cap table read from PactToken transfer logs + balance reads.
   const capTable = page.locator('table').last();
