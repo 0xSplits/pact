@@ -179,10 +179,10 @@ body { font-family: var(--font); font-size: var(--text-base); font-weight: var(-
 .wallet-toggle { min-width: 122px; padding: 0 12px; line-height: 1; font-variant-numeric: tabular-nums; background: var(--cta-bg); color: var(--cta-text); border-color: var(--cta-bg); }
 .wallet-toggle:hover { background: var(--cta-hover); }
 .wallet-toggle.connected { color: var(--cta-text); }
-.wallet-toggle.error { color: var(--danger); border-color: var(--danger); }
-.wallet-toggle.connecting { color: var(--pending); }
-/* The CTA pill inverts per scheme (light pill on dark pages), so its status
-   text needs the opposite scheme's pending/danger values. */
+/* The CTA pill inverts per scheme (dark pill on light pages and vice versa),
+   so its status text uses the opposite scheme's pending/danger values. */
+.wallet-toggle.error { color: #ff6b6b; border-color: #ff6b6b; }
+.wallet-toggle.connecting { color: #e0b65a; }
 @media (prefers-color-scheme: dark) {
   .wallet-toggle.connecting { color: #b07d1a; }
   .wallet-toggle.error { color: #b00020; border-color: #b00020; }
