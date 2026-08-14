@@ -23,7 +23,7 @@ import type { OfferingRecord, OfferingState, Purchase } from '../lib/chain/oncha
 import { listOfferings, findOffering, listBought, getPactTokenHolders } from '../lib/chain/offerings.ts';
 import {
   newAllocationKey, encodeVoucherFragment,
-  listAllocationLedger, saveAllocationLedgerRow, removeAllocationLedgerRow,
+  listAllocationLedger, saveAllocationLedgerRow, markAllocationLedgerRowRevoked,
 } from '../lib/chain/voucher.ts';
 import type { AllocationLedgerRow } from '../lib/chain/voucher.ts';
 import { toUsdcBaseUnits } from '../lib/chain/chain.ts';
@@ -346,7 +346,7 @@ interface FundedRow {
 
 interface OpenRow {
   key: string;
-  status: 'allocated';
+  status: 'allocated' | 'revoked';
   name: string;
   allocationId: string;
   amountUsd: number;
@@ -376,7 +376,7 @@ function allocationRows(bought: Purchase[], ledger: AllocationLedgerRow[]): { fu
     .filter(row => !claimedIds.has(String(row.allocationId).toLowerCase()))
     .map((row): OpenRow => ({
       key: row.allocationId,
-      status: 'allocated',
+      status: row.revokedAt ? 'revoked' : 'allocated',
       name: row.name,
       allocationId: row.allocationId,
       amountUsd: row.amountCapUsd,
@@ -424,12 +424,18 @@ function AllocationsTable({ rows, entryOpen, onOpenEntry, onCancelEntry, onAdd, 
                 <tr key={row.key}>
                   <td>{row.name}</td>
                   <td className="num">{fmtMoney(row.amountUsd)}</td>
-                  <td><span className="badge allocated">Allocated</span> {row.createdAt ? <span>{fmtShort(row.createdAt)}</span> : null}</td>
+                  <td>
+                    {row.status === 'revoked'
+                      ? <span className="badge revoked">Revoked</span>
+                      : <><span className="badge allocated">Allocated</span> {row.createdAt ? <span>{fmtShort(row.createdAt)}</span> : null}</>}
+                  </td>
                   <td className="num whitespace-nowrap">
-                    <span className="alloc-actions">
-                      <TextButton tone="danger" data-act="revoke" onClick={() => onRevoke(row)}>Revoke</TextButton>
-                      <TextButton tone="muted" data-act="copy" onClick={() => copyText(row.link)}>Copy link</TextButton>
-                    </span>
+                    {row.status === 'revoked' ? null : (
+                      <span className="alloc-actions">
+                        <TextButton tone="danger" data-act="revoke" onClick={() => onRevoke(row)}>Revoke</TextButton>
+                        <TextButton tone="muted" data-act="copy" onClick={() => copyText(row.link)}>Copy link</TextButton>
+                      </span>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -687,7 +693,7 @@ function StatusApp() {
         from: wallet,
         allocationId: row.allocationId,
       });
-      removeAllocationLedgerRow(record.offering, row.allocationId);
+      markAllocationLedgerRowRevoked(record.offering, row.allocationId, Date.now());
       setLedger(listAllocationLedger(record.offering));
       showToast('Allocation revoked');
     } catch (err) {

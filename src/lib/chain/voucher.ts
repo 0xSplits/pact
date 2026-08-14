@@ -135,6 +135,7 @@ export interface AllocationLedgerRow {
   amountCapUsd: number;
   link: string;
   createdAt: number;
+  revokedAt?: number;
 }
 
 const ledgerKey = (offering: string) => 'pact:allocations:' + String(offering).toLowerCase();
@@ -154,7 +155,10 @@ export function saveAllocationLedgerRow(offering: string, row: AllocationLedgerR
   storage.setItem(ledgerKey(offering), JSON.stringify(rows));
 }
 
-export function removeAllocationLedgerRow(offering: string, allocationId: string, storage: KVStorage = localStorage): void {
-  const rows = listAllocationLedger(offering, storage).filter(r => r.allocationId !== allocationId);
+// Revoked rows are kept, not deleted: the issuer's ledger is the only record
+// an unclaimed allocation ever existed (the AllocationCancelled event carries
+// just the id), so a mark beats an erasure.
+export function markAllocationLedgerRowRevoked(offering: string, allocationId: string, revokedAt: number, storage: KVStorage = localStorage): void {
+  const rows = listAllocationLedger(offering, storage).map(r => r.allocationId === allocationId ? { ...r, revokedAt } : r);
   storage.setItem(ledgerKey(offering), JSON.stringify(rows));
 }
