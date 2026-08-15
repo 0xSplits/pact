@@ -1,6 +1,7 @@
 // The shared wagmi config: connector discovery (EIP-6963 + injected),
-// WalletConnect and Coinbase Wallet for extension-less buyers, and the app's
-// RPC transport. Framework-free — onchain.ts drives reads and transactions
+// WalletConnect for extension-less buyers when configured, and the app's
+// RPC transport. Only detected wallets ever reach the menu — the Splits
+// Connect extension announces itself over EIP-6963 like any other. Framework-free — onchain.ts drives reads and transactions
 // through wagmi/actions against this config; React only adds hooks on top.
 //
 // The chain object is viem's stock `base`, whose default RPC is the public
@@ -9,7 +10,7 @@
 // PACT_RPC_OVERRIDE (e2e) bypasses the fallback entirely so tests always
 // talk to their anvil.
 import { createConfig, fallback, http } from 'wagmi';
-import { coinbaseWallet, injected, walletConnect } from 'wagmi/connectors';
+import { injected, walletConnect } from 'wagmi/connectors';
 import { base } from 'viem/chains';
 import { ALCHEMY_RPC_URL, PACT_RPC_OVERRIDE } from './chain.ts';
 
@@ -19,7 +20,6 @@ export const wagmiConfig = createConfig({
   chains: [base],
   connectors: [
     injected(),
-    coinbaseWallet({ appName: 'PACT' }),
     ...(walletConnectProjectId ? [walletConnect({ projectId: walletConnectProjectId })] : []),
   ],
   transports: {

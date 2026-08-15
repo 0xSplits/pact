@@ -25,7 +25,7 @@ export function drawCurve(canvas: HTMLCanvasElement, cfg: CurveChartConfig): voi
   const W = canvas.width, H = canvas.height, pad = 78;
   const { vMin, vMax, cap, F, totalTokens, fMin, fillF } = cfg;
   const hoverF = cfg.hoverF == null ? cfg.defaultF : cfg.hoverF;
-  const dark = !cfg.forceLight && document.documentElement.classList.contains('dark');
+  const dark = !cfg.forceLight && window.matchMedia('(prefers-color-scheme: dark)').matches;
   const P = dark
     ? { bg:'#15171c', axis:'#565d69', capLine:'#3a4150', capText:'#8b93a1', curve:'#e7e7e7', text:'#e7e7e7', caption:'#8b93a1', marker:'#7ea8ff', markerFill:'rgba(126,168,255,0.16)', fill:'#57c98a', fillArea:'rgba(87,201,138,0.20)', hoverArea:'rgba(126,168,255,0.14)', sliceFill:'rgba(167,139,250,0.28)', sliceText:'#a78bfa' }
     : { bg:'#ffffff', axis:'#888888', capLine:'#bbbbbb', capText:'#666666', curve:'#111111', text:'#111111', caption:'#444444', marker:'#2563eb', markerFill:'rgba(37,99,235,0.10)', fill:'#2f8f5b', fillArea:'rgba(47,143,91,0.14)', hoverArea:'rgba(37,99,235,0.08)', sliceFill:'rgba(124,92,246,0.22)', sliceText:'#6d44e0' };

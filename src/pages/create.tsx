@@ -3,7 +3,6 @@ import { createRoot } from 'react-dom/client';
 import { flushSync } from 'react-dom';
 import './create.css';
 import { injectChrome } from '../lib/ui/chrome.ts';
-import { PactSettings } from '../lib/settings.ts';
 import { AppProviders } from '../components/wallet.tsx';
 import { useWallet } from '../hooks/use-wallet.ts';
 import { drawCurve, attachCurveHover } from '../lib/ui/chart.ts';
@@ -279,7 +278,10 @@ function CreateApp() {
   useEffect(() => { setFormError(''); }, [wallet]);
 
   useEffect(() => {
-    PactSettings.init({ buttonId: 'settingsToggle', onChange: () => setThemeTick(t => t + 1) });
+    // redraw the canvas chart when the system color scheme flips
+    const scheme = window.matchMedia('(prefers-color-scheme: dark)');
+    const onScheme = () => setThemeTick(t => t + 1);
+    scheme.addEventListener('change', onScheme);
 
     // floating error tooltip — shows a field's message on hover while it's in an error state
     const errTip = document.createElement('div');
@@ -315,6 +317,7 @@ function CreateApp() {
     window.addEventListener('beforeprint', before);
     window.addEventListener('afterprint', after);
     return () => {
+      scheme.removeEventListener('change', onScheme);
       document.removeEventListener('mouseover', onOver);
       document.removeEventListener('mouseout', onOut);
       document.removeEventListener('input', onInput);

@@ -5,7 +5,6 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import './status.css';
 import { injectChrome } from '../lib/ui/chrome.ts';
 import { showToast, copyText } from '../lib/ui/toast.ts';
-import { PactSettings } from '../lib/settings.ts';
 import { AppProviders } from '../components/wallet.tsx';
 import { useWallet } from '../hooks/use-wallet.ts';
 import { useOfferingState } from '../hooks/use-offering-state.ts';
@@ -380,11 +379,12 @@ function allocationRows(bought: Purchase[], ledger: AllocationLedgerRow[]): { fu
   return { funded, open };
 }
 
-function AllocationsTable({ rows, publicUnitsAvailable, publicBuyUrl, publicQuantityDisabledReason, entryOpen, onOpenEntry, onCancelEntry, onAdd, onRevoke, onChangePublicQuantity }: {
+function AllocationsTable({ rows, publicUnitsAvailable, publicBuyUrl, publicQuantityDisabledReason, offeringOpen, entryOpen, onOpenEntry, onCancelEntry, onAdd, onRevoke, onChangePublicQuantity }: {
   rows: { funded: FundedRow[]; open: OpenRow[] };
   publicUnitsAvailable: number;
   publicBuyUrl: string;
   publicQuantityDisabledReason: string;
+  offeringOpen: boolean;
   entryOpen: boolean;
   onOpenEntry: () => void;
   onCancelEntry: () => void;
@@ -420,7 +420,9 @@ function AllocationsTable({ rows, publicUnitsAvailable, publicBuyUrl, publicQuan
           <tr>
             <td>Public allocation</td>
             <td className="num">&mdash;</td>
-            <td><span className="badge allocated">{fmtTokens(publicUnitsAvailable)} units open</span></td>
+            <td>{offeringOpen
+              ? <span className="badge allocated">{fmtTokens(publicUnitsAvailable)} units open</span>
+              : <span className="badge revoked">Expired</span>}</td>
             <td className="num whitespace-nowrap">
               <span className="alloc-actions">
                 <span className="action-tip-wrap">
@@ -428,8 +430,10 @@ function AllocationsTable({ rows, publicUnitsAvailable, publicBuyUrl, publicQuan
                   {publicQuantityDisabledReason ? <span className="action-tip">{publicQuantityDisabledReason}</span> : null}
                 </span>
                 <span className="action-tip-wrap">
-                  <TextButton tone="muted" data-act="copy-public" disabled={publicUnitsAvailable === 0} onClick={() => copyText(publicBuyUrl, 'Public link copied')}>Copy link</TextButton>
-                  {publicUnitsAvailable === 0 ? <span className="action-tip">No public units available</span> : null}
+                  <TextButton tone="muted" data-act="copy-public" disabled={!offeringOpen || publicUnitsAvailable === 0} onClick={() => copyText(publicBuyUrl, 'Public link copied')}>Copy link</TextButton>
+                  {!offeringOpen
+                    ? <span className="action-tip">Offering is not open</span>
+                    : publicUnitsAvailable === 0 ? <span className="action-tip">No public units available</span> : null}
                 </span>
               </span>
             </td>
@@ -441,7 +445,9 @@ function AllocationsTable({ rows, publicUnitsAvailable, publicBuyUrl, publicQuan
                   <td>
                     {row.status === 'revoked'
                       ? <span className="badge revoked">Revoked</span>
-                      : <><span className="badge allocated">Allocated</span> {row.createdAt ? <span>{fmtShort(row.createdAt)}</span> : null}</>}
+                      : !offeringOpen
+                        ? <span className="badge revoked">Expired</span>
+                        : <><span className="badge allocated">Allocated</span> {row.createdAt ? <span>{fmtShort(row.createdAt)}</span> : null}</>}
                   </td>
                   <td className="num whitespace-nowrap">
                     {row.status === 'revoked' ? null : (
@@ -453,7 +459,7 @@ function AllocationsTable({ rows, publicUnitsAvailable, publicBuyUrl, publicQuan
                   </td>
                 </tr>
           ))}
-          {entryOpen
+          {!offeringOpen ? null : entryOpen
             ? <AllocationEntryRow onCancel={onCancelEntry} onAdd={onAdd} />
             : <tr className="addrow no-print"><td colSpan={4}><button data-act="open-add" type="button" onClick={onOpenEntry}>+ New allocation</button></td></tr>}
         </tbody>
@@ -892,6 +898,7 @@ function StatusApp() {
             publicUnitsAvailable={publicUnitsAvailable}
             publicBuyUrl={new URL(buyPath(record.offering), location.origin).href}
             publicQuantityDisabledReason={publicQuantityDisabledReason}
+            offeringOpen={open}
             entryOpen={entryOpen}
             onOpenEntry={() => setEntryOpen(true)}
             onCancelEntry={() => setEntryOpen(false)}
@@ -908,5 +915,4 @@ function StatusApp() {
 }
 
 injectChrome();
-PactSettings.init({ buttonId: 'settingsToggle' });
 createRoot(document.getElementById('app')!).render(<AppProviders><StatusApp /></AppProviders>);

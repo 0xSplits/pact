@@ -67,8 +67,10 @@ map onto the design-system classes in `src/app.css`.
 ## Wallets and RPC
 
 Wallet plumbing is wagmi (`src/lib/chain/wagmi.ts`): injected/EIP-6963
-discovery plus Coinbase Wallet, and WalletConnect when
-`VITE_WALLETCONNECT_PROJECT_ID` is set. All contract interaction flows through
+discovery, plus WalletConnect when `VITE_WALLETCONNECT_PROJECT_ID` is set —
+the menu only lists wallets the browser actually has. The one exception is
+Splits Connect: pinned first when its extension is installed, shown as a
+Chrome Web Store link when not. All contract interaction flows through
 `wagmi/actions` in `src/lib/chain/onchain.ts` — reads use the app's own Base
 transport so they work without a wallet and regardless of which chain the
 wallet is on; the wallet only switches chains and signs. Buys batch
@@ -108,8 +110,8 @@ react-query.
 
 Tailwind v4 is compiled at build time through `@tailwindcss/vite` — there is
 no runtime styling dependency. `src/app.css` declares the type scale and
-color tokens in `@theme`, the CSS-variable design system (with the
-Clarity/Cipher/Chambers presets), and the shared component classes.
+color tokens in `@theme`, the CSS-variable design system (light plus a
+`prefers-color-scheme: dark` palette), and the shared component classes.
 Page-specific styles live next to each page (`src/pages/*.css`).
 
 ## Generated Files
