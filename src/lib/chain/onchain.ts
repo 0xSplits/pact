@@ -504,18 +504,25 @@ export async function quoteOfferingPurchase({ offeringAddress, amountUsd, public
   return { state, units, cost, maxCost };
 }
 
-export async function buyPublicOffering({ buyer, offeringAddress, amountUsd, buyerName = '' }: {
+export async function buyPublicOffering({ buyer, offeringAddress, units, buyerName = '' }: {
   buyer: string;
   offeringAddress: string;
-  amountUsd: number;
+  units: number;
   buyerName?: string;
 }) {
   if (!buyer) throw new Error('Connected wallet is required.');
+  if (!Number.isInteger(units) || units <= 0) throw new Error('Enter at least one whole unit.');
 
   await ensureBase();
   const normalizedBuyer = getAddress(buyer);
   const offering = getAddress(offeringAddress);
-  const quote = await quoteOfferingPurchase({ offeringAddress, amountUsd, publicOnly: true });
+  const state = await getOfferingState({ offeringAddress });
+  const available = Math.min(state.remainingUnits, Math.max(0, state.publicUnits - state.publicUnitsSold));
+  if (units > available) throw new Error(`Only ${available} public units remain.`);
+  const curve: CurveParams = { priceStart: state.priceStart, priceSlope: state.priceSlope };
+  const cost = costForUnits(curve, state.unitsSold, units);
+  const maxCost = Math.ceil(cost * 1.01);
+  const quote = { state, units, cost, maxCost };
   const { approveTxHash, buyTxHash, buyReceipt } = await payWithApproval({
     buyer: normalizedBuyer, offering, amount: quote.maxCost,
     buyCall: {
