@@ -30,10 +30,12 @@ const cleanRoutes: Plugin = {
   },
 };
 
-export default defineConfig({
+export default defineConfig(({ isPreview }) => ({
   appType: 'mpa',
   plugins: [react(), tailwindcss(), cleanRoutes],
-  server: { https: localHttps },
+  server: { https: isPreview ? undefined : localHttps },
+  // Playwright targets a stable HTTP preview URL. A developer's trusted
+  // localhost certificate must not silently change the E2E server protocol.
   build: {
     rollupOptions: {
       input: {
@@ -44,4 +46,4 @@ export default defineConfig({
       },
     },
   },
-});
+}));
