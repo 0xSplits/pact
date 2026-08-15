@@ -91,6 +91,8 @@ npm run build:contracts
 ## Tests
 
 ```sh
+npm run validate              # full pre-PR suite (Foundry + Playwright required)
+
 forge test --root contracts   # Solidity: unit, fuzz, invariants
 npm test                      # colocated unit tests against fakes
 npm run typecheck             # tsc --noEmit
@@ -98,6 +100,9 @@ npm run test:e2e              # anvil-backed Playwright browser flow
 ```
 
 CI runs all of these plus `forge fmt --check` on every PR and push to `main`.
+Pull requests also run an E2E-impact check: flow-sensitive frontend changes
+must update a Playwright spec or include the template's explicit, concrete
+`E2E impact override` rationale. The override does not waive running E2E.
 
 ## Deployment
 

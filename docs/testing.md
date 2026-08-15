@@ -4,6 +4,25 @@ PACT has four checks plus manual Base dust verification. CI
 (`.github/workflows/ci.yml`) runs all of them (plus `forge fmt --check`) on
 every PR and push to `main`.
 
+## Full pre-PR validation
+
+```sh
+npm run validate
+```
+
+This is the canonical readiness command. It runs typechecking, unit tests,
+Solidity formatting and tests, regenerates/builds contract artifacts, and runs
+the anvil-backed Playwright suite. It requires Foundry and an installed
+Playwright Chromium browser (`npx playwright install chromium`). If it cannot
+complete, keep the pull request in draft and report the exact failure.
+
+When a user flow changes, update the corresponding Playwright scenario. CI's
+`E2E Impact` job detects flow-sensitive changes under `src/pages/`,
+`src/components/`, `src/lib/chain/`, and `src/lib/routes.ts`. If existing
+Playwright coverage is already sufficient, replace the PR template's
+`E2E impact override: none` with a concrete rationale. This exception only
+documents why the specs did not change; the E2E suite must still pass.
+
 ## Solidity
 
 ```sh
