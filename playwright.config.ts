@@ -6,6 +6,9 @@ export default defineConfig({
   // One worker: the spec's scenarios share the anvil chain started by the
   // global setup, and each seeds its own offering, so ordering stays simple.
   workers: 1,
+  forbidOnly: !!process.env.CI,
+  // Retries make trace: "on-first-retry" actually capture traces in CI.
+  retries: process.env.CI ? 2 : 0,
   globalSetup: "./tests/e2e-setup.ts",
   globalTeardown: "./tests/e2e-teardown.ts",
   use: {

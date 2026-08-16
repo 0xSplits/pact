@@ -1,9 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { createRoot } from "react-dom/client";
 import { flushSync } from "react-dom";
 import "./create.css";
-import { injectChrome } from "../lib/ui/chrome.ts";
-import { AppProviders } from "../components/wallet.tsx";
+import { mountPage } from "../components/wallet.tsx";
 import { useWallet } from "../hooks/use-wallet.ts";
 import { drawCurve, attachCurveHover } from "../lib/ui/chart.ts";
 import type { CurveChartConfig } from "../lib/ui/chart.ts";
@@ -1001,9 +999,4 @@ function CreateApp() {
   );
 }
 
-injectChrome();
-createRoot(document.getElementById("app")!).render(
-  <AppProviders>
-    <CreateApp />
-  </AppProviders>,
-);
+mountPage(<CreateApp />);
