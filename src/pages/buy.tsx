@@ -8,31 +8,36 @@ import { AppProviders } from "../components/wallet.tsx";
 import { useWallet } from "../hooks/use-wallet.ts";
 import { useOfferingState } from "../hooks/use-offering-state.ts";
 import {
-  fmtMoney,
-  fmtDollars,
+  fmtUsd,
   fmtPct,
   fmtTokens,
-  fmtPrice,
   fmtDate,
+  relDays,
   usdcBaseUnitsToDollars,
   basescanTx,
   errMsg,
+  MS_PER_DAY,
 } from "../lib/format.ts";
 import {
   costForUnits,
   unitsForBudget,
   valuationForUnitIndex,
 } from "../lib/chain/curve.ts";
-import { initDebugMenu, isLocalhost } from "../lib/ui/debug-menu.ts";
+import { TOTAL_LIQUID_SPLIT_UNITS } from "../lib/chain/liquid-split.ts";
+import { isSameAddress } from "../lib/validate.ts";
+import { debugActive } from "../lib/ui/debug-menu.ts";
+import { useDebugMenu } from "../hooks/use-debug-menu.ts";
 import {
   currentOfferingAddress,
   currentVoucherFragment,
 } from "../lib/routes.ts";
 import {
+  availablePublicUnits,
   getProjectName,
   isAllocationConsumed,
   buyPublicOffering,
   buyPrivateOffering,
+  offeringStateCurve,
   refundOffering,
 } from "../lib/chain/onchain.ts";
 import type { OfferingState } from "../lib/chain/onchain.ts";
@@ -42,6 +47,7 @@ import { decodeVoucherFragment } from "../lib/chain/voucher.ts";
 import {
   AddressLink,
   Button,
+  CheckIcon,
   DefList,
   Field,
   Notice,
@@ -50,22 +56,9 @@ import {
 } from "../components/ui.tsx";
 import "./buy.css";
 
-const TOTAL_TOKENS = 1000;
+const TOTAL_TOKENS = TOTAL_LIQUID_SPLIT_UNITS;
 const offeringAddress = currentOfferingAddress();
 const fragment = currentVoucherFragment();
-
-const relDays = (ts: number) => {
-  const d = Math.ceil((ts - Date.now()) / 86400000);
-  return d > 1
-    ? "in " + d + " days"
-    : d === 1
-      ? "in 1 day"
-      : d === 0
-        ? "today"
-        : d === -1
-          ? "1 day ago"
-          : Math.abs(d) + " days ago";
-};
 
 function parseFragment(): {
   voucher: DecodedVoucherLink | null;
@@ -83,10 +76,6 @@ function parseFragment(): {
   }
 }
 const { voucher: voucherPayload, voucherError } = parseFragment();
-
-function debugActive(debugState: string) {
-  return isLocalhost() && debugState !== "live";
-}
 
 // The offering fields the page renders. Debug snapshots synthesize them
 // without an address/owner/treasury; live reads carry the full state.
@@ -111,7 +100,7 @@ function debugOfferingSnapshot(
     raised: 55_000000,
     withdrawn: 0,
     raiseMin: 100_000000,
-    closeDate: Math.floor((Date.now() + 7 * 86400000) / 1000),
+    closeDate: Math.floor((Date.now() + 7 * MS_PER_DAY) / 1000),
     priceStart: 1_000000,
     priceSlope: 1000,
     publicUnits: 100,
@@ -125,7 +114,7 @@ function debugOfferingSnapshot(
       ...base,
       state: 1,
       minMet: false,
-      closeDate: Math.floor((Date.now() - 86400000) / 1000),
+      closeDate: Math.floor((Date.now() - MS_PER_DAY) / 1000),
       deposit: 25_000000,
     };
   if (debugState === "refunded")
@@ -133,11 +122,128 @@ function debugOfferingSnapshot(
       ...base,
       state: 1,
       minMet: false,
-      closeDate: Math.floor((Date.now() - 86400000) / 1000),
+      closeDate: Math.floor((Date.now() - MS_PER_DAY) / 1000),
       deposit: 0,
     };
   if (debugState === "closed") return { ...base, state: 2, minMet: true };
   return live;
+}
+
+// Everything the page renders, derived from one offering snapshot. Pure so
+// the JSX below stays scannable.
+function deriveBuyView({
+  offeringState,
+  receipt,
+  wallet,
+  units,
+  consumed,
+  debugState,
+}: {
+  offeringState: OfferingView;
+  receipt: { units: number; cost: number; txHash: string | null } | null;
+  wallet: string | null;
+  units: string;
+  consumed: boolean | null;
+  debugState: string;
+}) {
+  const curve = offeringStateCurve(offeringState);
+  const closeDate = offeringState.closeDate * 1000;
+  const offeringFailed = offeringState.state === 1;
+  const raiseClosed =
+    offeringFailed ||
+    offeringState.state === 2 ||
+    (offeringState.state === 0 &&
+      Date.now() > closeDate &&
+      !offeringState.minMet);
+  const debugRefunded = debugState === "refunded";
+  const raisedTotal = usdcBaseUnitsToDollars(offeringState.raised);
+  const remainingUnits = offeringState.remainingUnits;
+  const publicRemaining = availablePublicUnits(offeringState);
+  const remainingCapacity = usdcBaseUnitsToDollars(
+    costForUnits(curve, offeringState.unitsSold, remainingUnits),
+  );
+  const raiseCapacity = Math.max(
+    raisedTotal + remainingCapacity,
+    usdcBaseUnitsToDollars(offeringState.raiseMin),
+    raisedTotal,
+  );
+  const valuationStart = valuationForUnitIndex(curve, 0, TOTAL_TOKENS);
+  const valuationEnd = valuationForUnitIndex(
+    curve,
+    offeringState.unitsSold + remainingUnits,
+    TOTAL_TOKENS,
+  );
+  const minUsd = usdcBaseUnitsToDollars(offeringState.raiseMin);
+
+  const isPaid =
+    !!receipt || (debugActive(debugState) && (offeringState.deposit || 0) > 0);
+  const paidUnits = receipt ? receipt.units : 0;
+  const paidCostUsd = usdcBaseUnitsToDollars(
+    receipt ? receipt.cost : offeringState.deposit || 0,
+  );
+  const pricePer = paidUnits > 0 ? paidCostUsd / paidUnits : 0;
+
+  // Quote for what the buyer is about to purchase.
+  const budgetUsdc = voucherPayload
+    ? Number(voucherPayload.voucher.amountCapUsdc)
+    : 0;
+  const requestedPublicUnits = Number(units) || 0;
+  const publicUnitsValid =
+    Number.isInteger(requestedPublicUnits) &&
+    requestedPublicUnits >= 1 &&
+    requestedPublicUnits <= publicRemaining;
+  const quoteUnits = voucherPayload
+    ? budgetUsdc > 0
+      ? unitsForBudget(
+          curve,
+          offeringState.unitsSold,
+          remainingUnits,
+          budgetUsdc,
+        )
+      : 0
+    : publicUnitsValid
+      ? requestedPublicUnits
+      : 0;
+  const quoteCost = usdcBaseUnitsToDollars(
+    costForUnits(curve, offeringState.unitsSold, quoteUnits),
+  );
+  const quotePricePer = quoteUnits > 0 ? quoteCost / quoteUnits : 0;
+
+  const claimedByOther = !!voucherPayload && !!consumed && !isPaid;
+  const refundableDeposit =
+    offeringFailed && wallet && (offeringState.deposit || 0) > 0
+      ? usdcBaseUnitsToDollars(offeringState.deposit)
+      : 0;
+  const canStillPurchase =
+    !isPaid &&
+    !claimedByOther &&
+    !raiseClosed &&
+    (!!voucherPayload || publicRemaining > 0);
+
+  return {
+    closeDate,
+    offeringFailed,
+    raiseClosed,
+    debugRefunded,
+    offeringIsPrivate: offeringState.publicUnits === 0,
+    publicRemaining,
+    raiseCapacity,
+    valuationStart,
+    valuationEnd,
+    minUsd,
+    isPaid,
+    paidUnits,
+    paidCostUsd,
+    pricePer,
+    budgetUsdc,
+    requestedPublicUnits,
+    quoteUnits,
+    quoteCost,
+    quotePricePer,
+    claimedByOther,
+    refundableDeposit,
+    canStillPurchase,
+  };
 }
 
 function PageNotice({
@@ -163,23 +269,21 @@ function StatusDot({ refundable = false }) {
       className={`status-dot${refundable ? " refundable" : ""}`}
       aria-hidden="true"
     >
-      <svg
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="3"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      >
-        {refundable ? (
-          <>
-            <path d="M12 7v6" />
-            <path d="M12 17h.01" />
-          </>
-        ) : (
-          <path d="m5 12 4 4L19 6" />
-        )}
-      </svg>
+      {refundable ? (
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="3"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <path d="M12 7v6" />
+          <path d="M12 17h.01" />
+        </svg>
+      ) : (
+        <CheckIcon />
+      )}
     </span>
   );
 }
@@ -194,11 +298,17 @@ function BuyApp() {
   const [buyerName, setBuyerName] = useState("");
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [signerName, setSignerName] = useState("");
-  const [debugState, setDebugState] = useState("live");
   const [busy, setBusy] = useState<"refund" | "pay" | null>(null);
   const [debugPreview, setDebugPreview] = useState(false);
-  const debugRef = useRef("live");
   const recoveringRef = useRef(false);
+
+  const debugState = useDebugMenu([
+    { value: "live", label: "Live" },
+    { value: "funding", label: "Funding" },
+    { value: "failed", label: "Failed" },
+    { value: "refunded", label: "Refunded" },
+    { value: "closed", label: "Closed" },
+  ]);
 
   const wallet = useWallet();
   const queryClient = useQueryClient();
@@ -206,23 +316,6 @@ function BuyApp() {
     offeringAddress,
     buyer: wallet,
   });
-
-  useEffect(() => {
-    initDebugMenu({
-      states: [
-        { value: "live", label: "Live" },
-        { value: "funding", label: "Funding" },
-        { value: "failed", label: "Failed" },
-        { value: "refunded", label: "Refunded" },
-        { value: "closed", label: "Closed" },
-      ],
-      getState: () => debugRef.current,
-      setState: (state) => {
-        debugRef.current = state;
-        setDebugState(state);
-      },
-    });
-  }, []);
 
   const pactToken =
     offering && offering.status === "loaded" ? offering.pactToken : null;
@@ -287,7 +380,7 @@ function BuyApp() {
         // so a wallet's earlier claim doesn't shadow a fresh allocation.
         const mine = bought.filter(
           (p) =>
-            p.buyer.toLowerCase() === String(wallet).toLowerCase() &&
+            isSameAddress(p.buyer, wallet) &&
             (!voucherPayload ||
               String(p.allocationId).toLowerCase() ===
                 String(voucherPayload.voucher.allocationId).toLowerCase()),
@@ -390,50 +483,37 @@ function BuyApp() {
     );
   }
 
-  const curve = {
-    priceStart: offeringState.priceStart,
-    priceSlope: offeringState.priceSlope,
-  };
-  const closeDate = offeringState.closeDate * 1000;
-  const offeringFailed = offeringState.state === 1;
-  const offeringClosed = offeringState.state === 2;
-  const raiseClosed =
-    offeringFailed ||
-    offeringClosed ||
-    (offeringState.state === 0 &&
-      Date.now() > closeDate &&
-      !offeringState.minMet);
-  const debugRefunded = debugState === "refunded";
-  const raisedTotal = usdcBaseUnitsToDollars(offeringState.raised);
-  const remainingUnits = Number(offeringState.remainingUnits || 0);
-  const publicRemaining = Math.min(
-    remainingUnits,
-    Math.max(0, offeringState.publicUnits - offeringState.publicUnitsSold),
-  );
-  const remainingCapacity = usdcBaseUnitsToDollars(
-    costForUnits(curve, offeringState.unitsSold, remainingUnits),
-  );
-  const raiseCapacity = Math.max(
-    raisedTotal + remainingCapacity,
-    usdcBaseUnitsToDollars(offeringState.raiseMin),
-    raisedTotal,
-  );
-  const valuationStart = valuationForUnitIndex(curve, 0, TOTAL_TOKENS);
-  const valuationEnd = valuationForUnitIndex(
-    curve,
-    offeringState.unitsSold + remainingUnits,
-    TOTAL_TOKENS,
-  );
-  const minUsd = usdcBaseUnitsToDollars(offeringState.raiseMin);
-
-  const isPaid =
-    !!receipt ||
-    (debugActive(debugState) && Number(offeringState.deposit || 0) > 0);
-  const paidUnits = receipt ? receipt.units : 0;
-  const paidCostUsd = receipt
-    ? usdcBaseUnitsToDollars(receipt.cost)
-    : usdcBaseUnitsToDollars(Number(offeringState.deposit || 0));
-  const pricePer = paidUnits > 0 ? paidCostUsd / paidUnits : 0;
+  const {
+    closeDate,
+    offeringFailed,
+    raiseClosed,
+    debugRefunded,
+    offeringIsPrivate,
+    publicRemaining,
+    raiseCapacity,
+    valuationStart,
+    valuationEnd,
+    minUsd,
+    isPaid,
+    paidUnits,
+    paidCostUsd,
+    pricePer,
+    budgetUsdc,
+    requestedPublicUnits,
+    quoteUnits,
+    quoteCost,
+    quotePricePer,
+    claimedByOther,
+    refundableDeposit,
+    canStillPurchase,
+  } = deriveBuyView({
+    offeringState,
+    receipt,
+    wallet,
+    units,
+    consumed,
+    debugState,
+  });
   const txLabel =
     receipt && receipt.txHash ? (
       <a
@@ -446,100 +526,65 @@ function BuyApp() {
       </a>
     ) : null;
 
-  // Quote for what the buyer is about to purchase.
-  const budgetUsdc = voucherPayload
-    ? Number(voucherPayload.voucher.amountCapUsdc)
-    : 0;
-  const quoteAvailable = voucherPayload ? remainingUnits : publicRemaining;
-  const requestedPublicUnits = Number(units) || 0;
-  const publicUnitsValid =
-    Number.isInteger(requestedPublicUnits) &&
-    requestedPublicUnits >= 1 &&
-    requestedPublicUnits <= publicRemaining;
-  const quoteUnits = voucherPayload
-    ? budgetUsdc > 0
-      ? unitsForBudget(
-          curve,
-          offeringState.unitsSold,
-          quoteAvailable,
-          budgetUsdc,
-        )
-      : 0
-    : publicUnitsValid
-      ? requestedPublicUnits
-      : 0;
-  const quoteCost = usdcBaseUnitsToDollars(
-    costForUnits(curve, offeringState.unitsSold, quoteUnits),
-  );
-  const quotePricePer = quoteUnits > 0 ? quoteCost / quoteUnits : 0;
-
-  const claimedByOther = voucherPayload && consumed && !isPaid;
-  const refundableDeposit =
-    offeringFailed && wallet && Number(offeringState.deposit || 0) > 0
-      ? usdcBaseUnitsToDollars(offeringState.deposit)
-      : 0;
-
   const failedRefundCopy = debugRefunded
     ? "This project failed to meet the minimum before the close date."
     : wallet
       ? "This project failed to meet the minimum before the close date. You can claim your full refund; your units return to the project."
       : "This project failed to meet the minimum before the close date. Connect the purchasing wallet to claim your full refund.";
 
-  let action;
-  if (isPaid && offeringFailed && debugRefunded) {
-    action = null;
-  } else if (offeringFailed && refundableDeposit > 0) {
-    action = (
-      <div className="flex justify-end mt-10">
-        <Button
-          className="px-6 py-3 text-base font-semibold"
-          data-act="refund"
-          disabled={busy === "refund"}
-          onClick={handleRefund}
-        >
-          {debugPreview
-            ? "Debug preview only"
-            : busy === "refund"
-              ? "Refunding…"
-              : `Claim ${fmtDollars(refundableDeposit)} refund`}
-        </Button>
-      </div>
-    );
-  } else if (isPaid) {
-    action = null;
-  } else if (claimedByOther) {
-    action = (
-      <Notice className="mt-10">
-        This allocation link has already been claimed or revoked. Ask the issuer
-        for a fresh link.
-      </Notice>
-    );
-  } else if (raiseClosed) {
-    action = (
-      <Notice className="mt-10">
-        {offeringFailed
-          ? "This project failed to meet the minimum before the close date."
-          : "This offering has closed."}{" "}
-        No further buy-ins can be made.
-      </Notice>
-    );
-  } else if (!voucherPayload && publicRemaining <= 0) {
-    action = (
-      <Notice className="mt-10">
-        {offeringState.publicUnits === 0
-          ? "This offering is private."
-          : "The public allocation of this offering is fully subscribed."}{" "}
-        Ask the issuer for a private allocation link.
-      </Notice>
-    );
-  } else if (!wallet) {
-    action = (
-      <Notice className="mt-8">
-        Connect a wallet before purchasing this offering.
-      </Notice>
-    );
-  } else {
-    action = (
+  // The single call-to-action for the page state; first match wins.
+  function renderAction() {
+    if (isPaid && offeringFailed && debugRefunded) return null;
+    if (offeringFailed && refundableDeposit > 0)
+      return (
+        <div className="flex justify-end mt-10">
+          <Button
+            className="px-6 py-3 text-base font-semibold"
+            data-act="refund"
+            disabled={busy === "refund"}
+            onClick={handleRefund}
+          >
+            {debugPreview
+              ? "Debug preview only"
+              : busy === "refund"
+                ? "Refunding…"
+                : `Claim ${fmtUsd(refundableDeposit, "cents")} refund`}
+          </Button>
+        </div>
+      );
+    if (isPaid) return null;
+    if (claimedByOther)
+      return (
+        <Notice className="mt-10">
+          This allocation link has already been claimed or revoked. Ask the
+          issuer for a fresh link.
+        </Notice>
+      );
+    if (raiseClosed)
+      return (
+        <Notice className="mt-10">
+          {offeringFailed
+            ? "This project failed to meet the minimum before the close date."
+            : "This offering has closed."}{" "}
+          No further buy-ins can be made.
+        </Notice>
+      );
+    if (!voucherPayload && publicRemaining <= 0)
+      return (
+        <Notice className="mt-10">
+          {offeringIsPrivate
+            ? "This offering is private."
+            : "The public allocation of this offering is fully subscribed."}{" "}
+          Ask the issuer for a private allocation link.
+        </Notice>
+      );
+    if (!wallet)
+      return (
+        <Notice className="mt-8">
+          Connect a wallet before purchasing this offering.
+        </Notice>
+      );
+    return (
       <div className="flex justify-end mt-8">
         <Button
           className="px-6 py-3 text-base font-semibold"
@@ -564,12 +609,6 @@ function BuyApp() {
     ? `${projectName || "PACT offering"} | ${voucherPayload.voucher.buyerName}`
     : projectName || "PACT offering";
 
-  const canStillPurchase =
-    !isPaid &&
-    !claimedByOther &&
-    !raiseClosed &&
-    (!!voucherPayload || publicRemaining > 0);
-
   return (
     <>
       <div className="mb-8">
@@ -582,11 +621,11 @@ function BuyApp() {
       <SectionTitle>Offering details</SectionTitle>
       <DefList className="mb-8">
         <Field label="Raising">
-          <span>Up to {fmtDollars(raiseCapacity)}</span>
-          <Sub>{fmtDollars(minUsd)} minimum</Sub>
+          <span>Up to {fmtUsd(raiseCapacity, "cents")}</span>
+          <Sub>{fmtUsd(minUsd, "cents")} minimum</Sub>
         </Field>
         <Field label="Valuation range" align="none">
-          {fmtMoney(valuationStart)}–{fmtMoney(valuationEnd)} post-money
+          {fmtUsd(valuationStart)}–{fmtUsd(valuationEnd)} post-money
         </Field>
         <Field label="Close date">
           <span>{fmtDate(closeDate)}</span>
@@ -617,14 +656,14 @@ function BuyApp() {
                 {voucherPayload.voucher.buyerName}
               </Field>
               <Field label="Amount" align="none">
-                {fmtDollars(usdcBaseUnitsToDollars(budgetUsdc))}
+                {fmtUsd(usdcBaseUnitsToDollars(budgetUsdc), "cents")}
               </Field>
               <Field label="Implied ownership">
                 <span>{fmtPct((quoteUnits / TOTAL_TOKENS) * 100)}</span>
                 <Sub>{fmtTokens(quoteUnits)} units</Sub>
               </Field>
               <Field label="Price per unit" align="none">
-                {fmtPrice(quotePricePer)}
+                {fmtUsd(quotePricePer, "cents")}
               </Field>
             </DefList>
           </>
@@ -660,10 +699,10 @@ function BuyApp() {
                 </span>
               </Field>
               <Field label="Estimated cost">
-                <span>{quoteUnits > 0 ? fmtDollars(quoteCost) : "—"}</span>
+                <span>{quoteUnits > 0 ? fmtUsd(quoteCost, "cents") : "—"}</span>
                 <Sub>
                   {quoteUnits > 0
-                    ? `${fmtPrice(quotePricePer)} / unit`
+                    ? `${fmtUsd(quotePricePer, "cents")} / unit`
                     : "— / unit"}
                 </Sub>
               </Field>
@@ -698,7 +737,7 @@ function BuyApp() {
               {debugRefunded ? txLabel : null}
             </dd>
             <Field label="Refund amount" align="none">
-              {fmtDollars(refundableDeposit || paidCostUsd)}
+              {fmtUsd(refundableDeposit || paidCostUsd, "cents")}
             </Field>
           </DefList>
         </>
@@ -715,14 +754,14 @@ function BuyApp() {
               {txLabel}
             </dd>
             <Field label="Amount" align="none">
-              {fmtDollars(paidCostUsd)}
+              {fmtUsd(paidCostUsd, "cents")}
             </Field>
             <Field label="Ownership" align="none">
               <span>{fmtPct((paidUnits / TOTAL_TOKENS) * 100)}</span>
               <span className="t-muted ml-2">{fmtTokens(paidUnits)} units</span>
             </Field>
             <Field label="Price per unit" align="none">
-              {fmtPrice(pricePer)}
+              {fmtUsd(pricePer, "cents")}
             </Field>
           </DefList>
         </>
@@ -745,7 +784,7 @@ function BuyApp() {
               their holders with the Project, and it is for the creator to
               determine what, if anything, they are used for. My purchase is
               refundable in full if the offering does not reach its minimum of{" "}
-              {fmtDollars(minUsd)} by {fmtDate(closeDate)}.
+              {fmtUsd(minUsd, "cents")} by {fmtDate(closeDate)}.
             </span>
           </label>
           <div className="signature-block terms-signature">
@@ -769,7 +808,7 @@ function BuyApp() {
         </section>
       ) : null}
 
-      {action}
+      {renderAction()}
     </>
   );
 }

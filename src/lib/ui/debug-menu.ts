@@ -3,6 +3,10 @@
 export const isLocalhost = () =>
   ["localhost", "127.0.0.1"].includes(location.hostname);
 
+// True while a synthetic debug state is selected (never in production).
+export const debugActive = (debugState: string): boolean =>
+  isLocalhost() && debugState !== "live";
+
 export interface DebugMenuOptions {
   states: Array<{ value: string; label: string }>;
   getState: () => string;

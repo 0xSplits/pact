@@ -9,25 +9,36 @@ import { AppProviders } from "../components/wallet.tsx";
 import { useWallet } from "../hooks/use-wallet.ts";
 import { useOfferingState } from "../hooks/use-offering-state.ts";
 import {
-  fmtMoney,
-  fmtDollars,
+  fmtUsd,
   fmtPct,
   fmtTokens,
   fmtDate,
+  fmtShortDate,
+  relDays,
+  formatAmountInput,
+  parseMoney,
   usdcBaseUnitsToDollars,
   shortAddr,
   basescanTx,
   errMsg,
+  MS_PER_DAY,
 } from "../lib/format.ts";
 import { costForUnits, valuationForUnitIndex } from "../lib/chain/curve.ts";
-import { initDebugMenu, isLocalhost } from "../lib/ui/debug-menu.ts";
+import { TOTAL_LIQUID_SPLIT_UNITS } from "../lib/chain/liquid-split.ts";
+import { isSameAddress } from "../lib/validate.ts";
+import { debugActive } from "../lib/ui/debug-menu.ts";
+import { useDebugMenu } from "../hooks/use-debug-menu.ts";
+import type { OfferingSnapshot } from "../hooks/use-offering-state.ts";
 import {
+  absoluteUrl,
   createPath,
   currentOfferingAddress,
   buyPath,
   buyLinkPath,
 } from "../lib/routes.ts";
 import {
+  availablePublicUnits,
+  offeringStateCurve,
   withdrawOffering,
   closeAndWithdrawOffering,
   markOfferingFailed,
@@ -42,6 +53,7 @@ import type {
   OfferingState,
   Purchase,
 } from "../lib/chain/onchain.ts";
+import type { Address, Hex } from "viem";
 import {
   listOfferings,
   findOffering,
@@ -60,6 +72,7 @@ import { toUsdcBaseUnits } from "../lib/chain/chain.ts";
 import {
   AddressLink,
   Button,
+  CheckIcon,
   DefList,
   Field,
   Loading,
@@ -69,38 +82,9 @@ import {
   TextButton,
 } from "../components/ui.tsx";
 
-const TOTAL_TOKENS = 1000;
-const fmtTokenPrice = (p: number) =>
-  "$" +
-  p.toLocaleString("en-US", {
-    minimumFractionDigits: p > 0 && p < 1 ? 4 : 2,
-    maximumFractionDigits: p > 0 && p < 1 ? 4 : 2,
-  });
-const fmtShort = (ts: number) => {
-  const d = new Date(ts);
-  return d.getDate() + "-" + d.toLocaleDateString("en-US", { month: "short" });
-};
-const relDays = (ts: number) => {
-  const d = Math.ceil((ts - Date.now()) / 86400000);
-  return d > 1
-    ? "in " + d + " days"
-    : d === 1
-      ? "in 1 day"
-      : d === 0
-        ? "today"
-        : "";
-};
+const TOTAL_TOKENS = TOTAL_LIQUID_SPLIT_UNITS;
 
 const offeringAddress = currentOfferingAddress();
-
-const isSameAddress = (
-  a: string | null | undefined,
-  b: string | null | undefined,
-) => !!a && !!b && String(a).toLowerCase() === String(b).toLowerCase();
-
-function debugActive(debugState: string) {
-  return isLocalhost() && debugState !== "live";
-}
 
 // The offering fields the page renders. Debug snapshots synthesize them from
 // the listing record without an address; live reads carry the full state.
@@ -121,7 +105,7 @@ function debugOfferingSnapshot(
     raised: 0,
     withdrawn: 0,
     raiseMin: record.raiseMin,
-    closeDate: Math.floor((Date.now() + 7 * 86400000) / 1000),
+    closeDate: Math.floor((Date.now() + 7 * MS_PER_DAY) / 1000),
     owner: record.treasury,
     treasury: record.treasury,
     pactToken: record.pactToken,
@@ -176,7 +160,7 @@ function debugOfferingSnapshot(
       remainingUnits: offerTokens - quarterUnits,
       raised: Math.floor(record.raiseMin / 2),
       withdrawn: 0,
-      closeDate: Math.floor((Date.now() - 86400000) / 1000),
+      closeDate: Math.floor((Date.now() - MS_PER_DAY) / 1000),
       minMet: false,
       state: 1,
     };
@@ -237,16 +221,25 @@ interface OfferingAction {
   icon?: "copy";
 }
 
-function offeringActionsFor(
-  onchainOffering: OfferingView | null,
-  connectedWallet: string | null,
-  closeDate: number,
-  canManage: boolean,
-  refundBuyers: string[],
-  refundTotal: number,
-  remainingUnits: number,
-  projectName: string,
-): OfferingAction[] {
+function offeringActionsFor({
+  onchainOffering,
+  connectedWallet,
+  closeDate,
+  canManage,
+  refundBuyers,
+  refundTotal,
+  remainingUnits,
+  projectName,
+}: {
+  onchainOffering: OfferingView | null;
+  connectedWallet: string | null;
+  closeDate: number;
+  canManage: boolean;
+  refundBuyers: string[];
+  refundTotal: number;
+  remainingUnits: number;
+  projectName: string;
+}): OfferingAction[] {
   if (!onchainOffering || !connectedWallet) return [];
   if (onchainOffering.state === 2) return [];
   const ownerAddress = onchainOffering.owner || null;
@@ -274,7 +267,7 @@ function offeringActionsFor(
     actions.push({
       action: "withdraw",
       label: "Withdraw proceeds",
-      cta: `Withdraw ${fmtMoney(claimable)}`,
+      cta: `Withdraw ${fmtUsd(claimable)}`,
       note: "Transfer raised funds to your treasury",
       disabled: withdrawDisabled,
       tooltip: withdrawTooltip,
@@ -310,7 +303,7 @@ function offeringActionsFor(
     actions.push({
       action: "refund-all",
       label: "Refund buyers",
-      cta: `Refund ${fmtMoney(refundTotal)}`,
+      cta: `Refund ${fmtUsd(refundTotal)}`,
       note: `Return deposits to all ${buyerLabel}`,
       disabled: refundDisabled,
       tooltip: refundTooltip,
@@ -381,18 +374,7 @@ function disabledContractReadActions(
 function StatusBadge({ status }: { status: StatusInfo }) {
   if (status.tone === "loading") return <Loading />;
   const icons = {
-    secured: (
-      <svg
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="3"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      >
-        <path d="m5 12 4 4L19 6" />
-      </svg>
-    ),
+    secured: <CheckIcon />,
     closed: (
       <svg
         viewBox="0 0 24 24"
@@ -547,7 +529,7 @@ function ProgressTrack({
             key={i}
           >
             <span className="tip">
-              {s.label}: {fmtMoney(s.amountUsd)}
+              {s.label}: {fmtUsd(s.amountUsd)}
             </span>
           </div>
         ))}
@@ -578,19 +560,9 @@ function AllocationEntryRow({
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
-  function formatAmount(value: string) {
-    const raw = value.replace(/,/g, "").replace(/[^0-9.]/g, "");
-    const parts = raw.split(".");
-    const intPart = (parts[0] ?? "").replace(/^0+(?=\d)/, "");
-    const decPart =
-      parts.length > 1 ? parts.slice(1).join("").slice(0, 2) : null;
-    const intDisplay = intPart ? Number(intPart).toLocaleString("en-US") : "";
-    return decPart == null ? intDisplay : (intDisplay || "0") + "." + decPart;
-  }
-
   async function add() {
     const trimmed = name.trim();
-    const parsed = +amount.replace(/[^0-9.]/g, "") || 0;
+    const parsed = parseMoney(amount);
     if (!trimmed || !(parsed > 0)) {
       setError(
         !trimmed ? "Enter a buyer name." : "Enter an amount greater than 0.",
@@ -634,7 +606,7 @@ function AllocationEntryRow({
             placeholder="0.00"
             autoComplete="off"
             value={amount}
-            onChange={(e) => setAmount(formatAmount(e.target.value))}
+            onChange={(e) => setAmount(formatAmountInput(e.target.value))}
           />
         </div>
       </td>
@@ -667,7 +639,7 @@ interface FundedRow {
   status: "funded";
   name: string;
   isPublic: boolean;
-  buyer: string;
+  buyer: Address;
   units: number;
   cost: number;
   txHash: string | null;
@@ -679,7 +651,7 @@ interface OpenRow {
   key: string;
   status: "allocated" | "revoked";
   name: string;
-  allocationId: string;
+  allocationId: Hex;
   amountUsd: number;
   createdAt: number;
   link: string;
@@ -774,14 +746,14 @@ function AllocationsTable({
                     <span className="t-muted"> · public</span>
                   ) : null}
                 </td>
-                <td className="num">{fmtMoney(cost)}</td>
+                <td className="num">{fmtUsd(cost)}</td>
                 <td>
                   Purchased{" "}
                   <span className="tokencell">
                     {fmtTokens(row.units)} tokens
                     <span className="tip2">
-                      {row.units > 0 ? fmtTokenPrice(cost / row.units) : "—"} /
-                      token
+                      {row.units > 0 ? fmtUsd(cost / row.units, "price") : "—"}{" "}
+                      / token
                     </span>
                   </span>
                 </td>
@@ -861,7 +833,7 @@ function AllocationsTable({
           {open.map((row) => (
             <tr key={row.key}>
               <td>{row.name}</td>
-              <td className="num">{fmtMoney(row.amountUsd)}</td>
+              <td className="num">{fmtUsd(row.amountUsd)}</td>
               <td>
                 {row.status === "revoked" ? (
                   <span className="badge revoked">Revoked</span>
@@ -871,7 +843,7 @@ function AllocationsTable({
                   <>
                     <span className="badge allocated">Allocated</span>{" "}
                     {row.createdAt ? (
-                      <span>{fmtShort(row.createdAt)}</span>
+                      <span>{fmtShortDate(row.createdAt)}</span>
                     ) : null}
                   </>
                 )}
@@ -917,7 +889,7 @@ function AllocationsTable({
 
 interface CapTableState {
   status: "loading" | "loaded" | "error";
-  holders?: Array<{ address: string; balance: number }> | undefined;
+  holders?: Array<{ address: Address; balance: number }> | undefined;
   error?: string | undefined;
 }
 
@@ -1029,12 +1001,250 @@ function CapTable({
   );
 }
 
+// Progress-bar segments: funded raise first, then the still-open allocations
+// stacked after it until the track runs out.
+function buildProgressSegs(
+  raisedTotal: number,
+  openRows: OpenRow[],
+  progressMax: number,
+): ProgressSeg[] {
+  const segs: ProgressSeg[] = [];
+  if (raisedTotal > 0)
+    segs.push({
+      label: "Onchain purchases",
+      amountUsd: raisedTotal,
+      left: 0,
+      width: Math.min((raisedTotal / progressMax) * 100, 100),
+      funded: true,
+    });
+  let cum = raisedTotal;
+  openRows.forEach((row) => {
+    const left = (cum / progressMax) * 100;
+    if (left < 100)
+      segs.push({
+        label: row.name,
+        amountUsd: row.amountUsd,
+        left,
+        width: Math.min((row.amountUsd / progressMax) * 100, 100 - left),
+        funded: false,
+      });
+    cum += row.amountUsd;
+  });
+  return segs;
+}
+
+// Everything StatusApp renders, derived from the listing record, the live
+// snapshot, and the allocation ledger. Pure so the JSX below stays scannable.
+function deriveStatusView({
+  record,
+  offering,
+  debugState,
+  wallet,
+  bought,
+  ledger,
+}: {
+  record: OfferingRecord;
+  offering: OfferingSnapshot;
+  debugState: string;
+  wallet: string | null;
+  bought: Purchase[];
+  ledger: AllocationLedgerRow[];
+}) {
+  const loadedOffering =
+    offering && offering.status === "loaded" ? offering : null;
+  const onchainOffering = debugOfferingSnapshot(
+    record,
+    loadedOffering,
+    debugState,
+  );
+  const offeringReadFailed =
+    !debugActive(debugState) && offering && offering.status === "error";
+  const debugReadFailed = debugState === "error";
+  const offeringLoading =
+    debugState === "loading" || !offering || offering.status === "loading";
+  const canManage =
+    !!wallet &&
+    (onchainOffering
+      ? isSameAddress(wallet, onchainOffering.owner) ||
+        isSameAddress(wallet, onchainOffering.treasury)
+      : isSameAddress(wallet, record.issuer) ||
+        isSameAddress(wallet, record.treasury));
+
+  const curve =
+    onchainOffering && onchainOffering.priceStart > 0
+      ? offeringStateCurve(onchainOffering)
+      : offeringStateCurve(record);
+  const raisedTotal = onchainOffering
+    ? usdcBaseUnitsToDollars(onchainOffering.raised)
+    : 0;
+  const purchased = onchainOffering ? onchainOffering.unitsSold : 0;
+  const closeDate =
+    (onchainOffering && onchainOffering.closeDate
+      ? onchainOffering.closeDate
+      : record.closeDate) * 1000;
+  const pastClose = Date.now() > closeDate;
+  const open = onchainOffering
+    ? onchainOffering.state === 0 && (!pastClose || onchainOffering.minMet)
+    : !pastClose;
+  const minUsd = usdcBaseUnitsToDollars(
+    onchainOffering ? onchainOffering.raiseMin : record.raiseMin,
+  );
+  const secured = onchainOffering ? onchainOffering.minMet : false;
+  const localStatus = offeringStatus(onchainOffering, open, secured);
+  const statusInfo: StatusInfo = (() => {
+    if (debugState === "loading")
+      return { label: "Loading…", tone: "loading", note: "" };
+    if (debugState === "error")
+      return {
+        label: "Contract read failed",
+        tone: "failed",
+        note: "Refresh to retry",
+      };
+    if (onchainOffering) return localStatus;
+    if (offering && offering.status === "error")
+      return {
+        label: "Contract read failed",
+        tone: "failed",
+        note: "Refresh to retry",
+      };
+    return { label: "Loading…", tone: "loading", note: "" };
+  })();
+  const claimable = onchainOffering
+    ? Math.max(
+        0,
+        raisedTotal - usdcBaseUnitsToDollars(onchainOffering.withdrawn),
+      )
+    : 0;
+  const remainingUnits = onchainOffering ? onchainOffering.remainingUnits : 0;
+  const remainingCapacity = usdcBaseUnitsToDollars(
+    costForUnits(curve, purchased, remainingUnits),
+  );
+  const progressMax = Math.max(
+    raisedTotal + remainingCapacity,
+    minUsd,
+    raisedTotal,
+    0.000001,
+  );
+  const valStart = valuationForUnitIndex(curve, 0, TOTAL_TOKENS);
+  const valNow = valuationForUnitIndex(curve, purchased, TOTAL_TOKENS);
+  const valEnd = valuationForUnitIndex(
+    curve,
+    purchased + remainingUnits,
+    TOTAL_TOKENS,
+  );
+
+  const rows = allocationRows(bought, ledger);
+  const refundBuyers = Array.from(
+    new Set(bought.map((p) => p.buyer.toLowerCase())),
+  );
+  const refundTotal = usdcBaseUnitsToDollars(
+    bought.reduce((sum, p) => sum + p.cost, 0),
+  );
+  // The ledger rows come from localStorage, so coerce before summing.
+  const allocatedTotal = rows.open.reduce(
+    (sum, row) => sum + Number(row.amountUsd || 0),
+    0,
+  );
+  const buyerNames = new Map(
+    bought
+      .filter((p) => p.buyerName)
+      .map((p) => [p.buyer.toLowerCase(), p.buyerName]),
+  );
+
+  const liveActionItems = onchainOffering
+    ? offeringActionsFor({
+        onchainOffering,
+        connectedWallet: wallet,
+        closeDate,
+        canManage,
+        refundBuyers,
+        refundTotal,
+        remainingUnits,
+        projectName: record.projectName,
+      })
+    : [];
+  const actionItems = offeringLoading
+    ? disabledContractReadActions(
+        liveActionItems,
+        "Reading contract state",
+        record.projectName,
+      )
+    : offeringReadFailed || debugReadFailed
+      ? disabledContractReadActions(
+          liveActionItems,
+          "Cannot read contract state",
+          record.projectName,
+        )
+      : liveActionItems;
+
+  const segs =
+    !offeringLoading && onchainOffering
+      ? buildProgressSegs(raisedTotal, rows.open, progressMax)
+      : [];
+  const minPct = Math.min(100, (minUsd / progressMax) * 100);
+  const over = raisedTotal + allocatedTotal - progressMax; // committed beyond live capacity
+
+  const publicTreasury = onchainOffering
+    ? onchainOffering.treasury
+    : record.treasury;
+  const publicUnitsAvailable = onchainOffering
+    ? availablePublicUnits(onchainOffering)
+    : 0;
+  const publicQuantityDisabledReason = !onchainOffering
+    ? "Reading contract state"
+    : onchainOffering.state !== 0
+      ? "Offering is not open"
+      : !wallet || !isSameAddress(wallet, onchainOffering.owner)
+        ? "Connect owner wallet to adjust"
+        : "";
+  const publicOwner = onchainOffering && onchainOffering.owner;
+  const showOwner = publicOwner && !isSameAddress(publicOwner, publicTreasury);
+
+  return {
+    onchainOffering,
+    offeringLoading,
+    canManage,
+    statusInfo,
+    closeDate,
+    open,
+    minUsd,
+    raisedTotal,
+    claimable,
+    remainingUnits,
+    progressMax,
+    valStart,
+    valNow,
+    valEnd,
+    rows,
+    allocatedTotal,
+    buyerNames,
+    actionItems,
+    segs,
+    minPct,
+    over,
+    publicTreasury,
+    publicUnitsAvailable,
+    publicQuantityDisabledReason,
+    publicOwner,
+    showOwner,
+  };
+}
+
 function StatusApp() {
   const [ledger, setLedger] = useState<AllocationLedgerRow[]>([]);
-  const [debugState, setDebugState] = useState("live");
   const [entryOpen, setEntryOpen] = useState(false);
   const [busyAction, setBusyAction] = useState<string | null>(null);
-  const debugRef = useRef("live");
+
+  const debugState = useDebugMenu([
+    { value: "live", label: "Live" },
+    { value: "loading", label: "Loading" },
+    { value: "error", label: "Read failed" },
+    { value: "funding", label: "Open — below minimum" },
+    { value: "secured", label: "Open — minimum reached" },
+    { value: "withdrawn", label: "Withdrawn" },
+    { value: "failed", label: "Failed" },
+    { value: "closed", label: "Closed" },
+  ]);
 
   const wallet = useWallet();
   const queryClient = useQueryClient();
@@ -1102,26 +1312,6 @@ function StatusApp() {
   };
 
   useEffect(() => {
-    initDebugMenu({
-      states: [
-        { value: "live", label: "Live" },
-        { value: "loading", label: "Loading" },
-        { value: "error", label: "Read failed" },
-        { value: "funding", label: "Open — below minimum" },
-        { value: "secured", label: "Open — minimum reached" },
-        { value: "withdrawn", label: "Withdrawn" },
-        { value: "failed", label: "Failed" },
-        { value: "closed", label: "Closed" },
-      ],
-      getState: () => debugRef.current,
-      setState: (state) => {
-        debugRef.current = state;
-        setDebugState(state);
-      },
-    });
-  }, []);
-
-  useEffect(() => {
     if (record) setLedger(listAllocationLedger(record.offering));
   }, [record]);
 
@@ -1158,10 +1348,7 @@ function StatusApp() {
     let publicUnitsInput: number | null = null;
     if (action === "set-public-units") {
       if (!offering || offering.status !== "loaded") return;
-      const current = Math.min(
-        offering.remainingUnits,
-        Math.max(0, offering.publicUnits - offering.publicUnitsSold),
-      );
+      const current = availablePublicUnits(offering);
       const answer = prompt(
         `Publicly available units (currently ${current}, maximum ${offering.remainingUnits}):`,
         String(current),
@@ -1233,10 +1420,7 @@ function StatusApp() {
       ownerSig,
       linkPrivateKey,
     });
-    const link = new URL(
-      buyLinkPath(record.offering, fragmentPayload),
-      location.origin,
-    ).href;
+    const link = absoluteUrl(buyLinkPath(record.offering, fragmentPayload));
     const row = {
       allocationId,
       name,
@@ -1298,185 +1482,41 @@ function StatusApp() {
     );
   }
 
-  const loadedOffering =
-    offering && offering.status === "loaded" ? offering : null;
-  const onchainOffering = debugOfferingSnapshot(
-    record,
-    loadedOffering,
-    debugState,
-  );
-  const offeringReadFailed =
-    !debugActive(debugState) && offering && offering.status === "error";
-  const debugReadFailed = debugState === "error";
-  const offeringLoading =
-    debugState === "loading" || !offering || offering.status === "loading";
-  const canManage =
-    !!wallet &&
-    (onchainOffering
-      ? isSameAddress(wallet, onchainOffering.owner) ||
-        isSameAddress(wallet, onchainOffering.treasury)
-      : isSameAddress(wallet, record.issuer) ||
-        isSameAddress(wallet, record.treasury));
-
-  const curve =
-    onchainOffering && Number(onchainOffering.priceStart || 0) > 0
-      ? {
-          priceStart: onchainOffering.priceStart,
-          priceSlope: onchainOffering.priceSlope || 0,
-        }
-      : { priceStart: record.priceStart, priceSlope: record.priceSlope };
-  const raisedTotal = onchainOffering
-    ? usdcBaseUnitsToDollars(onchainOffering.raised)
-    : 0;
-  const purchased = onchainOffering ? onchainOffering.unitsSold : 0;
-  const closeDate =
-    (onchainOffering && onchainOffering.closeDate
-      ? onchainOffering.closeDate
-      : record.closeDate) * 1000;
-  const pastClose = Date.now() > closeDate;
-  const open = onchainOffering
-    ? onchainOffering.state === 0 && (!pastClose || onchainOffering.minMet)
-    : !pastClose;
-  const minUsd = usdcBaseUnitsToDollars(
-    onchainOffering ? onchainOffering.raiseMin : record.raiseMin,
-  );
-  const secured = onchainOffering ? onchainOffering.minMet : false;
-  const localStatus = offeringStatus(onchainOffering, open, secured);
-  const statusInfo = (() => {
-    if (debugState === "loading")
-      return { label: "Loading…", tone: "loading", note: "" };
-    if (debugState === "error")
-      return {
-        label: "Contract read failed",
-        tone: "failed",
-        note: "Refresh to retry",
-      };
-    if (onchainOffering) return localStatus;
-    if (offering && offering.status === "error")
-      return {
-        label: "Contract read failed",
-        tone: "failed",
-        note: "Refresh to retry",
-      };
-    return { label: "Loading…", tone: "loading", note: "" };
-  })();
-  const claimable = onchainOffering
-    ? Math.max(
-        0,
-        raisedTotal - usdcBaseUnitsToDollars(onchainOffering.withdrawn),
-      )
-    : 0;
-  const remainingUnits = onchainOffering
-    ? Number(onchainOffering.remainingUnits || 0)
-    : 0;
-  const remainingCapacity = usdcBaseUnitsToDollars(
-    costForUnits(curve, purchased, remainingUnits),
-  );
-  const progressMax = Math.max(
-    raisedTotal + remainingCapacity,
+  const {
+    onchainOffering,
+    offeringLoading,
+    canManage,
+    statusInfo,
+    closeDate,
+    open,
     minUsd,
     raisedTotal,
-    0.000001,
-  );
-  const valStart = valuationForUnitIndex(curve, 0, TOTAL_TOKENS);
-  const valNow = valuationForUnitIndex(curve, purchased, TOTAL_TOKENS);
-  const valEnd = valuationForUnitIndex(
-    curve,
-    purchased + remainingUnits,
-    TOTAL_TOKENS,
-  );
-
-  const rows = allocationRows(bought, ledger);
-  const refundBuyers = Array.from(
-    new Set(bought.map((p) => p.buyer.toLowerCase())),
-  );
-  const refundTotal = usdcBaseUnitsToDollars(
-    bought.reduce((sum, p) => sum + p.cost, 0),
-  );
-  const allocatedTotal = rows.open.reduce(
-    (sum, row) => sum + Number(row.amountUsd || 0),
-    0,
-  );
-  const buyerNames = new Map(
-    bought
-      .filter((p) => p.buyerName)
-      .map((p) => [p.buyer.toLowerCase(), p.buyerName]),
-  );
-
-  const liveActionItems = onchainOffering
-    ? offeringActionsFor(
-        onchainOffering,
-        wallet,
-        closeDate,
-        canManage,
-        refundBuyers,
-        refundTotal,
-        remainingUnits,
-        record.projectName,
-      )
-    : [];
-  const actionItems = offeringLoading
-    ? disabledContractReadActions(
-        liveActionItems,
-        "Reading contract state",
-        record.projectName,
-      )
-    : offeringReadFailed || debugReadFailed
-      ? disabledContractReadActions(
-          liveActionItems,
-          "Cannot read contract state",
-          record.projectName,
-        )
-      : liveActionItems;
-
-  const segs: ProgressSeg[] = [];
-  if (!offeringLoading && onchainOffering) {
-    if (raisedTotal > 0)
-      segs.push({
-        label: "Onchain purchases",
-        amountUsd: raisedTotal,
-        left: 0,
-        width: Math.min((raisedTotal / progressMax) * 100, 100),
-        funded: true,
-      });
-    let cum = raisedTotal;
-    rows.open.forEach((row) => {
-      const left = (cum / progressMax) * 100;
-      if (left < 100)
-        segs.push({
-          label: row.name,
-          amountUsd: row.amountUsd,
-          left,
-          width: Math.min((row.amountUsd / progressMax) * 100, 100 - left),
-          funded: false,
-        });
-      cum += row.amountUsd;
-    });
-  }
-  const minPct = Math.min(100, (minUsd / progressMax) * 100);
-  const over = raisedTotal + allocatedTotal - progressMax; // committed beyond live capacity
-
-  const publicTreasury = onchainOffering
-    ? onchainOffering.treasury
-    : record.treasury;
-  const publicUnitsAvailable = onchainOffering
-    ? Math.min(
-        remainingUnits,
-        Math.max(
-          0,
-          onchainOffering.publicUnits - onchainOffering.publicUnitsSold,
-        ),
-      )
-    : 0;
-  const publicQuantityDisabledReason = !onchainOffering
-    ? "Reading contract state"
-    : onchainOffering.state !== 0
-      ? "Offering is not open"
-      : !wallet || !isSameAddress(wallet, onchainOffering.owner)
-        ? "Connect owner wallet to adjust"
-        : "";
-  const publicOwner = onchainOffering && onchainOffering.owner;
-  const showOwner = publicOwner && !isSameAddress(publicOwner, publicTreasury);
+    claimable,
+    remainingUnits,
+    progressMax,
+    valStart,
+    valNow,
+    valEnd,
+    rows,
+    allocatedTotal,
+    buyerNames,
+    actionItems,
+    segs,
+    minPct,
+    over,
+    publicTreasury,
+    publicUnitsAvailable,
+    publicQuantityDisabledReason,
+    publicOwner,
+    showOwner,
+  } = deriveStatusView({
+    record,
+    offering,
+    debugState,
+    wallet,
+    bought,
+    ledger,
+  });
 
   return (
     <>
@@ -1500,17 +1540,19 @@ function StatusApp() {
       <SectionTitle className="mt-8">Offering details</SectionTitle>
       <DefList>
         <Field label="Target amount" loading={offeringLoading}>
-          <span>Up to {fmtMoney(progressMax)}</span>
-          <Sub>{fmtDollars(minUsd)} minimum</Sub>
+          <span>Up to {fmtUsd(progressMax)}</span>
+          <Sub>{fmtUsd(minUsd, "cents")} minimum</Sub>
         </Field>
         <Field label="Valuation range" loading={offeringLoading}>
           <span>
-            {fmtMoney(valStart)}–{fmtMoney(valEnd)} post-money
+            {fmtUsd(valStart)}–{fmtUsd(valEnd)} post-money
           </span>
         </Field>
         <Field label="Close date">
           <span>{fmtDate(closeDate)}</span>
-          {relDays(closeDate) ? <Sub>{relDays(closeDate)}</Sub> : null}
+          {relDays(closeDate, { pastDates: false }) ? (
+            <Sub>{relDays(closeDate, { pastDates: false })}</Sub>
+          ) : null}
         </Field>
         <Field label="Treasury" align="none">
           {publicTreasury ? (
@@ -1519,7 +1561,7 @@ function StatusApp() {
             <span className="t-muted">Not set</span>
           )}
         </Field>
-        {showOwner ? (
+        {publicOwner && showOwner ? (
           <Field label="Owner" align="none">
             <AddressLink address={publicOwner} />
           </Field>
@@ -1532,16 +1574,16 @@ function StatusApp() {
           <StatusBadge status={statusInfo} />
         </Field>
         <Field label="Raised" loading={offeringLoading}>
-          <span>{fmtMoney(raisedTotal)}</span>
-          <Sub>{fmtMoney(claimable)} claimable</Sub>
+          <span>{fmtUsd(raisedTotal)}</span>
+          <Sub>{fmtUsd(claimable)} claimable</Sub>
         </Field>
         <Field label="Available" loading={offeringLoading}>
           <span>{fmtPct((remainingUnits / TOTAL_TOKENS) * 100)}</span>
           <Sub>{fmtTokens(remainingUnits)} tokens</Sub>
         </Field>
         <Field label="Valuation" loading={offeringLoading}>
-          <span>{fmtMoney(valNow)} post-money</span>
-          <Sub>{fmtTokenPrice(valNow / TOTAL_TOKENS)} / token</Sub>
+          <span>{fmtUsd(valNow)} post-money</span>
+          <Sub>{fmtUsd(valNow / TOTAL_TOKENS, "price")} / token</Sub>
         </Field>
       </DefList>
 
@@ -1550,13 +1592,13 @@ function StatusApp() {
           <ProgressTrack
             segs={segs}
             minPct={minPct}
-            minTip={`Minimum: ${fmtDollars(minUsd)}`}
+            minTip={`Minimum: ${fmtUsd(minUsd, "cents")}`}
             raisedNode={
               offeringLoading ? (
                 <span className="font-bold t-muted">Loading…</span>
               ) : (
                 <>
-                  <span className="font-bold">{fmtMoney(raisedTotal)}</span>{" "}
+                  <span className="font-bold">{fmtUsd(raisedTotal)}</span>{" "}
                   raised
                 </>
               )
@@ -1566,9 +1608,9 @@ function StatusApp() {
                 <>
                   {onchainOffering ? (
                     <>
-                      <Sub>{fmtMoney(claimable)} claimable</Sub>
+                      <Sub>{fmtUsd(claimable)} claimable</Sub>
                       <Sub>
-                        {fmtMoney(
+                        {fmtUsd(
                           usdcBaseUnitsToDollars(onchainOffering.withdrawn),
                         )}{" "}
                         withdrawn
@@ -1576,17 +1618,17 @@ function StatusApp() {
                     </>
                   ) : null}
                   {allocatedTotal > 0 ? (
-                    <Sub>{fmtMoney(allocatedTotal)} allocated</Sub>
+                    <Sub>{fmtUsd(allocatedTotal)} allocated</Sub>
                   ) : null}
                   {over > 0 ? (
                     <span className="text-pending">
-                      {fmtMoney(over)} oversubscribed
+                      {fmtUsd(over)} oversubscribed
                     </span>
                   ) : null}
                 </>
               )
             }
-            maxLabel={offeringLoading ? "" : fmtMoney(progressMax)}
+            maxLabel={offeringLoading ? "" : fmtUsd(progressMax)}
           />
           <OfferingActions
             actions={actionItems}
@@ -1596,9 +1638,7 @@ function StatusApp() {
           <AllocationsTable
             rows={rows}
             publicUnitsAvailable={publicUnitsAvailable}
-            publicBuyUrl={
-              new URL(buyPath(record.offering), location.origin).href
-            }
+            publicBuyUrl={absoluteUrl(buyPath(record.offering))}
             publicQuantityDisabledReason={publicQuantityDisabledReason}
             offeringOpen={open}
             entryOpen={entryOpen}

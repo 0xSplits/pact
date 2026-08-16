@@ -1,12 +1,13 @@
 // Builds the OfferingFactory holder inputs from a PACT's cap table.
 // Framework-free so the node test runner can exercise it directly.
+import type { Address } from "viem";
 import { isAddress } from "../validate.ts";
 
 // Splits' default Liquid Split is exactly 1,000 units, where each unit is 0.1%.
 export const TOTAL_LIQUID_SPLIT_UNITS = 1000;
 
 export interface OfferingFactoryInputs {
-  holderAccounts: string[];
+  holderAccounts: Address[];
   holderAllocations: number[];
   offeringUnits: number;
 }
@@ -20,10 +21,12 @@ interface PactHolderInputs {
 function checksumOrLower(
   address: string,
   getAddress?: (address: string) => string,
-): string {
+): Address {
   const trimmed = String(address || "").trim();
   if (!isAddress(trimmed)) throw new Error("Invalid address: " + trimmed);
-  return getAddress ? getAddress(trimmed) : trimmed.toLowerCase();
+  // Lowercasing (or a test fake's getAddress) widens the template-literal
+  // type back to string; the guard above makes the assertion sound.
+  return (getAddress ? getAddress(trimmed) : trimmed.toLowerCase()) as Address;
 }
 
 // Returns { holderAccounts, holderAllocations, offeringUnits } for
@@ -41,7 +44,7 @@ export function buildOfferingFactoryInputs(
     throw new Error("Offering units must be a positive whole number.");
   }
 
-  const merged = new Map<string, { address: string; units: number }>();
+  const merged = new Map<string, { address: Address; units: number }>();
   (pact.holders || []).forEach((holder) => {
     const normalized = checksumOrLower(holder.address, getAddress);
     const units = Number(holder.tokens);

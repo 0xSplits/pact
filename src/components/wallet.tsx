@@ -13,8 +13,10 @@ import {
 import { WagmiProvider, useAccount, useConnect, useDisconnect } from "wagmi";
 import type { Connector } from "wagmi";
 import { wagmiConfig } from "../lib/chain/wagmi.ts";
-import { listOfferings, listPurchases } from "../lib/chain/offerings.ts";
-import type { OfferingRecord, Purchase } from "../lib/chain/onchain.ts";
+import { loadWalletRecords } from "../lib/chain/offerings.ts";
+import { shortAddr } from "../lib/format.ts";
+import { isSameAddress } from "../lib/validate.ts";
+import { CheckIcon } from "./ui.tsx";
 import {
   buyPath,
   createPath,
@@ -41,9 +43,6 @@ export function AppProviders({ children }: { children: ReactNode }) {
     </WagmiProvider>
   );
 }
-
-const short = (address: string) =>
-  address.slice(0, 6) + "…" + address.slice(-4);
 
 // The Splits Connect extension, keyed by its EIP-6963 rdns: pinned first when
 // installed, offered as a Chrome Web Store link when not.
@@ -75,16 +74,7 @@ function MenuCheck({ active }: { active: boolean }) {
     return <span className="wallet-menu-check" aria-hidden="true"></span>;
   return (
     <span className="wallet-menu-check active" aria-label="Selected">
-      <svg
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="3"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      >
-        <path d="m5 12 4 4L19 6" />
-      </svg>
+      <CheckIcon />
     </span>
   );
 }
@@ -95,31 +85,19 @@ function WalletRecordGroups() {
     queryKey: ["wallet-records", account ? account.toLowerCase() : null],
     enabled: !!account,
     queryFn: async () => {
-      try {
-        const offerings = await listOfferings();
-        const wallet = String(account).toLowerCase();
-        const mine = offerings.filter(
-          (r) =>
-            r.issuer.toLowerCase() === wallet ||
-            r.treasury.toLowerCase() === wallet,
-        );
-        const bought = await listPurchases({ wallet: account!, offerings });
-        const purchases = Array.from(
+      const { pacts, purchases } = await loadWalletRecords(account!);
+      // One menu row per offering, however many purchases it holds.
+      return {
+        pacts,
+        purchases: Array.from(
           new Map(
-            bought.map((purchase) => [
+            purchases.map((purchase) => [
               purchase.offering.toLowerCase(),
               purchase,
             ]),
           ).values(),
-        );
-        return { pacts: mine, purchases };
-      } catch (err) {
-        // Scan failures degrade to empty groups rather than a stuck loader.
-        return {
-          pacts: [] as OfferingRecord[],
-          purchases: [] as Array<Purchase & { record: OfferingRecord }>,
-        };
-      }
+        ),
+      };
     },
   });
   const pacts = data ? data.pacts : null;
@@ -143,7 +121,7 @@ function WalletRecordGroups() {
               <MenuCheck
                 active={
                   viewingIssuance &&
-                  pact.offering.toLowerCase() === activeOffering
+                  isSameAddress(pact.offering, activeOffering)
                 }
               />
             </a>
@@ -170,7 +148,7 @@ function WalletRecordGroups() {
                 <MenuCheck
                   active={
                     viewingPurchase &&
-                    purchase.offering.toLowerCase() === activeOffering
+                    isSameAddress(purchase.offering, activeOffering)
                   }
                 />
               </a>
@@ -234,7 +212,7 @@ function WalletButton() {
   }
 
   const label = account
-    ? short(account)
+    ? shortAddr(account)
     : isPending
       ? "Connecting…"
       : error
@@ -262,7 +240,7 @@ function WalletButton() {
         className={"wallet-toggle" + stateClass}
         type="button"
         title={title}
-        aria-label={account ? "Wallet " + short(account) : label}
+        aria-label={account ? "Wallet " + shortAddr(account) : label}
         onClick={handleToggle}
       >
         {label}

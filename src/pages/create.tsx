@@ -7,24 +7,31 @@ import { AppProviders } from "../components/wallet.tsx";
 import { useWallet } from "../hooks/use-wallet.ts";
 import { drawCurve, attachCurveHover } from "../lib/ui/chart.ts";
 import type { CurveChartConfig } from "../lib/ui/chart.ts";
+import type { Address } from "viem";
 import { isAddress } from "../lib/validate.ts";
 import { TOTAL_LIQUID_SPLIT_UNITS } from "../lib/chain/liquid-split.ts";
 import { createOffering } from "../lib/chain/onchain.ts";
 import { seedOffering } from "../lib/chain/offerings.ts";
-import { deriveOfferingCurve, costForUnits } from "../lib/chain/curve.ts";
+import {
+  deriveOfferingCurve,
+  costForUnits,
+  fractionAtRaise,
+} from "../lib/chain/curve.ts";
 import type { Pact } from "../lib/chain/curve.ts";
+import {
+  fmtUsd,
+  fmtPct,
+  fmtTokens,
+  parseMoney,
+  usdcBaseUnitsToDollars,
+} from "../lib/format.ts";
 import { Button } from "../components/ui.tsx";
 import { statusPath } from "../lib/routes.ts";
 import { showToast } from "../lib/ui/toast.ts";
 
 const TOTAL_SHARES = TOTAL_LIQUID_SPLIT_UNITS; // 0.1% = 1 token
-const fmtFull = (v: number) => "$" + Math.round(v).toLocaleString("en-US");
 const oneDecimal = (v: string | number) =>
   (Math.round((Number(v) || 0) * 10) / 10).toFixed(1);
-const fmtPct = (v: string | number) => oneDecimal(v) + "%";
-const fmtShares = (v: number) => Math.round(v).toLocaleString("en-US");
-const parseMoney = (s: string | number) =>
-  +String(s).replace(/[^0-9.]/g, "") || 0;
 
 function isUserRejected(err: unknown): boolean {
   let current = err;
@@ -146,20 +153,11 @@ function deriveCurve(form: CreateForm, holders: HolderRow[]) {
   const vMin = cap * (1 - spread);
   const vMax = cap * (1 + spread);
 
-  // where the minimum raise lands on the curve (inverse of area under the curve)
+  // where the minimum raise lands on the curve
   const F = dilution;
-  let fMin = 0;
-  if (cap && raiseMin > 0) {
-    if (raiseMin >= raiseMax) fMin = F;
-    else if (vMax === vMin) fMin = Math.min(raiseMin / cap, F);
-    else {
-      const a = (vMax - vMin) / (2 * F);
-      fMin = Math.min(
-        (-vMin + Math.sqrt(vMin * vMin + 4 * a * raiseMin)) / (2 * a),
-        F,
-      );
-    }
-  }
+  const fMin = cap
+    ? fractionAtRaise({ vMin, vMax, cap, F, rmax: raiseMax }, raiseMin)
+    : 0;
 
   const keep = 1 - dilution;
   let beforeSum = 0,
@@ -219,7 +217,9 @@ function integerCurveMaxUsd(form: CreateForm) {
     },
     newMoney: { tokens: offeringUnits },
   });
-  return curve ? costForUnits(curve, 0, offeringUnits) / 1000000 : null;
+  return curve
+    ? usdcBaseUnitsToDollars(costForUnits(curve, 0, offeringUnits))
+    : null;
 }
 
 // Per-field validation, shared by blur ("touched") checks and submit.
@@ -288,7 +288,7 @@ function formIsValid(
 function buildPact(
   form: CreateForm,
   holders: HolderRow[],
-  wallet: string,
+  wallet: Address,
 ): Pact {
   const rmin = parseMoney(form.raiseMin);
   const rmax = parseMoney(form.raiseMax);
@@ -820,7 +820,7 @@ function CreateApp() {
                 %
               </td>
               <td className="num">{fmtPct(h.after)}</td>
-              <td className="num">{fmtShares(h.shares)}</td>
+              <td className="num">{fmtTokens(h.shares)}</td>
               <td className="num w-6">
                 <button
                   className="delx"
@@ -850,7 +850,7 @@ function CreateApp() {
               {fmtPct(d.dilution * 100)}
             </td>
             <td className="num" id="newShares">
-              {fmtShares(d.newShares)}
+              {fmtTokens(d.newShares)}
             </td>
             <td></td>
           </tr>
@@ -879,7 +879,7 @@ function CreateApp() {
               )}
               id="sharesTotal"
             >
-              {fmtShares(d.sharesSum)}
+              {fmtTokens(d.sharesSum)}
             </td>
             <td></td>
           </tr>
@@ -896,7 +896,7 @@ function CreateApp() {
         Accordingly, upon full subscription the effective post-money valuation
         shall be{" "}
         <span className="font-bold" id="capOut">
-          {d.cap ? fmtFull(d.cap) : "—"}
+          {d.cap ? fmtUsd(d.cap, "whole") : "—"}
         </span>
         .
       </p>
@@ -917,11 +917,11 @@ function CreateApp() {
         % discount to the effective post-money valuation. Thereafter, pricing
         shall progress linearly along the Curve, beginning at a floor of{" "}
         <span className="font-bold" id="vMinOut">
-          {d.cap ? fmtFull(d.vMin) : "—"}
+          {d.cap ? fmtUsd(d.vMin, "whole") : "—"}
         </span>{" "}
         and reaching a ceiling of{" "}
         <span className="font-bold" id="vMaxOut">
-          {d.cap ? fmtFull(d.vMax) : "—"}
+          {d.cap ? fmtUsd(d.vMax, "whole") : "—"}
         </span>
         , an equivalent premium at full subscription.
       </p>

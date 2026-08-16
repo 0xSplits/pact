@@ -198,7 +198,7 @@ export function decodeVoucherFragment(fragment: string): DecodedVoucherLink {
 // the DMs they were sent in, re-issuing is free).
 
 export interface AllocationLedgerRow {
-  allocationId: string;
+  allocationId: Hex;
   name: string;
   amountCapUsd: number;
   link: string;
@@ -206,11 +206,11 @@ export interface AllocationLedgerRow {
   revokedAt?: number;
 }
 
-const ledgerKey = (offering: string) =>
+const ledgerKey = (offering: Address) =>
   "pact:allocations:" + String(offering).toLowerCase();
 
 export function listAllocationLedger(
-  offering: string,
+  offering: Address,
   storage: KVStorage = localStorage,
 ): AllocationLedgerRow[] {
   try {
@@ -222,7 +222,7 @@ export function listAllocationLedger(
 }
 
 export function saveAllocationLedgerRow(
-  offering: string,
+  offering: Address,
   row: AllocationLedgerRow,
   storage: KVStorage = localStorage,
 ): void {
@@ -237,8 +237,8 @@ export function saveAllocationLedgerRow(
 // an unclaimed allocation ever existed (the AllocationCancelled event carries
 // just the id), so a mark beats an erasure.
 export function markAllocationLedgerRowRevoked(
-  offering: string,
-  allocationId: string,
+  offering: Address,
+  allocationId: Hex,
   revokedAt: number,
   storage: KVStorage = localStorage,
 ): void {
