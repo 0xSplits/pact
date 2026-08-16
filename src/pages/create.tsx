@@ -7,6 +7,7 @@ import { AppProviders } from "../components/wallet.tsx";
 import { useWallet } from "../hooks/use-wallet.ts";
 import { drawCurve, attachCurveHover } from "../lib/ui/chart.ts";
 import type { CurveChartConfig } from "../lib/ui/chart.ts";
+import type { Address } from "viem";
 import { isAddress } from "../lib/validate.ts";
 import { TOTAL_LIQUID_SPLIT_UNITS } from "../lib/chain/liquid-split.ts";
 import { createOffering } from "../lib/chain/onchain.ts";
@@ -287,7 +288,7 @@ function formIsValid(
 function buildPact(
   form: CreateForm,
   holders: HolderRow[],
-  wallet: string,
+  wallet: Address,
 ): Pact {
   const rmin = parseMoney(form.raiseMin);
   const rmax = parseMoney(form.raiseMax);

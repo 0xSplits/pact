@@ -53,6 +53,7 @@ import type {
   OfferingState,
   Purchase,
 } from "../lib/chain/onchain.ts";
+import type { Address, Hex } from "viem";
 import {
   listOfferings,
   findOffering,
@@ -638,7 +639,7 @@ interface FundedRow {
   status: "funded";
   name: string;
   isPublic: boolean;
-  buyer: string;
+  buyer: Address;
   units: number;
   cost: number;
   txHash: string | null;
@@ -650,7 +651,7 @@ interface OpenRow {
   key: string;
   status: "allocated" | "revoked";
   name: string;
-  allocationId: string;
+  allocationId: Hex;
   amountUsd: number;
   createdAt: number;
   link: string;
@@ -888,7 +889,7 @@ function AllocationsTable({
 
 interface CapTableState {
   status: "loading" | "loaded" | "error";
-  holders?: Array<{ address: string; balance: number }> | undefined;
+  holders?: Array<{ address: Address; balance: number }> | undefined;
   error?: string | undefined;
 }
 

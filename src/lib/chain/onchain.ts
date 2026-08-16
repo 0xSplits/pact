@@ -259,12 +259,12 @@ export async function createOffering({
   factoryAddress,
 }: {
   pact: Pact;
-  owner: string;
-  factoryAddress?: string;
+  owner: Address;
+  factoryAddress?: Address;
 }) {
   const factory =
     factoryAddress ||
-    (globalOverride("PACT_OFFERING_FACTORY_ADDRESS") as string | undefined) ||
+    (globalOverride("PACT_OFFERING_FACTORY_ADDRESS") as Address | undefined) ||
     OFFERING_FACTORY_ADDRESS;
   if (!owner) throw new Error("Connected wallet is required.");
   if (!factory) throw new Error("Offering factory has not been deployed yet.");
@@ -296,7 +296,7 @@ export async function createOffering({
       BigInt(curve.priceSlope),
       BigInt(publicUnits),
       treasury,
-      inputs.holderAccounts as Address[],
+      inputs.holderAccounts,
       inputs.holderAllocations,
       inputs.offeringUnits,
     ],
@@ -324,8 +324,8 @@ export async function getOfferingState({
   offeringAddress,
   buyer,
 }: {
-  offeringAddress: string;
-  buyer?: string | null;
+  offeringAddress: Address;
+  buyer?: Address | null;
 }): Promise<OfferingState> {
   const offering = getAddress(offeringAddress);
   const normalizedBuyer = buyer ? getAddress(buyer) : null;
@@ -410,7 +410,7 @@ export const availablePublicUnits = (
 export async function getProjectName({
   pactToken,
 }: {
-  pactToken: string;
+  pactToken: Address;
 }): Promise<string> {
   return client().readContract({
     address: getAddress(pactToken),
@@ -423,7 +423,7 @@ export async function isAllocationConsumed({
   offeringAddress,
   allocationId,
 }: {
-  offeringAddress: string;
+  offeringAddress: Address;
   allocationId: Hex;
 }): Promise<boolean> {
   return client().readContract({
@@ -441,8 +441,8 @@ export async function signVoucher({
   offeringAddress,
   voucher,
 }: {
-  owner: string;
-  offeringAddress: string;
+  owner: Address;
+  offeringAddress: Address;
   voucher: Voucher;
 }): Promise<Hex> {
   await ensureBase();
@@ -459,8 +459,8 @@ export async function signVoucher({
 
 // Options shared by every state-changing offering call.
 export interface OfferingTxOptions {
-  from: string;
-  offeringAddress: string;
+  from: Address;
+  offeringAddress: Address;
 }
 
 async function sendOfferingFunction({
@@ -507,7 +507,7 @@ export function refundOffering(options: OfferingTxOptions) {
 }
 
 export function refundAllOffering(
-  options: OfferingTxOptions & { buyers?: string[] },
+  options: OfferingTxOptions & { buyers?: Address[] },
 ) {
   const buyers = (options.buyers || []).map((a) => getAddress(a));
   return sendOfferingFunction({
@@ -532,7 +532,7 @@ export function setPublicUnits(
 }
 
 export function cancelAllocation(
-  options: OfferingTxOptions & { allocationId: string },
+  options: OfferingTxOptions & { allocationId: Hex },
 ) {
   return sendOfferingFunction({
     ...options,
@@ -660,8 +660,8 @@ export async function buyPublicOffering({
   units,
   buyerName = "",
 }: {
-  buyer: string;
-  offeringAddress: string;
+  buyer: Address;
+  offeringAddress: Address;
   units: number;
   buyerName?: string;
 }) {
@@ -705,8 +705,8 @@ export async function buyPrivateOffering({
   ownerSig,
   linkPrivateKey,
 }: {
-  buyer: string;
-  offeringAddress: string;
+  buyer: Address;
+  offeringAddress: Address;
   voucher: Voucher;
   ownerSig: Hex;
   linkPrivateKey: Hex;

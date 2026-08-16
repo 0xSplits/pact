@@ -2,6 +2,7 @@ import { useCallback } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getOfferingState } from "../lib/chain/onchain.ts";
 import type { OfferingState } from "../lib/chain/onchain.ts";
+import type { Address } from "viem";
 import { errMsg } from "../lib/format.ts";
 
 const POLL_MS = 15000;
@@ -12,7 +13,7 @@ export type OfferingSnapshot =
   | ({ status: "loaded" } & OfferingState)
   | { status: "error"; error: string };
 
-const stateKey = (offeringAddress?: string | null, buyer?: string | null) => [
+const stateKey = (offeringAddress?: Address | null, buyer?: Address | null) => [
   "offering-state",
   offeringAddress || null,
   buyer ? String(buyer).toLowerCase() : null,
@@ -31,8 +32,8 @@ export function useOfferingState({
   offeringAddress,
   buyer,
 }: {
-  offeringAddress?: string | null;
-  buyer?: string | null;
+  offeringAddress?: Address | null;
+  buyer?: Address | null;
 } = {}) {
   const queryClient = useQueryClient();
   const query = useQuery({

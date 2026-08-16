@@ -132,8 +132,8 @@ const boughtEvent = getAbiItem({ abi: OFFERING_ABI, name: "Bought" });
 // E2E/manual override hooks, same convention as PACT_RPC_URL (chain.ts) and
 // the PACT_OFFERING_FACTORY_ADDRESS global createOffering honors: set on
 // globalThis before modules load to scan a locally deployed factory.
-const factoryDefault = (): string =>
-  (globalOverride("PACT_OFFERING_FACTORY_ADDRESS") as string | undefined) ||
+const factoryDefault = (): Address =>
+  (globalOverride("PACT_OFFERING_FACTORY_ADDRESS") as Address | undefined) ||
   OFFERING_FACTORY_ADDRESS;
 const deployBlockDefault = (): number => {
   const override = globalOverride("PACT_FACTORY_DEPLOY_BLOCK");
@@ -155,7 +155,7 @@ export async function listOfferings({
   factory = factoryDefault(),
   deployBlock = deployBlockDefault(),
   ...options
-}: ScanOptions & { factory?: string; deployBlock?: number } = {}): Promise<
+}: ScanOptions & { factory?: Address; deployBlock?: number } = {}): Promise<
   OfferingRecord[]
 > {
   return cachedScan<OfferingRecord>({
@@ -177,7 +177,7 @@ export function seedOffering(
     factory = factoryDefault(),
     deployBlock = deployBlockDefault(),
     storage = defaultStorage(),
-  }: { factory?: string; deployBlock?: number; storage?: KVStorage } = {},
+  }: { factory?: Address; deployBlock?: number; storage?: KVStorage } = {},
 ): void {
   const key = offeringsKey(factory);
   const cache = readCache<
@@ -194,6 +194,8 @@ export function seedOffering(
   storage.setItem(key, JSON.stringify(cache));
 }
 
+// The lookup is deliberately loose: it matches case-insensitively, so any
+// address-shaped string (route input, checksummed or not) is a valid key.
 export function findOffering(
   offerings: OfferingRecord[] | null | undefined,
   offeringAddress: string | null | undefined,
@@ -214,7 +216,7 @@ export async function listBought({
   deployBlock = deployBlockDefault(),
   ...options
 }: ScanOptions & {
-  offering: string;
+  offering: Address;
   deployBlock?: number | undefined;
 }): Promise<Purchase[]> {
   return cachedScan<Purchase>({
@@ -236,7 +238,7 @@ export async function listPurchases({
   deployBlock = deployBlockDefault(),
   ...options
 }: ScanOptions & {
-  wallet: string;
+  wallet: Address;
   offerings?: OfferingRecord[];
   deployBlock?: number;
 }): Promise<Array<Purchase & { record: OfferingRecord }>> {
@@ -294,7 +296,7 @@ export interface WalletRecords {
 // this wallet's issuances (with live totals) and its purchase receipts.
 // Scan failures degrade to empty groups rather than a stuck loader.
 export async function loadWalletRecords(
-  wallet: string,
+  wallet: Address,
 ): Promise<WalletRecords> {
   try {
     const offerings = await listOfferings();
@@ -328,7 +330,7 @@ export async function getPactTokenHolders({
   getLogs = rpcGetLogs,
   latestBlock,
 }: {
-  pactToken: string;
+  pactToken: Address;
   deployBlock?: number | undefined;
   tokenId?: number | undefined;
   getLogs?: typeof rpcGetLogs | undefined;

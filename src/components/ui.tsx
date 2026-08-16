@@ -2,6 +2,7 @@
 // design-system classes in src/app.css (.cta, .deflist, .notice, .act, ...)
 // so vanilla pages and React pages render identically.
 import type { ButtonHTMLAttributes, ReactNode } from "react";
+import type { Address } from "viem";
 import { basescanAddress, shortAddr } from "../lib/format.ts";
 
 const cx = (...parts: Array<string | false | null | undefined>) =>
@@ -87,7 +88,7 @@ export function AddressLink({
   className = "value-link",
   children,
 }: {
-  address?: string;
+  address?: Address;
   href?: string;
   className?: string;
   children?: ReactNode;

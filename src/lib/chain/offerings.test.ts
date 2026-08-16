@@ -147,7 +147,7 @@ test("cachedScan skips logs the map function rejects", async () => {
 
 test("create-flow seed survives the next scan and dedupes against it", async () => {
   const storage = fakeStorage();
-  const factory = "0x" + "fa".repeat(20);
+  const factory = ("0x" + "fa".repeat(20)) as `0x${string}`;
   const record = {
     offering: ("0x" + "aa".repeat(20)) as `0x${string}`,
     projectName: "Seeded",

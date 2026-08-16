@@ -142,9 +142,9 @@ test("golden vector matches the checked-in fixture byte for byte", async () => {
 
 test("allocation ledger add/list/revoke round-trips", () => {
   const storage = fakeStorage();
-  const offering = "0x" + "99".repeat(20);
+  const offering = ("0x" + "99".repeat(20)) as `0x${string}`;
   const row = {
-    allocationId: "0x" + "11".repeat(32),
+    allocationId: ("0x" + "11".repeat(32)) as `0x${string}`,
     name: "Bob",
     amountCapUsd: 50,
     link: "https://x/#f",
@@ -161,7 +161,12 @@ test("allocation ledger add/list/revoke round-trips", () => {
     { ...row, name: "Bobby", revokedAt: 7 },
   ]);
   // Marking an unknown id leaves the ledger untouched.
-  markAllocationLedgerRowRevoked(offering, "0x" + "22".repeat(32), 8, storage);
+  markAllocationLedgerRowRevoked(
+    offering,
+    ("0x" + "22".repeat(32)) as `0x${string}`,
+    8,
+    storage,
+  );
   assert.deepEqual(listAllocationLedger(offering, storage), [
     { ...row, name: "Bobby", revokedAt: 7 },
   ]);
