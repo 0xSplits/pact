@@ -1,0 +1,7 @@
+# forge fmt owns Solidity; vendor/ is pinned upstream code
+contracts/
+# machine-generated
+src/generated/
+package-lock.json
+# local wayfinder tracker / scratch notes
+.scratch/

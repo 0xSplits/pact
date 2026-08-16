@@ -2,29 +2,33 @@
 // incremental localStorage cache, replacing the server's PACT store. Cold scan
 // on first visit per device, delta chunks after. Takes `getLogs` and `storage`
 // as parameters so tests run against fakes and never hit real RPC.
-import { getAbiItem, getAddress, zeroAddress } from 'viem';
-import type { Address } from 'viem';
+import { getAbiItem, getAddress, zeroAddress } from "viem";
+import type { Address } from "viem";
 import {
   OFFERING_FACTORY_ABI,
   OFFERING_ABI,
   PACT_TOKEN_ABI,
   OFFERING_FACTORY_ADDRESS,
   OFFERING_FACTORY_DEPLOY_BLOCK,
-} from '../../generated/offering-contracts.ts';
+} from "../../generated/offering-contracts.ts";
 import {
   getLogs as rpcGetLogs,
   getLatestBlockNumber,
   offeringRecordFromLog,
   purchaseFromLog,
   readMany,
-} from './onchain.ts';
-import type { OfferingRecord, Purchase } from './onchain.ts';
-import type { KVStorage } from './voucher.ts';
+} from "./onchain.ts";
+import type { OfferingRecord, Purchase } from "./onchain.ts";
+import type { KVStorage } from "./voucher.ts";
 
 // Public Base RPC caps eth_getLogs at 10k-block ranges.
 export const SCAN_CHUNK_BLOCKS = 10000;
 
-export function chunkRanges(fromBlock: number, toBlock: number, chunk: number = SCAN_CHUNK_BLOCKS): Array<[number, number]> {
+export function chunkRanges(
+  fromBlock: number,
+  toBlock: number,
+  chunk: number = SCAN_CHUNK_BLOCKS,
+): Array<[number, number]> {
   const ranges: Array<[number, number]> = [];
   for (let start = fromBlock; start <= toBlock; start += chunk) {
     ranges.push([start, Math.min(start + chunk - 1, toBlock)]);
@@ -34,14 +38,26 @@ export function chunkRanges(fromBlock: number, toBlock: number, chunk: number = 
 
 const memoryStorage = (): KVStorage => {
   const map = new Map<string, string>();
-  return { getItem: k => (map.has(k) ? map.get(k)! : null), setItem: (k, v) => void map.set(k, v) };
+  return {
+    getItem: (k) => (map.has(k) ? map.get(k)! : null),
+    setItem: (k, v) => void map.set(k, v),
+  };
 };
-const defaultStorage = (): KVStorage => (typeof localStorage !== 'undefined' ? localStorage : memoryStorage());
+const defaultStorage = (): KVStorage =>
+  typeof localStorage !== "undefined" ? localStorage : memoryStorage();
 
-function readCache<T>(storage: KVStorage, key: string): { lastScannedBlock: number; items: T[] } | null {
+function readCache<T>(
+  storage: KVStorage,
+  key: string,
+): { lastScannedBlock: number; items: T[] } | null {
   try {
-    const parsed = JSON.parse(storage.getItem(key) || 'null');
-    if (parsed && Number.isInteger(parsed.lastScannedBlock) && Array.isArray(parsed.items)) return parsed;
+    const parsed = JSON.parse(storage.getItem(key) || "null");
+    if (
+      parsed &&
+      Number.isInteger(parsed.lastScannedBlock) &&
+      Array.isArray(parsed.items)
+    )
+      return parsed;
   } catch (err) {}
   return null; // corrupt or missing cache falls back to a full rescan
 }
@@ -54,7 +70,9 @@ export interface CachedScanOptions<T> {
   fromBlock: number;
   map: (log: any) => T | null;
   dedupeKey: (item: T) => string;
-  getLogs?: (args: Record<string, unknown> & { fromBlock: number; toBlock: number }) => Promise<any[]>;
+  getLogs?: (
+    args: Record<string, unknown> & { fromBlock: number; toBlock: number },
+  ) => Promise<any[]>;
   latestBlock?: number;
   storage?: KVStorage;
 }
@@ -91,28 +109,35 @@ export async function cachedScan<T>({
     }
     storage.setItem(key, JSON.stringify({ lastScannedBlock: end, items }));
   }
-  if (from > to && !cache) storage.setItem(key, JSON.stringify({ lastScannedBlock: to, items }));
+  if (from > to && !cache)
+    storage.setItem(key, JSON.stringify({ lastScannedBlock: to, items }));
   return items;
 }
 
-const offeringsKey = (factory: string) => 'pact:offerings:' + String(factory).toLowerCase();
+const offeringsKey = (factory: string) =>
+  "pact:offerings:" + String(factory).toLowerCase();
 
-const offeringCreatedEvent = getAbiItem({ abi: OFFERING_FACTORY_ABI, name: 'OfferingCreated' });
-const boughtEvent = getAbiItem({ abi: OFFERING_ABI, name: 'Bought' });
+const offeringCreatedEvent = getAbiItem({
+  abi: OFFERING_FACTORY_ABI,
+  name: "OfferingCreated",
+});
+const boughtEvent = getAbiItem({ abi: OFFERING_ABI, name: "Bought" });
 
 // E2E/manual override hooks, same convention as PACT_RPC_URL (chain.ts) and
 // the PACT_OFFERING_FACTORY_ADDRESS global createOffering honors: set on
 // globalThis before modules load to scan a locally deployed factory.
 const factoryDefault = (): string =>
-  (globalThis as Record<string, any>).PACT_OFFERING_FACTORY_ADDRESS || OFFERING_FACTORY_ADDRESS;
+  (globalThis as Record<string, any>).PACT_OFFERING_FACTORY_ADDRESS ||
+  OFFERING_FACTORY_ADDRESS;
 const deployBlockDefault = (): number => {
-  const override = (globalThis as Record<string, any>).PACT_FACTORY_DEPLOY_BLOCK;
+  const override = (globalThis as Record<string, any>)
+    .PACT_FACTORY_DEPLOY_BLOCK;
   return Number.isInteger(override) ? override : OFFERING_FACTORY_DEPLOY_BLOCK;
 };
 
 // Options shared by the listing scans; tests inject fakes through these.
 export interface ScanOptions {
-  getLogs?: CachedScanOptions<unknown>['getLogs'];
+  getLogs?: CachedScanOptions<unknown>["getLogs"];
   latestBlock?: number;
   storage?: KVStorage;
 }
@@ -123,13 +148,15 @@ export async function listOfferings({
   factory = factoryDefault(),
   deployBlock = deployBlockDefault(),
   ...options
-}: ScanOptions & { factory?: string; deployBlock?: number } = {}): Promise<OfferingRecord[]> {
+}: ScanOptions & { factory?: string; deployBlock?: number } = {}): Promise<
+  OfferingRecord[]
+> {
   return cachedScan<OfferingRecord>({
     key: offeringsKey(factory),
     filter: { address: getAddress(factory), event: offeringCreatedEvent },
     fromBlock: deployBlock,
     map: offeringRecordFromLog,
-    dedupeKey: record => record.offering.toLowerCase(),
+    dedupeKey: (record) => record.offering.toLowerCase(),
     ...options,
   });
 }
@@ -137,34 +164,57 @@ export async function listOfferings({
 // Create-flow cache seed: the creator sees their offering in listings
 // instantly instead of waiting for the next scan, and the entry is never wrong
 // because the scan would find it anyway (dedupe by address).
-export function seedOffering(record: Pick<OfferingRecord, 'offering'> & Partial<OfferingRecord>, {
-  factory = factoryDefault(),
-  deployBlock = deployBlockDefault(),
-  storage = defaultStorage(),
-}: { factory?: string; deployBlock?: number; storage?: KVStorage } = {}): void {
+export function seedOffering(
+  record: Pick<OfferingRecord, "offering"> & Partial<OfferingRecord>,
+  {
+    factory = factoryDefault(),
+    deployBlock = deployBlockDefault(),
+    storage = defaultStorage(),
+  }: { factory?: string; deployBlock?: number; storage?: KVStorage } = {},
+): void {
   const key = offeringsKey(factory);
-  const cache = readCache<Partial<OfferingRecord> & Pick<OfferingRecord, 'offering'>>(storage, key)
-    || { lastScannedBlock: Math.max(0, deployBlock - 1), items: [] };
-  if (!cache.items.some(item => item.offering.toLowerCase() === record.offering.toLowerCase())) {
+  const cache = readCache<
+    Partial<OfferingRecord> & Pick<OfferingRecord, "offering">
+  >(storage, key) || {
+    lastScannedBlock: Math.max(0, deployBlock - 1),
+    items: [],
+  };
+  if (
+    !cache.items.some(
+      (item) => item.offering.toLowerCase() === record.offering.toLowerCase(),
+    )
+  ) {
     cache.items.push(record);
   }
   storage.setItem(key, JSON.stringify(cache));
 }
 
-export function findOffering(offerings: OfferingRecord[] | null | undefined, offeringAddress: string | null | undefined): OfferingRecord | null {
-  const target = String(offeringAddress || '').toLowerCase();
-  return (offerings || []).find(record => record.offering.toLowerCase() === target) || null;
+export function findOffering(
+  offerings: OfferingRecord[] | null | undefined,
+  offeringAddress: string | null | undefined,
+): OfferingRecord | null {
+  const target = String(offeringAddress || "").toLowerCase();
+  return (
+    (offerings || []).find(
+      (record) => record.offering.toLowerCase() === target,
+    ) || null
+  );
 }
 
-const boughtDedupeKey = (purchase: Purchase) => purchase.txHash + ':' + purchase.logIndex;
+const boughtDedupeKey = (purchase: Purchase) =>
+  purchase.txHash + ":" + purchase.logIndex;
 
 // All purchases on one offering, public and private alike.
-export async function listBought({ offering, deployBlock = deployBlockDefault(), ...options }: ScanOptions & {
+export async function listBought({
+  offering,
+  deployBlock = deployBlockDefault(),
+  ...options
+}: ScanOptions & {
   offering: string;
   deployBlock?: number;
 }): Promise<Purchase[]> {
   return cachedScan<Purchase>({
-    key: 'pact:bought:' + String(offering).toLowerCase(),
+    key: "pact:bought:" + String(offering).toLowerCase(),
     filter: { address: getAddress(offering), event: boughtEvent },
     fromBlock: deployBlock,
     map: purchaseFromLog,
@@ -186,9 +236,11 @@ export async function listPurchases({
   offerings?: OfferingRecord[];
   deployBlock?: number;
 }): Promise<Array<Purchase & { record: OfferingRecord }>> {
-  const known = new Map((offerings || []).map(record => [record.offering.toLowerCase(), record]));
+  const known = new Map(
+    (offerings || []).map((record) => [record.offering.toLowerCase(), record]),
+  );
   const items = await cachedScan<Purchase>({
-    key: 'pact:purchases:' + String(wallet).toLowerCase(),
+    key: "pact:purchases:" + String(wallet).toLowerCase(),
     filter: { event: boughtEvent, args: { buyer: getAddress(wallet) } },
     fromBlock: deployBlock,
     map: purchaseFromLog,
@@ -196,13 +248,16 @@ export async function listPurchases({
     ...options,
   });
   return items
-    .filter(purchase => known.has(purchase.offering.toLowerCase()))
-    .map(purchase => ({ ...purchase, record: known.get(purchase.offering.toLowerCase())! }));
+    .filter((purchase) => known.has(purchase.offering.toLowerCase()))
+    .map((purchase) => ({
+      ...purchase,
+      record: known.get(purchase.offering.toLowerCase())!,
+    }));
 }
 
 const transferEvents = [
-  getAbiItem({ abi: PACT_TOKEN_ABI, name: 'TransferSingle' }),
-  getAbiItem({ abi: PACT_TOKEN_ABI, name: 'TransferBatch' }),
+  getAbiItem({ abi: PACT_TOKEN_ABI, name: "TransferSingle" }),
+  getAbiItem({ abi: PACT_TOKEN_ABI, name: "TransferBatch" }),
 ];
 
 // Every address currently holding PactToken units, discovered from transfer
@@ -226,23 +281,36 @@ export async function getPactTokenHolders({
 
   const addresses = new Set<Address>();
   for (const [start, end] of chunkRanges(deployBlock, to)) {
-    const logs = await getLogs({ address, events: transferEvents, fromBlock: start, toBlock: end });
+    const logs = await getLogs({
+      address,
+      events: transferEvents,
+      fromBlock: start,
+      toBlock: end,
+    });
     for (const log of logs || []) {
       for (const account of [log.args.from, log.args.to]) {
-        if (account && account !== zeroAddress) addresses.add(getAddress(account));
+        if (account && account !== zeroAddress)
+          addresses.add(getAddress(account));
       }
     }
   }
 
-  const sorted = Array.from(addresses).sort((a, b) => (a.toLowerCase() > b.toLowerCase() ? 1 : -1));
+  const sorted = Array.from(addresses).sort((a, b) =>
+    a.toLowerCase() > b.toLowerCase() ? 1 : -1,
+  );
   if (!sorted.length) return [];
-  const balances = await readMany(sorted.map(account => ({
-    address,
-    abi: PACT_TOKEN_ABI,
-    functionName: 'balanceOf',
-    args: [account, BigInt(tokenId)],
-  })));
+  const balances = await readMany(
+    sorted.map((account) => ({
+      address,
+      abi: PACT_TOKEN_ABI,
+      functionName: "balanceOf",
+      args: [account, BigInt(tokenId)],
+    })),
+  );
   return sorted
-    .map((account, index) => ({ address: account, balance: Number(balances[index]) }))
-    .filter(holder => holder.balance > 0);
+    .map((account, index) => ({
+      address: account,
+      balance: Number(balances[index]),
+    }))
+    .filter((holder) => holder.balance > 0);
 }

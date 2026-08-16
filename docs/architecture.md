@@ -91,11 +91,11 @@ Two onchain sources of truth, plus localStorage as display convenience:
 - **PactToken (the cap table)**: holder balances, read by scanning transfer
   events and confirming with `balanceOf` over Base RPC.
 - **localStorage**: two distinct roles —
-  - the *delta cache* for listings (`src/lib/chain/offerings.ts`): the public
+  - the _delta cache_ for listings (`src/lib/chain/offerings.ts`): the public
     RPC caps `eth_getLogs` at 10k-block ranges, so `OfferingCreated`/`Bought`
     scans are chunked; results are cached with the last scanned block and
     later visits only scan the delta. Cold scan on first visit per device.
-  - the *allocation ledger* (`src/lib/chain/voucher.ts`): the issuer's private
+  - the _allocation ledger_ (`src/lib/chain/voucher.ts`): the issuer's private
     allocation links (including revoked rows). Losing it loses unclaimed
     links; claims themselves are `Bought` events and survive.
 

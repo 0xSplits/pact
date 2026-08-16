@@ -7,21 +7,29 @@
 // Amounts are plain numbers in USDC base units. That is safe well past any
 // raise size this prototype targets (Number stays exact below ~$9B). The
 // bigint→number conversion happens exactly where reads and events decode.
-import { BASE_CHAIN_ID, BASE_USDC_ADDRESS, toUsdcBaseUnits } from './chain.ts';
-import { buildOfferingFactoryInputs } from './liquid-split.ts';
-import { deriveOfferingCurve, costForUnits, unitsForBudget } from './curve.ts';
-import type { CurveParams, Pact } from './curve.ts';
-import { voucherTypedData, signClaim } from './voucher.ts';
-import type { Voucher } from './voucher.ts';
+import { BASE_CHAIN_ID, BASE_USDC_ADDRESS, toUsdcBaseUnits } from "./chain.ts";
+import { buildOfferingFactoryInputs } from "./liquid-split.ts";
+import { deriveOfferingCurve, costForUnits, unitsForBudget } from "./curve.ts";
+import type { CurveParams, Pact } from "./curve.ts";
+import { voucherTypedData, signClaim } from "./voucher.ts";
+import type { Voucher } from "./voucher.ts";
 import {
   OFFERING_FACTORY_ADDRESS,
   OFFERING_FACTORY_ABI,
   OFFERING_ABI,
   PACT_TOKEN_ABI,
-} from '../../generated/offering-contracts.ts';
+} from "../../generated/offering-contracts.ts";
 
-import { erc20Abi, getAddress, isAddressEqual, parseEventLogs } from 'viem';
-import type { Abi, AbiEvent, Address, ContractFunctionParameters, Hex, Log, TransactionReceipt } from 'viem';
+import { erc20Abi, getAddress, isAddressEqual, parseEventLogs } from "viem";
+import type {
+  Abi,
+  AbiEvent,
+  Address,
+  ContractFunctionParameters,
+  Hex,
+  Log,
+  TransactionReceipt,
+} from "viem";
 import {
   getAccount,
   getCapabilities,
@@ -33,8 +41,8 @@ import {
   waitForCallsStatus,
   waitForTransactionReceipt,
   writeContract,
-} from 'wagmi/actions';
-import { wagmiConfig } from './wagmi.ts';
+} from "wagmi/actions";
+import { wagmiConfig } from "./wagmi.ts";
 
 const client = () => getPublicClient(wagmiConfig);
 
@@ -66,14 +74,14 @@ export async function getLatestBlockNumber(): Promise<number> {
 // receipts and EIP-5792 batch receipts (whose logs still carry raw hex
 // quantities; Number() parses those too).
 interface ReceiptLike {
-  status: 'success' | 'reverted';
+  status: "success" | "reverted";
   blockNumber: bigint;
   transactionHash: Hex;
   logs: unknown[];
 }
 
 function assertNotReverted(receipt: { status: string }, message: string): void {
-  if (receipt.status === 'reverted') throw new Error(message);
+  if (receipt.status === "reverted") throw new Error(message);
 }
 
 // The offering record shape cached by the listing scan (offerings.ts) and
@@ -137,8 +145,13 @@ async function ensureBase(): Promise<void> {
 
 // Batched reads in one multicall round trip; wagmi degrades to per-call
 // reads when the aggregate call fails.
-export async function readMany(calls: ContractFunctionParameters[]): Promise<unknown[]> {
-  return readContracts(wagmiConfig, { contracts: calls, allowFailure: false }) as Promise<unknown[]>;
+export async function readMany(
+  calls: ContractFunctionParameters[],
+): Promise<unknown[]> {
+  return readContracts(wagmiConfig, {
+    contracts: calls,
+    allowFailure: false,
+  }) as Promise<unknown[]>;
 }
 
 // Maps a viem-decoded OfferingCreated log to the all-number, JSON-safe record
@@ -179,7 +192,13 @@ export function offeringRecordFromLog(log: {
 // Maps a viem-decoded Bought log to the all-number purchase shape.
 export function purchaseFromLog(log: {
   address: string;
-  args: { buyer: Address; allocationId: Hex; units: bigint; cost: bigint; buyerName: string };
+  args: {
+    buyer: Address;
+    allocationId: Hex;
+    units: bigint;
+    cost: bigint;
+    buyerName: string;
+  };
   blockNumber?: bigint | number | string | null;
   transactionHash?: Hex | null;
   logIndex?: bigint | number | string | null;
@@ -191,59 +210,80 @@ export function purchaseFromLog(log: {
     allocationId: args.allocationId,
     units: Number(args.units),
     cost: Number(args.cost),
-    buyerName: args.buyerName || '',
+    buyerName: args.buyerName || "",
     blockNumber: log.blockNumber != null ? Number(log.blockNumber) : null,
     txHash: log.transactionHash || null,
     logIndex: log.logIndex != null ? Number(log.logIndex) : 0,
   };
 }
 
-function decodeOfferingCreated(receipt: ReceiptLike, factoryAddress: string): OfferingRecord {
+function decodeOfferingCreated(
+  receipt: ReceiptLike,
+  factoryAddress: string,
+): OfferingRecord {
   const factory = getAddress(factoryAddress);
   const [created] = parseEventLogs({
     abi: OFFERING_FACTORY_ABI,
-    eventName: 'OfferingCreated',
+    eventName: "OfferingCreated",
     logs: receipt.logs as Log[],
-  }).filter(log => isAddressEqual(getAddress(log.address), factory));
-  if (!created) throw new Error('Offering creation event was not found in the transaction receipt.');
+  }).filter((log) => isAddressEqual(getAddress(log.address), factory));
+  if (!created)
+    throw new Error(
+      "Offering creation event was not found in the transaction receipt.",
+    );
   return offeringRecordFromLog(created);
 }
 
-function purchaseFromReceipt(receipt: ReceiptLike, offering: Address, buyer: Address): Purchase | null {
+function purchaseFromReceipt(
+  receipt: ReceiptLike,
+  offering: Address,
+  buyer: Address,
+): Purchase | null {
   const [bought] = parseEventLogs({
     abi: OFFERING_ABI,
-    eventName: 'Bought',
+    eventName: "Bought",
     logs: receipt.logs as Log[],
     args: { buyer },
-  }).filter(log => isAddressEqual(getAddress(log.address), offering));
+  }).filter((log) => isAddressEqual(getAddress(log.address), offering));
   return bought ? purchaseFromLog(bought) : null;
 }
 
-export async function createOffering({ pact, owner, factoryAddress }: {
+export async function createOffering({
+  pact,
+  owner,
+  factoryAddress,
+}: {
   pact: Pact;
   owner: string;
   factoryAddress?: string;
 }) {
-  const factory = factoryAddress
-    || (typeof globalThis !== 'undefined' && (globalThis as Record<string, any>).PACT_OFFERING_FACTORY_ADDRESS)
-    || OFFERING_FACTORY_ADDRESS;
-  if (!owner) throw new Error('Connected wallet is required.');
-  if (!factory) throw new Error('Offering factory has not been deployed yet.');
+  const factory =
+    factoryAddress ||
+    (typeof globalThis !== "undefined" &&
+      (globalThis as Record<string, any>).PACT_OFFERING_FACTORY_ADDRESS) ||
+    OFFERING_FACTORY_ADDRESS;
+  if (!owner) throw new Error("Connected wallet is required.");
+  if (!factory) throw new Error("Offering factory has not been deployed yet.");
   const curve = deriveOfferingCurve(pact);
-  if (!curve) throw new Error('Valid valuation band and offering units are required.');
+  if (!curve)
+    throw new Error("Valid valuation band and offering units are required.");
 
   await ensureBase();
   const normalizedOwner = getAddress(owner);
   const treasury = getAddress(pact.proceedsAddress);
-  const closeDate = Math.floor(Date.now() / 1000) + Number(pact.minimum.deadlineDays) * 86400;
+  const closeDate =
+    Math.floor(Date.now() / 1000) + Number(pact.minimum.deadlineDays) * 86400;
   const inputs = buildOfferingFactoryInputs(pact, { getAddress });
-  const publicUnits = Math.min(Number(pact.publicUnits) || 0, inputs.offeringUnits);
+  const publicUnits = Math.min(
+    Number(pact.publicUnits) || 0,
+    inputs.offeringUnits,
+  );
 
   const txHash = await writeContract(wagmiConfig, {
     account: normalizedOwner,
     address: getAddress(factory),
     abi: OFFERING_FACTORY_ABI,
-    functionName: 'createOffering',
+    functionName: "createOffering",
     args: [
       pact.projectName,
       BigInt(toUsdcBaseUnits(pact.raise.min)),
@@ -258,8 +298,10 @@ export async function createOffering({ pact, owner, factoryAddress }: {
     ],
     chainId: BASE_CHAIN_ID,
   });
-  const receipt = await waitForTransactionReceipt(wagmiConfig, { hash: txHash });
-  assertNotReverted(receipt, 'Offering creation transaction reverted.');
+  const receipt = await waitForTransactionReceipt(wagmiConfig, {
+    hash: txHash,
+  });
+  assertNotReverted(receipt, "Offering creation transaction reverted.");
   const created = decodeOfferingCreated(receipt, factory);
   return {
     chainId: BASE_CHAIN_ID,
@@ -267,29 +309,69 @@ export async function createOffering({ pact, owner, factoryAddress }: {
     transactionHash: txHash,
     curve,
     ...created,
-    blockNumber: created.blockNumber != null
-      ? created.blockNumber
-      : Number(receipt.blockNumber),
+    blockNumber:
+      created.blockNumber != null
+        ? created.blockNumber
+        : Number(receipt.blockNumber),
   };
 }
 
-export async function getOfferingState({ offeringAddress, buyer }: {
+export async function getOfferingState({
+  offeringAddress,
+  buyer,
+}: {
   offeringAddress: string;
   buyer?: string | null;
 }): Promise<OfferingState> {
   const offering = getAddress(offeringAddress);
   const normalizedBuyer = buyer ? getAddress(buyer) : null;
   const fields = [
-    'remainingUnits', 'unitsSold', 'minMet', 'state', 'raised', 'withdrawn', 'raiseMin',
-    'closeDate', 'owner', 'treasury', 'pactToken', 'priceStart', 'priceSlope',
-    'publicUnits', 'publicUnitsSold',
+    "remainingUnits",
+    "unitsSold",
+    "minMet",
+    "state",
+    "raised",
+    "withdrawn",
+    "raiseMin",
+    "closeDate",
+    "owner",
+    "treasury",
+    "pactToken",
+    "priceStart",
+    "priceSlope",
+    "publicUnits",
+    "publicUnitsSold",
   ];
-  const calls: ContractFunctionParameters[] = fields.map(functionName => ({ address: offering, abi: OFFERING_ABI, functionName }));
-  if (normalizedBuyer) calls.push({ address: offering, abi: OFFERING_ABI, functionName: 'deposits', args: [normalizedBuyer] });
+  const calls: ContractFunctionParameters[] = fields.map((functionName) => ({
+    address: offering,
+    abi: OFFERING_ABI,
+    functionName,
+  }));
+  if (normalizedBuyer)
+    calls.push({
+      address: offering,
+      abi: OFFERING_ABI,
+      functionName: "deposits",
+      args: [normalizedBuyer],
+    });
   const values = await readMany(calls);
   const [
-    remainingUnits, unitsSold, minMet, state, raised, withdrawn, raiseMin, closeDate, owner, treasury,
-    pactToken, priceStart, priceSlope, publicUnits, publicUnitsSold, deposit,
+    remainingUnits,
+    unitsSold,
+    minMet,
+    state,
+    raised,
+    withdrawn,
+    raiseMin,
+    closeDate,
+    owner,
+    treasury,
+    pactToken,
+    priceStart,
+    priceSlope,
+    publicUnits,
+    publicUnitsSold,
+    deposit,
   ] = values;
   const result: OfferingState = {
     offeringAddress: offering,
@@ -313,25 +395,40 @@ export async function getOfferingState({ offeringAddress, buyer }: {
   return result;
 }
 
-export async function getProjectName({ pactToken }: { pactToken: string }): Promise<string> {
-  return client().readContract({ address: getAddress(pactToken), abi: PACT_TOKEN_ABI, functionName: 'projectName' });
+export async function getProjectName({
+  pactToken,
+}: {
+  pactToken: string;
+}): Promise<string> {
+  return client().readContract({
+    address: getAddress(pactToken),
+    abi: PACT_TOKEN_ABI,
+    functionName: "projectName",
+  });
 }
 
-export async function isAllocationConsumed({ offeringAddress, allocationId }: {
+export async function isAllocationConsumed({
+  offeringAddress,
+  allocationId,
+}: {
   offeringAddress: string;
   allocationId: Hex;
 }): Promise<boolean> {
   return client().readContract({
     address: getAddress(offeringAddress),
     abi: OFFERING_ABI,
-    functionName: 'allocationConsumed',
+    functionName: "allocationConsumed",
     args: [allocationId],
   });
 }
 
 // Signs an allocation voucher with the offering owner's wallet. Returns the
 // hex signature; the caller assembles the share link.
-export async function signVoucher({ owner, offeringAddress, voucher }: {
+export async function signVoucher({
+  owner,
+  offeringAddress,
+  voucher,
+}: {
   owner: string;
   offeringAddress: string;
   voucher: Voucher;
@@ -342,7 +439,10 @@ export async function signVoucher({ owner, offeringAddress, voucher }: {
     chainId: BASE_CHAIN_ID,
     voucher,
   });
-  return signTypedData(wagmiConfig, { account: getAddress(owner), ...typedData });
+  return signTypedData(wagmiConfig, {
+    account: getAddress(owner),
+    ...typedData,
+  });
 }
 
 // Options shared by every state-changing offering call.
@@ -351,11 +451,16 @@ export interface OfferingTxOptions {
   offeringAddress: string;
 }
 
-async function sendOfferingFunction({ from, offeringAddress, functionName, args = [] }: OfferingTxOptions & {
+async function sendOfferingFunction({
+  from,
+  offeringAddress,
+  functionName,
+  args = [],
+}: OfferingTxOptions & {
   functionName: string;
   args?: readonly unknown[];
 }) {
-  if (!from) throw new Error('Connected wallet is required.');
+  if (!from) throw new Error("Connected wallet is required.");
   const offering = getAddress(offeringAddress);
   await ensureBase();
   const txHash = await writeContract(wagmiConfig, {
@@ -366,48 +471,60 @@ async function sendOfferingFunction({ from, offeringAddress, functionName, args 
     args,
     chainId: BASE_CHAIN_ID,
   });
-  const receipt = await waitForTransactionReceipt(wagmiConfig, { hash: txHash });
-  assertNotReverted(receipt, 'Offering transaction reverted.');
+  const receipt = await waitForTransactionReceipt(wagmiConfig, {
+    hash: txHash,
+  });
+  assertNotReverted(receipt, "Offering transaction reverted.");
   return { txHash, receipt };
 }
 
 export function withdrawOffering(options: OfferingTxOptions) {
-  return sendOfferingFunction({ ...options, functionName: 'withdraw' });
+  return sendOfferingFunction({ ...options, functionName: "withdraw" });
 }
 
 export function closeAndWithdrawOffering(options: OfferingTxOptions) {
-  return sendOfferingFunction({ ...options, functionName: 'closeAndWithdraw' });
+  return sendOfferingFunction({ ...options, functionName: "closeAndWithdraw" });
 }
 
 export function markOfferingFailed(options: OfferingTxOptions) {
-  return sendOfferingFunction({ ...options, functionName: 'markFailed' });
+  return sendOfferingFunction({ ...options, functionName: "markFailed" });
 }
 
 export function refundOffering(options: OfferingTxOptions) {
-  return sendOfferingFunction({ ...options, functionName: 'refund' });
+  return sendOfferingFunction({ ...options, functionName: "refund" });
 }
 
-export function refundAllOffering(options: OfferingTxOptions & { buyers?: string[] }) {
-  const buyers = (options.buyers || []).map(a => getAddress(a));
-  return sendOfferingFunction({ ...options, functionName: 'refundAll', args: [buyers] });
+export function refundAllOffering(
+  options: OfferingTxOptions & { buyers?: string[] },
+) {
+  const buyers = (options.buyers || []).map((a) => getAddress(a));
+  return sendOfferingFunction({
+    ...options,
+    functionName: "refundAll",
+    args: [buyers],
+  });
 }
 
 export function sweepFailedUnits(options: OfferingTxOptions) {
-  return sendOfferingFunction({ ...options, functionName: 'sweepFailedUnits' });
+  return sendOfferingFunction({ ...options, functionName: "sweepFailedUnits" });
 }
 
-export function setPublicUnits(options: OfferingTxOptions & { publicUnits: number }) {
+export function setPublicUnits(
+  options: OfferingTxOptions & { publicUnits: number },
+) {
   return sendOfferingFunction({
     ...options,
-    functionName: 'setPublicUnits',
+    functionName: "setPublicUnits",
     args: [BigInt(options.publicUnits)],
   });
 }
 
-export function cancelAllocation(options: OfferingTxOptions & { allocationId: string }) {
+export function cancelAllocation(
+  options: OfferingTxOptions & { allocationId: string },
+) {
   return sendOfferingFunction({
     ...options,
-    functionName: 'cancelAllocation',
+    functionName: "cancelAllocation",
     args: [options.allocationId],
   });
 }
@@ -416,20 +533,24 @@ export function cancelAllocation(options: OfferingTxOptions & { allocationId: st
 // Unsupported/unknown methods just mean "no" — the two-transaction flow works everywhere.
 async function atomicBatchSupported(account: Address): Promise<boolean> {
   try {
-    const capabilities = await getCapabilities(wagmiConfig, { account, chainId: BASE_CHAIN_ID });
+    const capabilities = await getCapabilities(wagmiConfig, {
+      account,
+      chainId: BASE_CHAIN_ID,
+    });
     const status = capabilities.atomic?.status;
-    return status === 'supported' || status === 'ready';
+    return status === "supported" || status === "ready";
   } catch (err) {
     return false;
   }
 }
 
-const usdcAllowance = (buyer: Address, offering: Address) => client().readContract({
-  address: BASE_USDC_ADDRESS,
-  abi: erc20Abi,
-  functionName: 'allowance',
-  args: [buyer, offering],
-});
+const usdcAllowance = (buyer: Address, offering: Address) =>
+  client().readContract({
+    address: BASE_USDC_ADDRESS,
+    abi: erc20Abi,
+    functionName: "allowance",
+    args: [buyer, offering],
+  });
 
 // The buy transaction in contract-call form, usable by both the batch
 // (sendCalls) and sequential (writeContract) paths.
@@ -444,118 +565,199 @@ interface BuyCall {
 // batch when the wallet supports it, else the sequential two-transaction flow
 // (which waits for the approve receipt before sending the buy, so the buy's
 // gas estimation never runs against a zero allowance).
-async function payWithApproval({ buyer, offering, amount, buyCall }: {
+async function payWithApproval({
+  buyer,
+  offering,
+  amount,
+  buyCall,
+}: {
   buyer: Address;
   offering: Address;
   amount: number;
   buyCall: BuyCall;
-}): Promise<{ approveTxHash: Hex | null; buyTxHash: Hex; buyReceipt: ReceiptLike }> {
-  const approveArgs = { abi: erc20Abi, functionName: 'approve', args: [offering, BigInt(amount)] } as const;
-  const needsApproval = await usdcAllowance(buyer, offering) < BigInt(amount);
+}): Promise<{
+  approveTxHash: Hex | null;
+  buyTxHash: Hex;
+  buyReceipt: ReceiptLike;
+}> {
+  const approveArgs = {
+    abi: erc20Abi,
+    functionName: "approve",
+    args: [offering, BigInt(amount)],
+  } as const;
+  const needsApproval = (await usdcAllowance(buyer, offering)) < BigInt(amount);
 
-  if (needsApproval && await atomicBatchSupported(buyer)) {
+  if (needsApproval && (await atomicBatchSupported(buyer))) {
     const { id } = await sendCalls(wagmiConfig, {
       account: buyer,
       chainId: BASE_CHAIN_ID,
       forceAtomic: true,
       calls: [
         { to: BASE_USDC_ADDRESS, ...approveArgs },
-        { to: buyCall.address, abi: buyCall.abi, functionName: buyCall.functionName, args: buyCall.args },
+        {
+          to: buyCall.address,
+          abi: buyCall.abi,
+          functionName: buyCall.functionName,
+          args: buyCall.args,
+        },
       ],
     });
-    const { receipts } = await waitForCallsStatus(wagmiConfig, { id, throwOnFailure: true });
+    const { receipts } = await waitForCallsStatus(wagmiConfig, {
+      id,
+      throwOnFailure: true,
+    });
     // The batch lands as one transaction when atomic; the last receipt carries it.
-    const buyReceipt = receipts?.[receipts.length - 1] as ReceiptLike | undefined;
-    if (!buyReceipt) throw new Error('Wallet did not return a batch receipt.');
-    return { approveTxHash: null, buyTxHash: buyReceipt.transactionHash, buyReceipt };
+    const buyReceipt = receipts?.[receipts.length - 1] as
+      ReceiptLike | undefined;
+    if (!buyReceipt) throw new Error("Wallet did not return a batch receipt.");
+    return {
+      approveTxHash: null,
+      buyTxHash: buyReceipt.transactionHash,
+      buyReceipt,
+    };
   }
 
   let approveTxHash: Hex | null = null;
   if (needsApproval) {
     approveTxHash = await writeContract(wagmiConfig, {
-      account: buyer, chainId: BASE_CHAIN_ID, address: BASE_USDC_ADDRESS, ...approveArgs,
+      account: buyer,
+      chainId: BASE_CHAIN_ID,
+      address: BASE_USDC_ADDRESS,
+      ...approveArgs,
     });
-    const approveReceipt = await waitForTransactionReceipt(wagmiConfig, { hash: approveTxHash });
-    assertNotReverted(approveReceipt, 'USDC approval reverted.');
+    const approveReceipt = await waitForTransactionReceipt(wagmiConfig, {
+      hash: approveTxHash,
+    });
+    assertNotReverted(approveReceipt, "USDC approval reverted.");
   }
   const buyTxHash = await writeContract(wagmiConfig, {
-    account: buyer, chainId: BASE_CHAIN_ID, ...buyCall,
+    account: buyer,
+    chainId: BASE_CHAIN_ID,
+    ...buyCall,
   });
-  const buyReceipt: TransactionReceipt = await waitForTransactionReceipt(wagmiConfig, { hash: buyTxHash });
+  const buyReceipt: TransactionReceipt = await waitForTransactionReceipt(
+    wagmiConfig,
+    { hash: buyTxHash },
+  );
   return { approveTxHash, buyTxHash, buyReceipt };
 }
 
 // Quote for a dollar budget against live curve position and available supply.
-export async function quoteOfferingPurchase({ offeringAddress, amountUsd, publicOnly = true }: {
+export async function quoteOfferingPurchase({
+  offeringAddress,
+  amountUsd,
+  publicOnly = true,
+}: {
   offeringAddress: string;
   amountUsd: number;
   publicOnly?: boolean;
 }) {
   const state = await getOfferingState({ offeringAddress });
-  const curve: CurveParams = { priceStart: state.priceStart, priceSlope: state.priceSlope };
+  const curve: CurveParams = {
+    priceStart: state.priceStart,
+    priceSlope: state.priceSlope,
+  };
   const available = publicOnly
-    ? Math.min(state.remainingUnits, Math.max(0, state.publicUnits - state.publicUnitsSold))
+    ? Math.min(
+        state.remainingUnits,
+        Math.max(0, state.publicUnits - state.publicUnitsSold),
+      )
     : state.remainingUnits;
   const budget = toUsdcBaseUnits(Number(amountUsd));
   const units = unitsForBudget(curve, state.unitsSold, available, budget);
-  if (units <= 0) throw new Error('Amount is too small to buy one whole unit at the current curve price.');
+  if (units <= 0)
+    throw new Error(
+      "Amount is too small to buy one whole unit at the current curve price.",
+    );
   const cost = costForUnits(curve, state.unitsSold, units);
   const maxCost = Math.ceil(cost * 1.01);
   return { state, units, cost, maxCost };
 }
 
-export async function buyPublicOffering({ buyer, offeringAddress, units, buyerName = '' }: {
+export async function buyPublicOffering({
+  buyer,
+  offeringAddress,
+  units,
+  buyerName = "",
+}: {
   buyer: string;
   offeringAddress: string;
   units: number;
   buyerName?: string;
 }) {
-  if (!buyer) throw new Error('Connected wallet is required.');
-  if (!Number.isInteger(units) || units <= 0) throw new Error('Enter at least one whole unit.');
+  if (!buyer) throw new Error("Connected wallet is required.");
+  if (!Number.isInteger(units) || units <= 0)
+    throw new Error("Enter at least one whole unit.");
 
   await ensureBase();
   const normalizedBuyer = getAddress(buyer);
   const offering = getAddress(offeringAddress);
   const state = await getOfferingState({ offeringAddress });
-  const available = Math.min(state.remainingUnits, Math.max(0, state.publicUnits - state.publicUnitsSold));
-  if (units > available) throw new Error(`Only ${available} public units remain.`);
-  const curve: CurveParams = { priceStart: state.priceStart, priceSlope: state.priceSlope };
+  const available = Math.min(
+    state.remainingUnits,
+    Math.max(0, state.publicUnits - state.publicUnitsSold),
+  );
+  if (units > available)
+    throw new Error(`Only ${available} public units remain.`);
+  const curve: CurveParams = {
+    priceStart: state.priceStart,
+    priceSlope: state.priceSlope,
+  };
   const cost = costForUnits(curve, state.unitsSold, units);
   const maxCost = Math.ceil(cost * 1.01);
   const quote = { state, units, cost, maxCost };
   const { approveTxHash, buyTxHash, buyReceipt } = await payWithApproval({
-    buyer: normalizedBuyer, offering, amount: quote.maxCost,
+    buyer: normalizedBuyer,
+    offering,
+    amount: quote.maxCost,
     buyCall: {
       address: offering,
       abi: OFFERING_ABI,
-      functionName: 'buyPublic',
+      functionName: "buyPublic",
       args: [BigInt(quote.units), BigInt(quote.maxCost), buyerName],
     },
   });
-  assertNotReverted(buyReceipt, 'Offering purchase reverted.');
+  assertNotReverted(buyReceipt, "Offering purchase reverted.");
   const purchase = purchaseFromReceipt(buyReceipt, offering, normalizedBuyer);
   return { ...quote, ...(purchase || {}), approveTxHash, buyTxHash };
 }
 
 // Claims a private allocation: the buyer's wallet sends buyPrivate carrying
 // the owner-signed voucher and a fresh link-key signature over the buyer.
-export async function buyPrivateOffering({ buyer, offeringAddress, voucher, ownerSig, linkPrivateKey }: {
+export async function buyPrivateOffering({
+  buyer,
+  offeringAddress,
+  voucher,
+  ownerSig,
+  linkPrivateKey,
+}: {
   buyer: string;
   offeringAddress: string;
   voucher: Voucher;
   ownerSig: Hex;
   linkPrivateKey: Hex;
 }) {
-  if (!buyer) throw new Error('Connected wallet is required.');
+  if (!buyer) throw new Error("Connected wallet is required.");
 
   await ensureBase();
   const normalizedBuyer = getAddress(buyer);
   const offering = getAddress(offeringAddress);
   const state = await getOfferingState({ offeringAddress });
-  const curve: CurveParams = { priceStart: state.priceStart, priceSlope: state.priceSlope };
+  const curve: CurveParams = {
+    priceStart: state.priceStart,
+    priceSlope: state.priceSlope,
+  };
   const cap = Number(voucher.amountCapUsdc);
-  const units = unitsForBudget(curve, state.unitsSold, state.remainingUnits, cap);
-  if (units <= 0) throw new Error('The allocation is too small to buy one whole unit at the current curve price.');
+  const units = unitsForBudget(
+    curve,
+    state.unitsSold,
+    state.remainingUnits,
+    cap,
+  );
+  if (units <= 0)
+    throw new Error(
+      "The allocation is too small to buy one whole unit at the current curve price.",
+    );
   const cost = costForUnits(curve, state.unitsSold, units);
   // The voucher cap bounds slippage: price drift between invite and claim is
   // accepted, but never beyond the dollars the owner endorsed.
@@ -568,11 +770,13 @@ export async function buyPrivateOffering({ buyer, offeringAddress, voucher, owne
     buyer: normalizedBuyer,
   });
   const { approveTxHash, buyTxHash, buyReceipt } = await payWithApproval({
-    buyer: normalizedBuyer, offering, amount: maxCost,
+    buyer: normalizedBuyer,
+    offering,
+    amount: maxCost,
     buyCall: {
       address: offering,
       abi: OFFERING_ABI,
-      functionName: 'buyPrivate',
+      functionName: "buyPrivate",
       args: [
         {
           allocationId: voucher.allocationId,
@@ -587,7 +791,15 @@ export async function buyPrivateOffering({ buyer, offeringAddress, voucher, owne
       ],
     },
   });
-  assertNotReverted(buyReceipt, 'Allocation claim reverted.');
+  assertNotReverted(buyReceipt, "Allocation claim reverted.");
   const purchase = purchaseFromReceipt(buyReceipt, offering, normalizedBuyer);
-  return { state, units, cost, maxCost, ...(purchase || {}), approveTxHash, buyTxHash };
+  return {
+    state,
+    units,
+    cost,
+    maxCost,
+    ...(purchase || {}),
+    approveTxHash,
+    buyTxHash,
+  };
 }
