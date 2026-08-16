@@ -13,6 +13,14 @@ export function currentCreatePage(pathname: string = location.pathname): boolean
   return pathname === '/create';
 }
 
+export function currentStatusPage(pathname: string = location.pathname): boolean {
+  return pathname === '/status';
+}
+
+export function currentBuyPage(pathname: string = location.pathname): boolean {
+  return pathname === '/buy';
+}
+
 // The `offering` query param, or null when missing or not an address.
 export function currentOfferingAddress(search: string = location.search): string | null {
   const value = new URLSearchParams(search).get('offering');

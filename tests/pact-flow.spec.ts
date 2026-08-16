@@ -7,10 +7,17 @@ import { test, expect } from '@playwright/test';
 import type { BrowserContext, Page } from '@playwright/test';
 import { encodeFunctionData, getAddress } from 'viem';
 import type { Address } from 'viem';
-import { OFFERING_FACTORY_ABI } from '../src/generated/offering-contracts.ts';
+import { OFFERING_ABI, OFFERING_FACTORY_ABI } from '../src/generated/offering-contracts.ts';
 import { RPC_URL, e2eAccounts, e2eFactory, sendTx } from './e2e-setup.ts';
 
 test.describe.configure({ timeout: 60_000 });
+
+const BASE_USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
+const ERC20_APPROVE_ABI = [{
+  type: 'function', name: 'approve', stateMutability: 'nonpayable',
+  inputs: [{ name: 'spender', type: 'address' }, { name: 'amount', type: 'uint256' }],
+  outputs: [{ name: '', type: 'bool' }],
+}] as const;
 
 // wagmi surfaces checksummed addresses regardless of the mock's casing.
 const short = (address: string) => getAddress(address).slice(0, 6) + '…' + getAddress(address).slice(-4);
@@ -110,7 +117,12 @@ test('issuer creates a PACT through the UI and lands on its status page', async 
   await page.locator('#projectName').fill('Anvil Test PACT');
   await page.locator('#proceeds').fill(issuer);
   await page.locator('input[data-k="name"]').nth(0).fill(holderA);
+  await page.locator('input[data-k="pct"]').nth(0).fill('50.0');
+  await page.locator('#addHolder').click();
   await page.locator('input[data-k="name"]').nth(1).fill(holderB);
+  await page.locator('input[data-k="pct"]').nth(1).fill('50.0');
+  await expect(page.locator('#createBtn')).toBeDisabled();
+  await page.locator('#signerName').fill('Issuer Signer');
   await expect(page.locator('#createBtn')).toBeEnabled();
   await page.locator('#createBtn').click();
 
@@ -125,11 +137,10 @@ test('issuer creates a PACT through the UI and lands on its status page', async 
   expect(cached.items.map((item: { offering: string }) => item.offering.toLowerCase())).toContain(offering.toLowerCase());
 
   // Live contract state: 20% dilution of 1000 units, none public by default.
-  await expect(page.getByRole('definition').filter({ hasText: '200 tokens, 0 public' })).toBeVisible();
-
-  // With no public tranche, the public-buy affordances stay hidden.
-  await expect(page.getByText('Public buy link')).toHaveCount(0);
-  await expect(page.getByText('No purchases yet. Create a private allocation using the row below.')).toBeVisible();
+  await expect(page.getByRole('definition').filter({ hasText: '200 tokens' })).toBeVisible();
+  const publicRow = page.locator('tr', { hasText: 'Public allocation' });
+  await expect(publicRow.getByText('0 units open')).toBeVisible();
+  await expect(publicRow.locator('button[data-act="copy-public"]')).toBeDisabled();
 
   // Cap table read from PactToken transfer logs + balance reads.
   const capTable = page.locator('table').last();
@@ -146,6 +157,27 @@ test('issuer creates a PACT through the UI and lands on its status page', async 
   await context.close();
 });
 
+test('issuer changes the remaining public allocation from the status page', async ({ browser }) => {
+  const [issuer] = e2eAccounts();
+  const offering = await seedOffering({ projectName: 'Managed Public Round', publicUnits: 100 });
+
+  const context = await browser.newContext();
+  await installWallet(context, issuer);
+  const page = await context.newPage();
+  await page.goto('/status?offering=' + offering);
+  await connectWallet(page, issuer);
+
+  const publicRow = page.locator('tr', { hasText: 'Public allocation' });
+  await expect(publicRow.getByText('100 units open')).toBeVisible();
+  await expect(publicRow.locator('button[data-act="copy-public"]')).toBeEnabled();
+
+  page.once('dialog', dialog => dialog.accept('40'));
+  await publicRow.locator('button[data-act="change-public"]').click();
+  await expect(page.getByText('Public allocation updated')).toBeVisible({ timeout: 15_000 });
+  await expect(publicRow.getByText('40 units open')).toBeVisible();
+  await context.close();
+});
+
 test('buyer purchases from the public tranche with real transactions', async ({ browser }) => {
   const [, buyer] = e2eAccounts();
   const offering = await seedOffering({ projectName: 'Public Round', publicUnits: 100 });
@@ -157,15 +189,51 @@ test('buyer purchases from the public tranche with real transactions', async ({ 
 
   await expect(page.getByRole('heading', { name: 'Public Round' })).toBeVisible();
   await connectWallet(page, buyer);
-  await expect(page.getByRole('definition').filter({ hasText: '100 tokens' })).toBeVisible();
-  await page.getByPlaceholder('0.00').fill('60');
+  const unitsInput = page.getByRole('spinbutton');
+  await expect(page.getByText('(100 available)')).toBeVisible();
+  await unitsInput.fill('101');
+  await expect(page.getByText('Max 100')).toBeVisible();
+  await expect(page.locator('button[data-act="pay"]')).toBeDisabled();
+  await unitsInput.fill('58');
   await page.getByPlaceholder('Optional, public').fill('Alice');
+  await expect(page.locator('button[data-act="pay"]')).toBeDisabled();
+  await page.getByRole('checkbox').check();
+  await page.getByPlaceholder('Name (required, private)').fill('Alice Buyer');
+  await expect(page.locator('button[data-act="pay"]')).toBeEnabled();
   await page.locator('button[data-act="pay"]').click();
 
-  // USDC approve + buyPublic, both mined on anvil; $60 buys 58 units on this curve.
+  // USDC approve + buyPublic, both mined on anvil for the exact unit quantity.
   await expect(page.getByText('Purchased', { exact: true })).toBeVisible({ timeout: 30_000 });
-  await expect(page.getByText('58 tokens')).toBeVisible();
+  await expect(page.getByText('58 units')).toBeVisible();
   await expect(page.locator('a[href*="basescan.org/tx/"]')).toHaveAttribute('href', /basescan\.org\/tx\/0x[a-f0-9]{64}/i);
+
+  // Create a second Bought event for the same wallet/offering. The wallet menu
+  // groups purchases by offering rather than rendering duplicate links.
+  await sendTx({
+    from: buyer,
+    to: BASE_USDC,
+    data: encodeFunctionData({ abi: ERC20_APPROVE_ABI, functionName: 'approve', args: [offering, 2_000_000n] }),
+  });
+  await sendTx({
+    from: buyer,
+    to: offering,
+    data: encodeFunctionData({
+      abi: OFFERING_ABI,
+      functionName: 'buyPublic',
+      args: [1n, 2_000_000n, 'Alice'],
+    }),
+  });
+  const recoveredPage = await context.newPage();
+  await recoveredPage.goto('/buy?offering=' + offering);
+  await expect(recoveredPage.locator('#walletToggle')).toContainText(short(buyer));
+  await recoveredPage.locator('#walletToggle').click();
+  const purchaseLink = recoveredPage.locator('.wallet-menu').getByRole('link', { name: /Public Round/ });
+  await expect(purchaseLink).toHaveCount(1);
+  await expect(purchaseLink.getByLabel('Selected')).toBeVisible();
+
+  await recoveredPage.goto('/status?offering=' + offering);
+  await recoveredPage.locator('#walletToggle').click();
+  await expect(recoveredPage.locator('.wallet-menu').getByRole('link', { name: /Public Round/ }).getByLabel('Selected')).toHaveCount(0);
   await context.close();
 });
 
@@ -200,11 +268,15 @@ test('private allocation link claims across two browser contexts', async ({ brow
   await expect(buyerPage.getByRole('heading', { name: 'Private Round | Buyer One' })).toBeVisible();
   await connectWallet(buyerPage, buyer);
   await expect(buyerPage.getByText('Allocation details')).toBeVisible();
+  await expect(buyerPage.locator('button[data-act="pay"]')).toBeDisabled();
+  await buyerPage.getByRole('checkbox').check();
+  await buyerPage.getByPlaceholder('Name (required, private)').fill('Buyer One');
+  await expect(buyerPage.locator('button[data-act="pay"]')).toBeEnabled();
   await buyerPage.locator('button[data-act="pay"]').click();
 
   // buyPrivate verifies the owner + link-key signatures onchain; $50 caps at 48 units.
   await expect(buyerPage.getByText('Purchased', { exact: true })).toBeVisible({ timeout: 30_000 });
-  await expect(buyerPage.getByText('48 tokens')).toBeVisible();
+  await expect(buyerPage.getByText('48 units')).toBeVisible();
 
   // The claim came from the Bought event, so the issuer sees it after reload.
   await issuerPage.reload();

@@ -4,3 +4,8 @@
 .disabled-tip-wrap:hover .disabled-tip { opacity: 1; }
 .disabled-tip:empty { display: none; }
 .curve-frame { border: 0; }
+.exhibit .holder-column { width: 58%; }
+.exhibit .before-column { min-width: 68px; }
+.exhibit .before-input { width: 56px; }
+
+.signature-project { margin-top: 7px; font-size: var(--text-base); }

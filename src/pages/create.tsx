@@ -13,7 +13,6 @@ import { createOffering } from '../lib/chain/onchain.ts';
 import { seedOffering } from '../lib/chain/offerings.ts';
 import { deriveOfferingCurve, costForUnits } from '../lib/chain/curve.ts';
 import type { Pact } from '../lib/chain/curve.ts';
-import { errMsg } from '../lib/format.ts';
 import { Button } from '../components/ui.tsx';
 import { statusPath } from '../lib/routes.ts';
 import { showToast } from '../lib/ui/toast.ts';
@@ -24,6 +23,18 @@ const oneDecimal = (v: string | number) => (Math.round((Number(v) || 0) * 10) / 
 const fmtPct = (v: string | number) => oneDecimal(v) + '%';
 const fmtShares = (v: number) => Math.round(v).toLocaleString('en-US');
 const parseMoney = (s: string | number) => +String(s).replace(/[^0-9.]/g, '') || 0;
+
+function isUserRejected(err: unknown): boolean {
+  let current = err;
+  for (let depth = 0; current && depth < 5; depth++) {
+    const value = current as { code?: unknown; name?: unknown; message?: unknown; cause?: unknown };
+    if (value.code === 4001
+      || value.name === 'UserRejectedRequestError'
+      || /user rejected/i.test(String(value.message || ''))) return true;
+    current = value.cause;
+  }
+  return false;
+}
 
 // One-decimal clamp for percentage inputs (dilution, holder rows).
 function clamp1(value: string, max = 100) {
@@ -246,18 +257,18 @@ function CreateApp() {
     raiseMax: '10,000',
     days: '30',
     dilution: '20',
-    spread: '20',
+    spread: '0',
     publicPct: '0',
     proceeds: '',
   }));
-  const uidRef = useRef(2);
+  const uidRef = useRef(1);
   const [holders, setHolders] = useState<HolderRow[]>([
-    { id: 1, name: '', pct: '50.0' },
-    { id: 2, name: '', pct: '50.0' },
+    { id: 1, name: '', pct: '100.0' },
   ]);
   const [lastAddedId, setLastAddedId] = useState<number | null>(null);
   const [errors, setErrors] = useState<Record<string, string | undefined>>({});
   const [formError, setFormError] = useState('');
+  const [signerName, setSignerName] = useState('');
   const [busy, setBusy] = useState(false);
   const [forceLightChart, setForceLightChart] = useState(false);
   const [themeTick, setThemeTick] = useState(0);
@@ -324,7 +335,7 @@ function CreateApp() {
   }, [errors]);
 
   const d = deriveCurve(form, holders);
-  const valid = formIsValid(form, holders, d);
+  const valid = formIsValid(form, holders, d) && !!signerName.trim();
   const disabled = !valid || !wallet;
   const tip = disabled
     ? (valid ? 'Connect wallet to create issuance' : 'Complete required fields to create issuance')
@@ -343,6 +354,10 @@ function CreateApp() {
   function setHolder(id: number, patch: Partial<HolderRow>, errKey: string) {
     setHolders(hs => hs.map(h => h.id === id ? { ...h, ...patch } : h));
     clearError(errKey);
+  }
+  function setSigner(value: string) {
+    setSignerName(value);
+    clearError('signerName');
   }
 
   // Blur validation: leaving a required field empty or invalid marks it
@@ -385,6 +400,7 @@ function CreateApp() {
       if (!(+h.pct > 0)) errs['pct-' + h.id] = 'Enter a percentage greater than 0.';
       if (!/^\d+(\.\d)$/.test(String(h.pct).trim())) errs['pct-' + h.id] = 'Enter exactly one decimal place.';
     });
+    if (!signerName.trim()) errs.signerName = 'Enter your name.';
     const anyErrors = Object.keys(errs).length > 0;
     const ok = !anyErrors && !!wallet && holders.length > 0 && Math.abs(d.beforeSum - 100) <= 0.05;
     setErrors(errs);
@@ -409,7 +425,8 @@ function CreateApp() {
       seedOffering(deployment);
       window.location.href = statusPath(deployment.offering);
     } catch (err) {
-      setFormError(errMsg(err, 'Could not create issuance.'));
+      setFormError('');
+      showToast(isUserRejected(err) ? 'Request rejected.' : 'Could not create issuance.');
       setBusy(false);
     }
   }
@@ -434,14 +451,14 @@ function CreateApp() {
       {/* Title */}
       <div className="mb-9">
         <h1 className="text-2xl font-bold uppercase tracking-wide text-center">Purchase Agreement for Community Tokens</h1>
-        <p className="text-sm mt-4 uppercase text-justify">The Tokens issued pursuant to this instrument carry no inherent value and entitle their holders to nothing except as the Project&rsquo;s creator may expressly provide. They exist solely to align their holders with the Project, and it is for the creator to determine what, if anything, the Tokens are used for.</p>
+        <p className="text-sm mt-4 uppercase text-justify">The Units issued pursuant to this instrument confer no legal rights, but may participate in the Project&rsquo;s future value as its creator expressly provides. They exist solely to align their holders with the Project, and it is for the creator to determine what, if anything, the Units are used for.</p>
       </div>
 
       {/* Recital */}
       <p className="mb-9 text-justify">
         This Purchase Agreement for Community Tokens (this &ldquo;PACT&rdquo;) certifies that{' '}
         <input id="projectName" className={'blank w-44' + errProps('projectName').className} data-error={errors.projectName || undefined} type="text" placeholder="Project name" autoComplete="off" value={form.projectName} onChange={e => setField('projectName', e.target.value)} onBlur={() => touch('projectName')} /> (the &ldquo;Project&rdquo;)
-        shall issue community tokens (the &ldquo;Tokens&rdquo;) to those who buy into the Offering described below,
+        shall issue community units (the &ldquo;Units&rdquo;) to those who buy into the Offering described below,
         upon and subject to the terms set forth herein.
       </p>
 
@@ -454,16 +471,20 @@ function CreateApp() {
         <input id="raiseMax" className={'blank w-24 text-center' + errProps('raiseMax').className} data-error={errors.raiseMax || undefined} type="text" inputMode="numeric" autoComplete="off" value={form.raiseMax} onChange={e => setField('raiseMax', formatMoneyInput(e.target.value))} onBlur={() => touch('raiseMin', 'raiseMax')} /> (the &ldquo;Maximum&rdquo;)
         of new capital and, in consideration thereof, shall make available for purchase no more than{' '}
         <input id="dilution" className={'blank w-12 text-center' + errProps('dilution').className} data-error={errors.dilution || undefined} type="number" min="0.1" max="99.9" step="0.1" autoComplete="off" value={form.dilution} onChange={e => setField('dilution', clamp1(e.target.value, 99.9))} onBlur={() => touch('dilution')} />%
-        of the Tokens (the &ldquo;Offering&rdquo;).
-        Up to{' '}
+        of the Units (the &ldquo;Offering&rdquo;).
+        Should the Maximum not be met, any unsold Units may be reclaimed solely by the Treasury.
+      </p>
+      <p className="mb-4 pl-4 text-justify">
+        <span className="font-bold">(a) Close Date.</span>
+        {' '}Should the Minimum not be met within{' '}
+        <input id="days" className={'blank w-12 text-center' + errProps('days').className} data-error={errors.days || undefined} type="number" min="1" step="1" autoComplete="off" value={form.days} onChange={e => setField('days', e.target.value)} onBlur={() => touch('days')} /> days of issuance (the &ldquo;Close Date&rdquo;),
+        buyers shall be entitled to burn their Units and reclaim the full amount of their purchase.
+      </p>
+      <p className="mb-9 pl-4 text-justify">
+        <span className="font-bold">(b) Public Portion.</span>
+        {' '}Up to{' '}
         <input id="publicPct" className="blank w-12 text-center" type="number" min="0" max="100" step="1" autoComplete="off" value={form.publicPct} onChange={e => setField('publicPct', clamp1(e.target.value, 100))} />%
         of the Offering shall be purchasable publicly; the remainder shall be reserved for private allocations.
-      </p>
-      <p className="mb-9 text-justify">
-        Should the Minimum not be met within{' '}
-        <input id="days" className={'blank w-12 text-center' + errProps('days').className} data-error={errors.days || undefined} type="number" min="1" step="1" autoComplete="off" value={form.days} onChange={e => setField('days', e.target.value)} onBlur={() => touch('days')} /> days of issuance (the &ldquo;Close Date&rdquo;),
-        buyers shall be entitled to burn their Tokens and reclaim the full amount of their purchase.
-        Should the Maximum not be met, any unsold Tokens may be reclaimed solely by the Treasury.
       </p>
 
       {/* Use of Proceeds */}
@@ -477,13 +498,13 @@ function CreateApp() {
       <p className="mb-3"><span className="font-bold">&sect;3. Capitalization.</span> The capital structure of the Project, before and after the Offering, shall be as set forth below:</p>
       <table className="exhibit mb-2">
         <thead>
-          <tr><th className="w-[58%]">Holder</th><th className="num">Before</th><th className="num">After</th><th className="num">Tokens</th><th className="w-6"></th></tr>
+          <tr><th className="holder-column">Holder</th><th className="before-column num">Before</th><th className="num">After</th><th className="num">Units</th><th className="w-6"></th></tr>
         </thead>
         <tbody id="holders">
           {d.rows.map(h => (
             <tr key={h.id}>
               <td><input type="text" className={'blank w-full' + (errors['name-' + h.id] ? ' error' : '')} data-error={errors['name-' + h.id] || undefined} data-k="name" placeholder="0x address…" autoComplete="off" autoFocus={h.id === lastAddedId} value={h.name} onChange={e => setHolder(h.id, { name: e.target.value }, 'name-' + h.id)} onBlur={() => touchHolderName(h)} /></td>
-              <td className="num"><input type="text" inputMode="decimal" className={'blank w-12 text-right' + (errors['pct-' + h.id] ? ' error' : '')} data-error={errors['pct-' + h.id] || undefined} data-k="pct" autoComplete="off" value={h.pct} onChange={e => setHolder(h.id, { pct: clamp1(e.target.value) }, 'pct-' + h.id)} onBlur={e => { const v = oneDecimal(e.target.value); setHolder(h.id, { pct: v }, 'pct-' + h.id); touchHolderPct(h, v); }} />%</td>
+              <td className="num"><input type="text" inputMode="decimal" className={'blank before-input text-right' + (errors['pct-' + h.id] ? ' error' : '')} data-error={errors['pct-' + h.id] || undefined} data-k="pct" autoComplete="off" value={h.pct} onChange={e => setHolder(h.id, { pct: clamp1(e.target.value) }, 'pct-' + h.id)} onBlur={e => { const v = oneDecimal(e.target.value); setHolder(h.id, { pct: v }, 'pct-' + h.id); touchHolderPct(h, v); }} />%</td>
               <td className="num">{fmtPct(h.after)}</td>
               <td className="num">{fmtShares(h.shares)}</td>
               <td className="num w-6"><button className="delx" title="Remove" onClick={() => removeHolder(h.id)}>&times;</button></td>
@@ -505,23 +526,26 @@ function CreateApp() {
             <td>Total</td>
             <td {...totalProps(badBefore, 'Holder percentages must total 100%.')} id="beforeTotal">{fmtPct(d.beforeSum)}</td>
             <td {...totalProps(badAfter, 'Post-raise must total 100%.')} id="afterTotal">{fmtPct(d.afterSum)}</td>
-            <td {...totalProps(badShares, 'Tokens must total ' + TOTAL_SHARES.toLocaleString('en-US') + '.')} id="sharesTotal">{fmtShares(d.sharesSum)}</td>
+            <td {...totalProps(badShares, 'Units must total ' + TOTAL_SHARES.toLocaleString('en-US') + '.')} id="sharesTotal">{fmtShares(d.sharesSum)}</td>
             <td></td>
           </tr>
         </tfoot>
       </table>
       <p className="mt-3 text-sm leading-5 t-muted italic">
-        Upon issuance, each holder shall receive their Tokens, as defined above. The Tokens allocated to the Offering shall be deposited into the bonding curve (the &ldquo;Curve&rdquo;) and sold along the Resulting Terms below.
+        Upon issuance, each holder shall receive their Units directly in their wallet(s), as defined above.
       </p>
 
       {/* Resulting Terms */}
-      <p className="mt-9 mb-8 text-justify">
+      <p className="mt-9 mb-4 text-justify">
         <span className="font-bold">&sect;4. Resulting Terms.</span>
         {' '}Accordingly, upon full subscription the effective post-money valuation shall be <span className="font-bold" id="capOut">{d.cap ? fmtFull(d.cap) : '—'}</span>.
-        Subscriptions shall be accepted along the Curve, spanning a valuation band of
-        &plusmn;<input id="spread" className="blank w-10 text-center" type="number" min="0" max="60" step="1" autoComplete="off" value={form.spread} onChange={e => setField('spread', e.target.value)} />%
-        about the cap &mdash; beginning at a floor of <span className="font-bold" id="vMinOut">{d.cap ? fmtFull(d.vMin) : '—'}</span> and rising to a ceiling of{' '}
-        <span className="font-bold" id="vMaxOut">{d.cap ? fmtFull(d.vMax) : '—'}</span>, such that the earliest capital admitted is priced most favorably and the last least so.
+      </p>
+      <p className="mb-8 pl-4 text-justify">
+        <span className="font-bold">(a) Discount.</span>
+        {' '}The earliest subscriptions shall be priced at a{' '}
+        <input id="spread" className="blank w-10 text-center" type="number" min="0" max="60" step="1" autoComplete="off" value={form.spread} onChange={e => setField('spread', e.target.value)} />%
+        {' '}discount to the effective post-money valuation. Thereafter, pricing shall progress linearly along the Curve, beginning at a floor of <span className="font-bold" id="vMinOut">{d.cap ? fmtFull(d.vMin) : '—'}</span> and reaching a ceiling of{' '}
+        <span className="font-bold" id="vMaxOut">{d.cap ? fmtFull(d.vMax) : '—'}</span>, an equivalent premium at full subscription.
       </p>
 
       {/* Figure */}
@@ -532,8 +556,27 @@ function CreateApp() {
         <figcaption className="text-sm leading-5 t-muted mt-2 italic">Post-money valuation as the round fills. Hover to explore effective price.</figcaption>
       </figure>
 
+      {/* Signature */}
+      <div className="signature-block">
+        <div className="signature-preview" aria-hidden="true">{signerName || '\u00a0'}</div>
+        <label className="sr-only" htmlFor="signerName">Name</label>
+        <input
+          id="signerName"
+          className={'blank signature-input' + (errors.signerName ? ' error' : '')}
+          data-error={errors.signerName || undefined}
+          type="text"
+          placeholder="Name"
+          autoComplete="name"
+          required
+          value={signerName}
+          onChange={e => setSigner(e.target.value)}
+          onBlur={() => setErrors(e => ({ ...e, signerName: signerName.trim() ? undefined : 'Enter your name.' }))}
+        />
+        <div className="signature-project">Principal, {form.projectName || 'Untitled project'}</div>
+      </div>
+
       {/* CTA */}
-      <div className="mt-10" id="ctaRow">
+      <div className="mt-8" id="ctaRow">
         <p id="formError" className={`${formError ? '' : 'hidden '}text-sm t-danger mb-3`}>{formError}</p>
         <div className="flex items-center justify-end space-x-4">
           <span className="disabled-tip-wrap">

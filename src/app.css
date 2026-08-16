@@ -75,6 +75,17 @@ body { font-family: var(--font); font-size: var(--text-base); font-weight: var(-
 .blank:hover { background: var(--field-bg-focus); }
 .blank:focus { outline: none; background: var(--field-bg-focus); }
 .blank::placeholder { color: var(--muted); }
+.signature-block { width: min(100%, 280px); margin-top: 44px; }
+.signature-preview {
+  height: 38px; display: flex; align-items: flex-end; overflow: hidden;
+  padding: 0 5px; border-bottom: 2px solid var(--line-strong);
+  color: var(--ink); font-family: 'Caveat', cursive; font-size: 26px;
+  font-weight: 500; line-height: 1; white-space: nowrap;
+}
+.signature-input {
+  display: block; width: calc(100% - 32px); box-sizing: border-box;
+  margin: 8px 16px 0 0;
+}
 .blank.error { border-bottom-color: var(--danger); background: var(--danger-bg); }
 .blank::-webkit-outer-spin-button, .blank::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 .blank[type=number] { -moz-appearance: textfield; }
@@ -114,10 +125,10 @@ body { font-family: var(--font); font-size: var(--text-base); font-weight: var(-
 /* secondary / link-style buttons */
 .linkbtn { background: none; border: 0; padding: 0; font-family: inherit; font-size: inherit; color: var(--marker); cursor: pointer; }
 .linkbtn:hover { text-decoration: underline; }
-.secondary-action { border: 1px solid var(--paper-border); border-radius: var(--radius-default); background: var(--paper); color: var(--ink); gap: 8px; }
+.secondary-action { border: 1px solid var(--paper-border); border-radius: var(--radius-default); background: var(--paper); color: var(--ink); gap: 8px; cursor: pointer; }
 .secondary-action:hover { background: var(--field-bg); }
 .secondary-action svg { width: 14px; height: 14px; }
-.warning-action { border: 1px solid var(--paper-border); border-radius: var(--radius-default); background: var(--paper); color: var(--danger); gap: 8px; }
+.warning-action { border: 1px solid var(--paper-border); border-radius: var(--radius-default); background: var(--paper); color: var(--danger); gap: 8px; cursor: pointer; }
 .warning-action:hover { background: var(--field-bg); }
 /* action labels often carry amounts ("Withdraw $1,234.56"); keep digits stable as values change */
 .cta, .secondary-action, .warning-action { font-variant-numeric: tabular-nums; }

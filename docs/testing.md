@@ -70,10 +70,12 @@ after contract edits. The page's RPC is pointed at anvil via the
 (including `eth_signTypedData_v4`) to anvil's unlocked accounts, so the flows
 submit real local-chain transactions.
 
-Scenarios: issuer creates a PACT through the UI, a public-tranche purchase,
-and a private allocation link claimed across two browser contexts (which
-exercises the real Solidity voucher verifier), plus wallet/settings menu
-checks.
+Scenarios: issuer creates and signs a PACT through the UI; an issuer adjusts
+the remaining public allocation; public and private buyers accept and sign the
+purchase terms before submitting real transactions; a private allocation link
+is claimed across two browser contexts (which exercises the real Solidity
+voucher verifier); duplicate purchases are grouped in the wallet menu with the
+correct page selection; and wallet detection and system-dark-mode behavior.
 
 ## Manual Base Dust Checklist
 

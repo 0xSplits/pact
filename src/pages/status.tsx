@@ -100,9 +100,9 @@ interface StatusInfo {
 function offeringStatus(onchainOffering: OfferingView | null, open: boolean, secured: boolean): StatusInfo {
   if (onchainOffering && onchainOffering.state === 1) return { label: 'Failed', tone: 'failed', note: 'Minimum amount not met by close date' };
   if (onchainOffering && onchainOffering.state === 2) return { label: 'Closed', tone: 'closed', note: 'Round closed' };
-  if (secured) return { label: 'Secured', tone: 'secured', note: 'Minimum reached' };
+  if (secured) return { label: 'Open', tone: 'secured', note: 'Minimum reached' };
   if (!open) return { label: 'Below minimum', tone: 'failed', note: 'Close date passed' };
-  return { label: 'Funding', tone: 'funding', note: 'Minimum not yet reached' };
+  return { label: 'Open', tone: 'funding', note: 'Minimum not yet reached' };
 }
 
 interface OfferingAction {
@@ -117,7 +117,7 @@ interface OfferingAction {
   icon?: 'copy';
 }
 
-function offeringActionsFor(onchainOffering: OfferingView | null, connectedWallet: string | null, closeDate: number, canManage: boolean, refundBuyers: string[], refundTotal: number, remainingUnits: number): OfferingAction[] {
+function offeringActionsFor(onchainOffering: OfferingView | null, connectedWallet: string | null, closeDate: number, canManage: boolean, refundBuyers: string[], refundTotal: number, remainingUnits: number, projectName: string): OfferingAction[] {
   if (!onchainOffering || !connectedWallet) return [];
   if (onchainOffering.state === 2) return [];
   const ownerAddress = onchainOffering.owner || null;
@@ -133,19 +133,8 @@ function offeringActionsFor(onchainOffering: OfferingView | null, connectedWalle
       : (claimable <= 0 ? 'No funds available to withdraw' : '');
     actions.push({ action: 'withdraw', label: 'Withdraw proceeds', cta: `Withdraw ${fmtMoney(claimable)}`, note: 'Transfer raised funds to your treasury', disabled: withdrawDisabled, tooltip: withdrawTooltip });
   }
-  if (canManage && onchainOffering.state === 0) {
-    actions.push({
-      action: 'set-public-units',
-      label: 'Public allocation',
-      cta: `${fmtTokens(Math.max(0, onchainOffering.publicUnits - onchainOffering.publicUnitsSold))} tokens open`,
-      note: 'Adjust how many tokens are publicly purchasable',
-      secondary: true,
-      disabled: !isOwner,
-      tooltip: isOwner ? '' : 'Connect owner wallet to adjust',
-    });
-  }
   if (canTopUp) {
-    actions.push({ action: 'top-up', label: 'Increase offering', cta: shortAddr(onchainOffering.offeringAddress || offeringAddress), note: 'Deposit more tokens into the offering', secondary: true, icon: 'copy' });
+    actions.push({ action: 'top-up', label: 'Increase offering', cta: shortAddr(onchainOffering.offeringAddress || offeringAddress), note: `Send additional ${projectName || 'offering'} units to the offering contract`, secondary: true, icon: 'copy' });
   }
   if (onchainOffering.state === 0 && !onchainOffering.minMet && pastClose) {
     actions.push({ action: 'mark-failed', label: 'Mark failed', cta: 'Mark failed', note: 'Enable refunds' });
@@ -171,10 +160,10 @@ function offeringActionsFor(onchainOffering: OfferingView | null, connectedWalle
   return actions;
 }
 
-function disabledContractReadActions(actions: OfferingAction[], tooltip: string): OfferingAction[] {
+function disabledContractReadActions(actions: OfferingAction[], tooltip: string, projectName: string): OfferingAction[] {
   const disabled: OfferingAction[] = actions.length ? actions : [
     { action: 'withdraw', label: 'Withdraw proceeds', cta: 'Withdraw', note: 'Transfer raised funds to your treasury' },
-    { action: 'top-up', label: 'Increase offering', cta: shortAddr(offeringAddress), note: 'Deposit more tokens into the offering', secondary: true, icon: 'copy' },
+    { action: 'top-up', label: 'Increase offering', cta: shortAddr(offeringAddress), note: `Send additional ${projectName || 'offering'} units to the offering contract`, secondary: true, icon: 'copy' },
     { action: 'close', label: 'Close round', cta: 'Close round', note: 'Withdraw funds and return unsold tokens to treasury', warning: true },
   ];
   return disabled.map(action => ({ ...action, disabled: true, tooltip }));
@@ -224,18 +213,20 @@ function OfferingActions({ actions, busyAction, onAction }: {
                 <div className="offering-action-label">{action.label}</div>
                 <div className="t-muted text-sm">{action.note}</div>
               </div>
-              <span className="action-tip-wrap">
-                <Button
-                  variant={action.warning ? 'warning' : (action.secondary ? 'secondary' : 'primary')}
-                  className="px-4 text-sm font-semibold"
-                  data-offering-action={action.action}
-                  disabled={action.disabled || busy}
-                  onClick={() => onAction(action.action)}
-                >
-                  {busy ? 'Confirming…' : <>{action.cta}{action.icon === 'copy' ? <CopyIcon /> : null}</>}
-                </Button>
-                {action.tooltip ? <span className="action-tip">{action.tooltip}</span> : null}
-              </span>
+              <div className="offering-action-controls">
+                <span className="action-tip-wrap">
+                  <Button
+                    variant={action.warning ? 'warning' : (action.secondary ? 'secondary' : 'primary')}
+                    className="px-4 text-sm font-semibold"
+                    data-offering-action={action.action}
+                    disabled={action.disabled || busy}
+                    onClick={() => onAction(action.action)}
+                  >
+                    {busy ? 'Confirming…' : <>{action.cta}{action.icon === 'copy' ? <CopyIcon /> : null}</>}
+                  </Button>
+                  {action.tooltip ? <span className="action-tip">{action.tooltip}</span> : null}
+                </span>
+              </div>
             </div>
           );
         })}
@@ -342,6 +333,7 @@ interface FundedRow {
   cost: number;
   txHash: string | null;
   blockNumber: number | null;
+  link: string | null;
 }
 
 interface OpenRow {
@@ -370,6 +362,7 @@ function allocationRows(bought: Purchase[], ledger: AllocationLedgerRow[]): { fu
       cost: p.cost,
       txHash: p.txHash,
       blockNumber: p.blockNumber,
+      link: ledgerRow ? ledgerRow.link : null,
     };
   });
   const open = ledger
@@ -386,15 +379,18 @@ function allocationRows(bought: Purchase[], ledger: AllocationLedgerRow[]): { fu
   return { funded, open };
 }
 
-function AllocationsTable({ rows, hasPublicTranche, offeringOpen, entryOpen, onOpenEntry, onCancelEntry, onAdd, onRevoke }: {
+function AllocationsTable({ rows, publicUnitsAvailable, publicBuyUrl, publicQuantityDisabledReason, offeringOpen, entryOpen, onOpenEntry, onCancelEntry, onAdd, onRevoke, onChangePublicQuantity }: {
   rows: { funded: FundedRow[]; open: OpenRow[] };
-  hasPublicTranche: boolean;
+  publicUnitsAvailable: number;
+  publicBuyUrl: string;
+  publicQuantityDisabledReason: string;
   offeringOpen: boolean;
   entryOpen: boolean;
   onOpenEntry: () => void;
   onCancelEntry: () => void;
   onAdd: (name: string, amountUsd: number) => Promise<void>;
   onRevoke: (row: OpenRow) => void;
+  onChangePublicQuantity: () => void;
 }) {
   const { funded, open } = rows;
   return (
@@ -403,9 +399,7 @@ function AllocationsTable({ rows, hasPublicTranche, offeringOpen, entryOpen, onO
       <table className="exhibit alloc-table">
         <thead><tr><th>Buyer</th><th className="num">Amount</th><th>Status</th><th></th></tr></thead>
         <tbody>
-          {funded.length || open.length ? (
-            <>
-              {funded.map(row => {
+          {funded.map(row => {
                 const cost = usdcBaseUnitsToDollars(row.cost);
                 return (
                   <tr key={row.key}>
@@ -417,12 +411,34 @@ function AllocationsTable({ rows, hasPublicTranche, offeringOpen, entryOpen, onO
                     <td className="num whitespace-nowrap">
                       <span className="alloc-actions">
                         {row.txHash ? <AddressLink className="act muted" href={basescanTx(row.txHash)}>View txn</AddressLink> : null}
+                        {row.link ? <TextButton tone="muted" data-act="copy" onClick={() => copyText(row.link!)}>Copy link</TextButton> : null}
                       </span>
                     </td>
                   </tr>
                 );
               })}
-              {open.map(row => (
+          <tr>
+            <td>Public allocation</td>
+            <td className="num">&mdash;</td>
+            <td>{offeringOpen
+              ? <span className="badge allocated">{fmtTokens(publicUnitsAvailable)} units open</span>
+              : <span className="badge revoked">Expired</span>}</td>
+            <td className="num whitespace-nowrap">
+              <span className="alloc-actions">
+                <span className="action-tip-wrap">
+                  <TextButton tone="muted" data-act="change-public" disabled={!!publicQuantityDisabledReason} onClick={onChangePublicQuantity}>Change quantity</TextButton>
+                  {publicQuantityDisabledReason ? <span className="action-tip">{publicQuantityDisabledReason}</span> : null}
+                </span>
+                <span className="action-tip-wrap">
+                  <TextButton tone="muted" data-act="copy-public" disabled={!offeringOpen || publicUnitsAvailable === 0} onClick={() => copyText(publicBuyUrl, 'Public link copied')}>Copy link</TextButton>
+                  {!offeringOpen
+                    ? <span className="action-tip">Offering is not open</span>
+                    : publicUnitsAvailable === 0 ? <span className="action-tip">No public units available</span> : null}
+                </span>
+              </span>
+            </td>
+          </tr>
+          {open.map(row => (
                 <tr key={row.key}>
                   <td>{row.name}</td>
                   <td className="num">{fmtMoney(row.amountUsd)}</td>
@@ -442,11 +458,7 @@ function AllocationsTable({ rows, hasPublicTranche, offeringOpen, entryOpen, onO
                     )}
                   </td>
                 </tr>
-              ))}
-            </>
-          ) : (
-            <tr><td colSpan={4} className="px-2 py-5 text-center t-muted">{offeringOpen ? `No purchases yet. Create a private allocation using the row below${hasPublicTranche ? ', or share the public buy link' : ''}.` : 'No purchases.'}</td></tr>
-          )}
+          ))}
           {!offeringOpen ? null : entryOpen
             ? <AllocationEntryRow onCancel={onCancelEntry} onAdd={onAdd} />
             : <tr className="addrow no-print"><td colSpan={4}><button data-act="open-add" type="button" onClick={onOpenEntry}>+ New allocation</button></td></tr>}
@@ -578,8 +590,8 @@ function StatusApp() {
         { value: 'live', label: 'Live' },
         { value: 'loading', label: 'Loading' },
         { value: 'error', label: 'Read failed' },
-        { value: 'funding', label: 'Funding' },
-        { value: 'secured', label: 'Secured' },
+        { value: 'funding', label: 'Open — below minimum' },
+        { value: 'secured', label: 'Open — minimum reached' },
         { value: 'withdrawn', label: 'Withdrawn' },
         { value: 'failed', label: 'Failed' },
         { value: 'closed', label: 'Closed' },
@@ -621,11 +633,25 @@ function StatusApp() {
     if (action === 'close' && !confirm('Close this round? This withdraws funds, returns unsold tokens to treasury, and cannot be undone.')) return;
     let publicUnitsInput: number | null = null;
     if (action === 'set-public-units') {
-      const current = offering && offering.status === 'loaded' ? offering.publicUnits : record.publicUnits;
-      const answer = prompt('Publicly purchasable tokens (currently ' + current + '):', String(current));
+      if (!offering || offering.status !== 'loaded') return;
+      const current = Math.min(
+        offering.remainingUnits,
+        Math.max(0, offering.publicUnits - offering.publicUnitsSold),
+      );
+      const answer = prompt(
+        `Publicly available units (currently ${current}, maximum ${offering.remainingUnits}):`,
+        String(current),
+      );
       if (answer == null) return;
-      publicUnitsInput = Math.floor(Number(String(answer).replace(/[^0-9]/g, '')));
-      if (!(publicUnitsInput >= 0)) return;
+      const openUnits = Math.floor(Number(String(answer).replace(/[^0-9]/g, '')));
+      if (!(openUnits >= 0)) return;
+      if (openUnits > offering.remainingUnits) {
+        showToast(`Only ${fmtTokens(offering.remainingUnits)} units remain in the offering.`);
+        return;
+      }
+      // The contract stores a lifetime public cap, so preserve units already
+      // sold while setting the quantity that remains publicly available.
+      publicUnitsInput = offering.publicUnitsSold + openUnits;
     }
     setBusyAction(action);
     try {
@@ -755,11 +781,11 @@ function StatusApp() {
   const buyerNames = new Map(bought.filter(p => p.buyerName).map(p => [p.buyer.toLowerCase(), p.buyerName]));
 
   const liveActionItems = onchainOffering
-    ? offeringActionsFor(onchainOffering, wallet, closeDate, canManage, refundBuyers, refundTotal, remainingUnits)
+    ? offeringActionsFor(onchainOffering, wallet, closeDate, canManage, refundBuyers, refundTotal, remainingUnits, record.projectName)
     : [];
   const actionItems = offeringLoading
-    ? disabledContractReadActions(liveActionItems, 'Reading contract state')
-    : (offeringReadFailed || debugReadFailed ? disabledContractReadActions(liveActionItems, 'Cannot read contract state') : liveActionItems);
+    ? disabledContractReadActions(liveActionItems, 'Reading contract state', record.projectName)
+    : (offeringReadFailed || debugReadFailed ? disabledContractReadActions(liveActionItems, 'Cannot read contract state', record.projectName) : liveActionItems);
 
   const segs: ProgressSeg[] = [];
   if (!offeringLoading && onchainOffering) {
@@ -774,8 +800,20 @@ function StatusApp() {
   const minPct = Math.min(100, minUsd / progressMax * 100);
   const over = raisedTotal + allocatedTotal - progressMax; // committed beyond live capacity
 
-  const hasPublicTranche = (onchainOffering ? onchainOffering.publicUnits : record.publicUnits) > 0;
   const publicTreasury = onchainOffering ? onchainOffering.treasury : record.treasury;
+  const publicUnitsAvailable = onchainOffering
+    ? Math.min(
+        remainingUnits,
+        Math.max(0, onchainOffering.publicUnits - onchainOffering.publicUnitsSold),
+      )
+    : 0;
+  const publicQuantityDisabledReason = !onchainOffering
+    ? 'Reading contract state'
+    : onchainOffering.state !== 0
+      ? 'Offering is not open'
+      : !wallet || !isSameAddress(wallet, onchainOffering.owner)
+        ? 'Connect owner wallet to adjust'
+        : '';
   const publicOwner = onchainOffering && onchainOffering.owner;
   const showOwner = publicOwner && !isSameAddress(publicOwner, publicTreasury);
 
@@ -824,7 +862,7 @@ function StatusApp() {
         </Field>
         <Field label="Available" loading={offeringLoading}>
           <span>{fmtPct(remainingUnits / TOTAL_TOKENS * 100)}</span>
-          <Sub>{fmtTokens(remainingUnits)} tokens{onchainOffering ? `, ${fmtTokens(Math.max(0, onchainOffering.publicUnits - onchainOffering.publicUnitsSold))} public` : ''}</Sub>
+          <Sub>{fmtTokens(remainingUnits)} tokens</Sub>
         </Field>
         <Field label="Valuation" loading={offeringLoading}>
           <span>{fmtMoney(valNow)} post-money</span><Sub>{fmtTokenPrice(valNow / TOTAL_TOKENS)} / token</Sub>
@@ -854,21 +892,19 @@ function StatusApp() {
             )}
             maxLabel={offeringLoading ? '' : fmtMoney(progressMax)}
           />
-          {hasPublicTranche ? (
-            <div className="no-print mt-3 text-sm t-muted">
-              Public buy link: <button className="linkbtn" type="button" onClick={() => copyText(new URL(buyPath(record.offering), location.origin).href, 'Public link copied')}>copy</button>{open ? null : <> · <span className="badge revoked">Expired</span></>}
-            </div>
-          ) : null}
           <OfferingActions actions={actionItems} busyAction={busyAction} onAction={handleOfferingAction} />
           <AllocationsTable
             rows={rows}
-            hasPublicTranche={hasPublicTranche}
+            publicUnitsAvailable={publicUnitsAvailable}
+            publicBuyUrl={new URL(buyPath(record.offering), location.origin).href}
+            publicQuantityDisabledReason={publicQuantityDisabledReason}
             offeringOpen={open}
             entryOpen={entryOpen}
             onOpenEntry={() => setEntryOpen(true)}
             onCancelEntry={() => setEntryOpen(false)}
             onAdd={handleAddAllocation}
             onRevoke={handleRevokeAllocation}
+            onChangePublicQuantity={() => handleOfferingAction('set-public-units')}
           />
         </>
       ) : null}
