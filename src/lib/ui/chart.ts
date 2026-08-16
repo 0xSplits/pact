@@ -3,6 +3,13 @@
 //   fMin  — threshold fraction (where the minimum raise is reached) → marker
 //   fillF — current fill fraction (how far the round has sold) → "Now" marker + shading
 //   hoverF — readout fraction → post-money valuation and price-per-token pill
+import { fmtUsd } from "../format.ts";
+
+// Plot padding in canvas pixels — drawCurve and attachCurveHover must agree
+// on it for the hover-x → fraction inverse mapping to line up.
+const PAD = 78;
+const FULL_CIRCLE = Math.PI * 2;
+
 export interface CurveChartConfig {
   vMin: number;
   vMax: number;
@@ -26,8 +33,7 @@ export function drawCurve(
   const ctx = canvas.getContext("2d");
   if (!ctx) return;
   const W = canvas.width,
-    H = canvas.height,
-    pad = 78;
+    H = canvas.height;
   const { vMin, vMax, cap, F, totalTokens, fMin, fillF } = cfg;
   const hoverF = cfg.hoverF == null ? cfg.defaultF : cfg.hoverF;
   const dark =
@@ -67,22 +73,15 @@ export function drawCurve(
         sliceText: "#6d44e0",
       };
 
-  const cmoney = (v: number) =>
-    v >= 1e6
-      ? "$" + (v / 1e6).toFixed(v % 1e6 === 0 ? 0 : 2) + "M"
-      : v >= 1e3
-        ? "$" + Math.round(v / 1e3) + "K"
-        : "$" + Math.round(v);
-
   ctx.clearRect(0, 0, W, H);
   ctx.fillStyle = P.bg;
   ctx.fillRect(0, 0, W, H);
   if (!cap || F <= 0) return;
 
-  const x0 = pad,
-    x1 = W - pad,
-    y0 = H - pad,
-    y1 = pad;
+  const x0 = PAD,
+    x1 = W - PAD,
+    y0 = H - PAD,
+    y1 = PAD;
   const yLo = vMin * 0.9,
     yHi = vMax * 1.05;
   const sx = (f: number) => x0 + (f / F) * (x1 - x0);
@@ -91,6 +90,35 @@ export function drawCurve(
     getComputedStyle(document.body).fontFamily || "'IBM Plex Mono', monospace";
   const mono = (px: number) => `${px}px ${fontFam}`;
   const valAt = (f: number) => vMin + (vMax - vMin) * (f / F);
+
+  // Dashed vertical from the axis up to the curve, with a dot and a label —
+  // the threshold / "Now" / slice markers all share this shape.
+  const marker = (opts: {
+    color: string;
+    dash: number[];
+    f: number;
+    radius: number;
+    label: string;
+    labelX?: number;
+  }) => {
+    const x = sx(opts.f),
+      topY = sy(valAt(opts.f));
+    ctx.strokeStyle = opts.color;
+    ctx.lineWidth = 2;
+    ctx.setLineDash(opts.dash);
+    ctx.beginPath();
+    ctx.moveTo(x, y0);
+    ctx.lineTo(x, topY);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = opts.color;
+    ctx.beginPath();
+    ctx.arc(x, topY, opts.radius, 0, FULL_CIRCLE);
+    ctx.fill();
+    ctx.font = mono(26);
+    ctx.textAlign = "center";
+    ctx.fillText(opts.label, opts.labelX ?? x, topY - 18);
+  };
 
   // axes
   ctx.strokeStyle = P.axis;
@@ -171,83 +199,43 @@ export function drawCurve(
     [F, vMax],
   ] as const) {
     ctx.beginPath();
-    ctx.arc(sx(f), sy(v), 6, 0, 7);
+    ctx.arc(sx(f), sy(v), 6, 0, FULL_CIRCLE);
     ctx.fill();
   }
 
-  // threshold marker
-  if (hasMin) {
-    const fx = sx(fMin!),
-      vt = valAt(fMin!);
-    ctx.strokeStyle = P.marker;
-    ctx.lineWidth = 2;
-    ctx.setLineDash([6, 6]);
-    ctx.beginPath();
-    ctx.moveTo(fx, y0);
-    ctx.lineTo(fx, sy(vt));
-    ctx.stroke();
-    ctx.setLineDash([]);
-    ctx.fillStyle = P.marker;
-    ctx.beginPath();
-    ctx.arc(fx, sy(vt), 6, 0, 7);
-    ctx.fill();
-    ctx.font = mono(26);
-    ctx.textAlign = "center";
-    ctx.fillText("Threshold", fx, sy(vt) - 18);
-  }
-
-  // current-fill marker ("Now")
-  if (hasFill) {
-    const ff = Math.min(fillF!, F),
-      fx = sx(ff),
-      vt = valAt(ff);
-    ctx.strokeStyle = P.fill;
-    ctx.lineWidth = 2;
-    ctx.setLineDash([3, 4]);
-    ctx.beginPath();
-    ctx.moveTo(fx, y0);
-    ctx.lineTo(fx, sy(vt));
-    ctx.stroke();
-    ctx.setLineDash([]);
-    ctx.fillStyle = P.fill;
-    ctx.beginPath();
-    ctx.arc(fx, sy(vt), 7, 0, 7);
-    ctx.fill();
-    ctx.font = mono(26);
-    ctx.textAlign = "center";
-    ctx.fillText(cfg.fillLabel || "Now", fx, sy(vt) - 18);
-  }
-
-  // buyer's slice end marker + label
-  if (hasSlice) {
-    ctx.strokeStyle = P.sliceText;
-    ctx.lineWidth = 2;
-    ctx.setLineDash([3, 4]);
-    ctx.beginPath();
-    ctx.moveTo(sx(slt), y0);
-    ctx.lineTo(sx(slt), sy(valAt(slt)));
-    ctx.stroke();
-    ctx.setLineDash([]);
-    ctx.fillStyle = P.sliceText;
-    ctx.beginPath();
-    ctx.arc(sx(slt), sy(valAt(slt)), 6, 0, 7);
-    ctx.fill();
-    ctx.font = mono(26);
-    ctx.textAlign = "center";
-    ctx.fillText(
-      slice!.label || "You",
-      sx((slf + slt) / 2),
-      sy(valAt(slt)) - 18,
-    );
-  }
+  if (hasMin)
+    marker({
+      color: P.marker,
+      dash: [6, 6],
+      f: fMin!,
+      radius: 6,
+      label: "Threshold",
+    });
+  if (hasFill)
+    marker({
+      color: P.fill,
+      dash: [3, 4],
+      f: Math.min(fillF!, F),
+      radius: 7,
+      label: cfg.fillLabel || "Now",
+    });
+  if (hasSlice)
+    marker({
+      color: P.sliceText,
+      dash: [3, 4],
+      f: slt,
+      radius: 6,
+      label: slice!.label || "You",
+      labelX: sx((slf + slt) / 2),
+    });
 
   // endpoint value labels
   ctx.fillStyle = P.text;
   ctx.font = mono(30);
   ctx.textAlign = "left";
-  ctx.fillText(cmoney(vMin), sx(0) + 14, sy(vMin) + 34);
+  ctx.fillText(fmtUsd(vMin, "compact"), sx(0) + 14, sy(vMin) + 34);
   ctx.textAlign = "right";
-  ctx.fillText(cmoney(vMax), sx(F) - 14, sy(vMax) - 18);
+  ctx.fillText(fmtUsd(vMax, "compact"), sx(F) - 14, sy(vMax) - 18);
 
   // axis captions
   ctx.fillStyle = P.caption;
@@ -289,16 +277,10 @@ export function drawCurve(
     ctx.setLineDash([]);
     ctx.fillStyle = P.curve;
     ctx.beginPath();
-    ctx.arc(hx, hy, 7, 0, 7);
+    ctx.arc(hx, hy, 7, 0, FULL_CIRCLE);
     ctx.fill();
-    const primary = cmoney(vAt) + " post-money";
-    const secondary =
-      "$" +
-      (vAt / totalTokens).toLocaleString("en-US", {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-      }) +
-      " / unit";
+    const primary = fmtUsd(vAt, "compact") + " post-money";
+    const secondary = fmtUsd(vAt / totalTokens, "cents") + " / unit";
     ctx.font = `500 ${mono(25)}`;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
@@ -333,9 +315,8 @@ export function attachCurveHover(
   canvas.addEventListener("mousemove", (e) => {
     const cfg = getCfg();
     if (!cfg || !cfg.cap || cfg.F <= 0) return;
-    const pad = 78,
-      x0 = pad,
-      x1 = canvas.width - pad;
+    const x0 = PAD,
+      x1 = canvas.width - PAD;
     const rect = canvas.getBoundingClientRect();
     const cx = ((e.clientX - rect.left) / rect.width) * canvas.width;
     let f = ((cx - x0) / (x1 - x0)) * cfg.F;

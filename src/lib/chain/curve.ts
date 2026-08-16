@@ -45,18 +45,39 @@ export interface PactCurveInputs {
   newMoney: { tokens: number };
 }
 
-// fraction of the project sold once a cumulative $R has been raised along the curve
-export function fractionAt(pact: Pact, R: number): number {
-  const cap = pact.valuation.effectiveCap,
-    vMin = pact.valuation.floor,
-    vMax = pact.valuation.ceiling;
-  const F = pact.maxDilutionPct / 100,
-    rmax = pact.raise.max;
+// The valuation band a raise fraction is computed against; the Pact-free
+// shape the create form works with before a Pact document exists.
+export interface ValuationBand {
+  vMin: number;
+  vMax: number;
+  cap: number;
+  F: number;
+  rmax: number;
+}
+
+// fraction of the project sold once a cumulative $R has been raised along
+// the curve — the inverse of the area under the linear price curve, the
+// trickiest math in the repo, so it lives exactly once.
+export function fractionAtRaise(band: ValuationBand, R: number): number {
+  const { vMin, vMax, cap, F, rmax } = band;
   if (R <= 0) return 0;
   if (R >= rmax) return F;
   if (vMax === vMin) return Math.min(R / cap, F);
   const a = (vMax - vMin) / (2 * F);
   return Math.min((-vMin + Math.sqrt(vMin * vMin + 4 * a * R)) / (2 * a), F);
+}
+
+export function fractionAt(pact: Pact, R: number): number {
+  return fractionAtRaise(
+    {
+      vMin: pact.valuation.floor,
+      vMax: pact.valuation.ceiling,
+      cap: pact.valuation.effectiveCap,
+      F: pact.maxDilutionPct / 100,
+      rmax: pact.raise.max,
+    },
+    R,
+  );
 }
 
 export const tokensBetween = (pact: Pact, R0: number, R1: number) =>
@@ -65,9 +86,9 @@ export const tokensBetween = (pact: Pact, R0: number, R1: number) =>
 // Contract curve parameters derived from a valuation band. Returns null when
 // the band or offering size is invalid.
 export function deriveOfferingCurve(pact: PactCurveInputs): CurveParams | null {
-  const floor = Number(pact && pact.valuation && pact.valuation.floor);
-  const ceiling = Number(pact && pact.valuation && pact.valuation.ceiling);
-  const offeringUnits = Number(pact && pact.newMoney && pact.newMoney.tokens);
+  const floor = pact.valuation.floor;
+  const ceiling = pact.valuation.ceiling;
+  const offeringUnits = pact.newMoney.tokens;
   if (!(floor > 0) || !(ceiling >= floor) || !(offeringUnits > 0)) return null;
   const priceStart = Math.max(
     1,
@@ -83,7 +104,7 @@ export function deriveOfferingCurve(pact: PactCurveInputs): CurveParams | null {
 // Curve parameters for an existing PACT: what the contract was deployed with,
 // falling back to re-deriving them from the stored valuation band.
 export function offeringCurveParams(pact: Pact): CurveParams | null {
-  if (pact && pact.curveParams && Number(pact.curveParams.priceStart) > 0)
+  if (pact.curveParams && pact.curveParams.priceStart > 0)
     return pact.curveParams;
   return deriveOfferingCurve(pact);
 }
@@ -96,8 +117,8 @@ export function costForUnits(
 ): number {
   if (!curve || !(units > 0)) return 0;
   return (
-    units * Number(curve.priceStart || 0) +
-    Number(curve.priceSlope || 0) * (sold * units + (units * (units - 1)) / 2)
+    units * curve.priceStart +
+    curve.priceSlope * (sold * units + (units * (units - 1)) / 2)
   );
 }
 
@@ -122,8 +143,6 @@ export function valuationForUnitIndex(
   totalTokens: number,
 ): number {
   if (!curve) return 0;
-  const price =
-    Number(curve.priceStart || 0) +
-    Number(curve.priceSlope || 0) * Math.max(0, Number(unitIndex || 0));
-  return (price * Number(totalTokens || 0)) / USDC_SCALE;
+  const price = curve.priceStart + curve.priceSlope * Math.max(0, unitIndex);
+  return (price * totalTokens) / USDC_SCALE;
 }

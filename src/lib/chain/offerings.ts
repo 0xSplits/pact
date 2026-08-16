@@ -15,11 +15,15 @@ import {
   getLogs as rpcGetLogs,
   getLatestBlockNumber,
   offeringRecordFromLog,
+  offeringStateCurve,
   purchaseFromLog,
   readMany,
 } from "./onchain.ts";
 import type { OfferingRecord, Purchase } from "./onchain.ts";
 import type { KVStorage } from "./voucher.ts";
+import { globalOverride } from "./chain.ts";
+import { costForUnits } from "./curve.ts";
+import { isSameAddress } from "../validate.ts";
 
 // Public Base RPC caps eth_getLogs at 10k-block ranges.
 export const SCAN_CHUNK_BLOCKS = 10000;
@@ -129,12 +133,13 @@ const boughtEvent = getAbiItem({ abi: OFFERING_ABI, name: "Bought" });
 // the PACT_OFFERING_FACTORY_ADDRESS global createOffering honors: set on
 // globalThis before modules load to scan a locally deployed factory.
 const factoryDefault = (): string =>
-  (globalThis as Record<string, any>).PACT_OFFERING_FACTORY_ADDRESS ||
+  (globalOverride("PACT_OFFERING_FACTORY_ADDRESS") as string | undefined) ||
   OFFERING_FACTORY_ADDRESS;
 const deployBlockDefault = (): number => {
-  const override = (globalThis as Record<string, any>)
-    .PACT_FACTORY_DEPLOY_BLOCK;
-  return Number.isInteger(override) ? override : OFFERING_FACTORY_DEPLOY_BLOCK;
+  const override = globalOverride("PACT_FACTORY_DEPLOY_BLOCK");
+  return Number.isInteger(override)
+    ? (override as number)
+    : OFFERING_FACTORY_DEPLOY_BLOCK;
 };
 
 // Options shared by the listing scans; tests inject fakes through these.
@@ -182,9 +187,7 @@ export function seedOffering(
     items: [],
   };
   if (
-    !cache.items.some(
-      (item) => item.offering.toLowerCase() === record.offering.toLowerCase(),
-    )
+    !cache.items.some((item) => isSameAddress(item.offering, record.offering))
   ) {
     cache.items.push(record);
   }
@@ -195,10 +198,9 @@ export function findOffering(
   offerings: OfferingRecord[] | null | undefined,
   offeringAddress: string | null | undefined,
 ): OfferingRecord | null {
-  const target = String(offeringAddress || "").toLowerCase();
   return (
-    (offerings || []).find(
-      (record) => record.offering.toLowerCase() === target,
+    (offerings || []).find((record) =>
+      isSameAddress(record.offering, offeringAddress),
     ) || null
   );
 }
@@ -255,6 +257,60 @@ export async function listPurchases({
       ...purchase,
       record: known.get(purchase.offering.toLowerCase())!,
     }));
+}
+
+// Live raised/target per issuance in one multicall: target is what the curve
+// yields if every remaining unit sells from the current position.
+export async function loadIssuanceTotals(
+  records: OfferingRecord[],
+): Promise<Array<OfferingRecord & { raised: number; target: number }>> {
+  const calls = records.flatMap((record) =>
+    ["raised", "unitsSold", "remainingUnits"].map((functionName) => ({
+      address: record.offering,
+      abi: OFFERING_ABI,
+      functionName,
+    })),
+  );
+  const values = (await readMany(calls)).map(Number);
+  return records.map((record, i) => {
+    const raised = values[i * 3] ?? 0;
+    const unitsSold = values[i * 3 + 1] ?? 0;
+    const remainingUnits = values[i * 3 + 2] ?? 0;
+    const curve = offeringStateCurve(record);
+    return {
+      ...record,
+      raised,
+      target: raised + costForUnits(curve, unitsSold, remainingUnits),
+    };
+  });
+}
+
+export interface WalletRecords {
+  pacts: Array<OfferingRecord & { raised?: number; target?: number }>;
+  purchases: Array<Purchase & { record: OfferingRecord }>;
+}
+
+// Everything the wallet menu and home dashboard show for a connected wallet:
+// this wallet's issuances (with live totals) and its purchase receipts.
+// Scan failures degrade to empty groups rather than a stuck loader.
+export async function loadWalletRecords(
+  wallet: string,
+): Promise<WalletRecords> {
+  try {
+    const offerings = await listOfferings();
+    const mine = offerings.filter(
+      (record) =>
+        isSameAddress(record.issuer, wallet) ||
+        isSameAddress(record.treasury, wallet),
+    );
+    const [pacts, purchases] = await Promise.all([
+      mine.length ? loadIssuanceTotals(mine).catch(() => mine) : [],
+      listPurchases({ wallet, offerings }).catch(() => []),
+    ]);
+    return { pacts, purchases };
+  } catch (err) {
+    return { pacts: [], purchases: [] };
+  }
 }
 
 const transferEvents = [

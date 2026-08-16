@@ -9,8 +9,16 @@
 // the app transport: override wins outright, otherwise Alchemy with the
 // chain's public RPC as fallback.
 export const BASE_CHAIN_ID = 8453;
+
+// Reads an e2e/manual override set on globalThis before any module loads
+// (Playwright init script, console snippet). The one sanctioned way to peek
+// at those globals — see PACT_RPC_URL above and the factory overrides in
+// offerings.ts/onchain.ts.
+export const globalOverride = (name: string): unknown =>
+  (globalThis as Record<string, unknown>)[name];
+
 export const PACT_RPC_OVERRIDE: string | undefined =
-  (globalThis as Record<string, any>).PACT_RPC_URL || undefined;
+  (globalOverride("PACT_RPC_URL") as string | undefined) || undefined;
 const ALCHEMY_API_KEY = import.meta.env?.VITE_ALCHEMY_API_KEY;
 export const ALCHEMY_RPC_URL: string | undefined = ALCHEMY_API_KEY
   ? `https://base-mainnet.g.alchemy.com/v2/${ALCHEMY_API_KEY}`

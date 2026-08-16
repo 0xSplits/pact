@@ -3,19 +3,12 @@ import { createRoot } from "react-dom/client";
 import { useQuery } from "@tanstack/react-query";
 import "./home.css";
 import { injectChrome } from "../lib/ui/chrome.ts";
-import {
-  fmtDollars,
-  fmtTokens,
-  usdcBaseUnitsToDollars,
-} from "../lib/format.ts";
+import { fmtUsd, fmtTokens, usdcBaseUnitsToDollars } from "../lib/format.ts";
 import { AppProviders } from "../components/wallet.tsx";
 import { useWallet } from "../hooks/use-wallet.ts";
 import { buyPath, createPath, statusPath } from "../lib/routes.ts";
-import { listOfferings, listPurchases } from "../lib/chain/offerings.ts";
-import { readMany } from "../lib/chain/onchain.ts";
-import type { OfferingRecord, Purchase } from "../lib/chain/onchain.ts";
-import { costForUnits } from "../lib/chain/curve.ts";
-import { OFFERING_ABI } from "../generated/offering-contracts.ts";
+import { loadWalletRecords } from "../lib/chain/offerings.ts";
+import type { WalletRecords } from "../lib/chain/offerings.ts";
 
 const PAPER = "paper px-10 py-12 sm:px-14 sm:py-16";
 
@@ -108,42 +101,7 @@ function DashboardTable({
   );
 }
 
-const isSame = (a: string | null | undefined, b: string | null | undefined) =>
-  String(a || "").toLowerCase() === String(b || "").toLowerCase();
-
-// Live raised/target per issuance in one multicall: target is what the curve
-// yields if every remaining unit sells from the current position.
-async function loadIssuanceTotals(records: OfferingRecord[]) {
-  const calls = records.flatMap((record) =>
-    ["raised", "unitsSold", "remainingUnits"].map((functionName) => ({
-      address: record.offering,
-      abi: OFFERING_ABI,
-      functionName,
-    })),
-  );
-  const values = (await readMany(calls)).map(Number);
-  return records.map((record, i) => {
-    const raised = values[i * 3] ?? 0;
-    const unitsSold = values[i * 3 + 1] ?? 0;
-    const remainingUnits = values[i * 3 + 2] ?? 0;
-    const curve = {
-      priceStart: record.priceStart,
-      priceSlope: record.priceSlope,
-    };
-    return {
-      ...record,
-      raised,
-      target: raised + costForUnits(curve, unitsSold, remainingUnits),
-    };
-  });
-}
-
-interface DashboardRecords {
-  pacts: Array<OfferingRecord & { raised?: number; target?: number }>;
-  purchases: Array<Purchase & { record: OfferingRecord }>;
-}
-
-function Dashboard({ records }: { records: DashboardRecords }) {
+function Dashboard({ records }: { records: WalletRecords }) {
   const { pacts, purchases } = records;
   return (
     <div className={PAPER}>
@@ -181,10 +139,10 @@ function Dashboard({ records }: { records: DashboardRecords }) {
                     </a>
                   </td>
                   <td className="num">
-                    {fmtDollars(usdcBaseUnitsToDollars(pact.raised || 0))}
+                    {fmtUsd(usdcBaseUnitsToDollars(pact.raised || 0), "cents")}
                   </td>
                   <td className="num">
-                    {fmtDollars(usdcBaseUnitsToDollars(pact.target || 0))}
+                    {fmtUsd(usdcBaseUnitsToDollars(pact.target || 0), "cents")}
                   </td>
                 </tr>
               ))}
@@ -213,7 +171,7 @@ function Dashboard({ records }: { records: DashboardRecords }) {
                     </a>
                   </td>
                   <td className="num">
-                    {fmtDollars(usdcBaseUnitsToDollars(purchase.cost))}
+                    {fmtUsd(usdcBaseUnitsToDollars(purchase.cost), "cents")}
                   </td>
                   <td className="num">{fmtTokens(purchase.units)}</td>
                 </tr>
@@ -231,22 +189,7 @@ function HomeApp() {
   const { data: records, isPending } = useQuery({
     queryKey: ["home-records", wallet ? wallet.toLowerCase() : null],
     enabled: !!wallet,
-    queryFn: async (): Promise<DashboardRecords> => {
-      try {
-        const offerings = await listOfferings();
-        const mine = offerings.filter(
-          (r) => isSame(r.issuer, wallet) || isSame(r.treasury, wallet),
-        );
-        const [pacts, purchases] = await Promise.all([
-          mine.length ? loadIssuanceTotals(mine).catch(() => mine) : [],
-          listPurchases({ wallet: wallet!, offerings }).catch(() => []),
-        ]);
-        return { pacts, purchases };
-      } catch (err) {
-        // Scan failures degrade to the explainer rather than a stuck loader.
-        return { pacts: [], purchases: [] };
-      }
-    },
+    queryFn: () => loadWalletRecords(wallet!),
   });
 
   if (wallet && isPending) {

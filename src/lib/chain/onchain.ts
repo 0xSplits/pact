@@ -7,7 +7,12 @@
 // Amounts are plain numbers in USDC base units. That is safe well past any
 // raise size this prototype targets (Number stays exact below ~$9B). The
 // bigint→number conversion happens exactly where reads and events decode.
-import { BASE_CHAIN_ID, BASE_USDC_ADDRESS, toUsdcBaseUnits } from "./chain.ts";
+import {
+  BASE_CHAIN_ID,
+  BASE_USDC_ADDRESS,
+  globalOverride,
+  toUsdcBaseUnits,
+} from "./chain.ts";
 import { buildOfferingFactoryInputs } from "./liquid-split.ts";
 import { deriveOfferingCurve, costForUnits, unitsForBudget } from "./curve.ts";
 import type { CurveParams, Pact } from "./curve.ts";
@@ -259,8 +264,7 @@ export async function createOffering({
 }) {
   const factory =
     factoryAddress ||
-    (typeof globalThis !== "undefined" &&
-      (globalThis as Record<string, any>).PACT_OFFERING_FACTORY_ADDRESS) ||
+    (globalOverride("PACT_OFFERING_FACTORY_ADDRESS") as string | undefined) ||
     OFFERING_FACTORY_ADDRESS;
   if (!owner) throw new Error("Connected wallet is required.");
   if (!factory) throw new Error("Offering factory has not been deployed yet.");
@@ -341,7 +345,7 @@ export async function getOfferingState({
     "priceSlope",
     "publicUnits",
     "publicUnitsSold",
-  ];
+  ] as const;
   const calls: ContractFunctionParameters[] = fields.map((functionName) => ({
     address: offering,
     abi: OFFERING_ABI,
@@ -355,45 +359,53 @@ export async function getOfferingState({
       args: [normalizedBuyer],
     });
   const values = await readMany(calls);
-  const [
-    remainingUnits,
-    unitsSold,
-    minMet,
-    state,
-    raised,
-    withdrawn,
-    raiseMin,
-    closeDate,
-    owner,
-    treasury,
-    pactToken,
-    priceStart,
-    priceSlope,
-    publicUnits,
-    publicUnitsSold,
-    deposit,
-  ] = values;
+  // Zip results back to their field names so reordering or inserting a field
+  // can never silently shift every value after it.
+  const v = Object.fromEntries(
+    fields.map((name, i) => [name, values[i]]),
+  ) as Record<(typeof fields)[number], unknown>;
   const result: OfferingState = {
     offeringAddress: offering,
-    remainingUnits: Number(remainingUnits),
-    unitsSold: Number(unitsSold),
-    minMet: minMet as boolean,
-    state: Number(state),
-    raised: Number(raised),
-    withdrawn: Number(withdrawn),
-    raiseMin: Number(raiseMin),
-    closeDate: Number(closeDate),
-    owner: getAddress(owner as string),
-    treasury: getAddress(treasury as string),
-    pactToken: getAddress(pactToken as string),
-    priceStart: Number(priceStart),
-    priceSlope: Number(priceSlope),
-    publicUnits: Number(publicUnits),
-    publicUnitsSold: Number(publicUnitsSold),
+    remainingUnits: Number(v.remainingUnits),
+    unitsSold: Number(v.unitsSold),
+    minMet: v.minMet as boolean,
+    state: Number(v.state),
+    raised: Number(v.raised),
+    withdrawn: Number(v.withdrawn),
+    raiseMin: Number(v.raiseMin),
+    closeDate: Number(v.closeDate),
+    owner: getAddress(v.owner as string),
+    treasury: getAddress(v.treasury as string),
+    pactToken: getAddress(v.pactToken as string),
+    priceStart: Number(v.priceStart),
+    priceSlope: Number(v.priceSlope),
+    publicUnits: Number(v.publicUnits),
+    publicUnitsSold: Number(v.publicUnitsSold),
   };
-  if (normalizedBuyer) result.deposit = Number(deposit);
+  if (normalizedBuyer) result.deposit = Number(values[fields.length]);
   return result;
 }
+
+// Curve parameters straight off an offering-state read.
+export const offeringStateCurve = (
+  state: Pick<OfferingState, "priceStart" | "priceSlope">,
+): CurveParams => ({
+  priceStart: state.priceStart,
+  priceSlope: state.priceSlope,
+});
+
+// Public units still purchasable: capped by both remaining supply and the
+// owner-set public tranche.
+export const availablePublicUnits = (
+  state: Pick<
+    OfferingState,
+    "remainingUnits" | "publicUnits" | "publicUnitsSold"
+  >,
+): number =>
+  Math.min(
+    state.remainingUnits,
+    Math.max(0, state.publicUnits - state.publicUnitsSold),
+  );
 
 export async function getProjectName({
   pactToken,
@@ -642,38 +654,6 @@ async function payWithApproval({
   return { approveTxHash, buyTxHash, buyReceipt };
 }
 
-// Quote for a dollar budget against live curve position and available supply.
-export async function quoteOfferingPurchase({
-  offeringAddress,
-  amountUsd,
-  publicOnly = true,
-}: {
-  offeringAddress: string;
-  amountUsd: number;
-  publicOnly?: boolean;
-}) {
-  const state = await getOfferingState({ offeringAddress });
-  const curve: CurveParams = {
-    priceStart: state.priceStart,
-    priceSlope: state.priceSlope,
-  };
-  const available = publicOnly
-    ? Math.min(
-        state.remainingUnits,
-        Math.max(0, state.publicUnits - state.publicUnitsSold),
-      )
-    : state.remainingUnits;
-  const budget = toUsdcBaseUnits(Number(amountUsd));
-  const units = unitsForBudget(curve, state.unitsSold, available, budget);
-  if (units <= 0)
-    throw new Error(
-      "Amount is too small to buy one whole unit at the current curve price.",
-    );
-  const cost = costForUnits(curve, state.unitsSold, units);
-  const maxCost = Math.ceil(cost * 1.01);
-  return { state, units, cost, maxCost };
-}
-
 export async function buyPublicOffering({
   buyer,
   offeringAddress,
@@ -693,16 +673,10 @@ export async function buyPublicOffering({
   const normalizedBuyer = getAddress(buyer);
   const offering = getAddress(offeringAddress);
   const state = await getOfferingState({ offeringAddress });
-  const available = Math.min(
-    state.remainingUnits,
-    Math.max(0, state.publicUnits - state.publicUnitsSold),
-  );
+  const available = availablePublicUnits(state);
   if (units > available)
     throw new Error(`Only ${available} public units remain.`);
-  const curve: CurveParams = {
-    priceStart: state.priceStart,
-    priceSlope: state.priceSlope,
-  };
+  const curve = offeringStateCurve(state);
   const cost = costForUnits(curve, state.unitsSold, units);
   const maxCost = Math.ceil(cost * 1.01);
   const quote = { state, units, cost, maxCost };
@@ -743,10 +717,7 @@ export async function buyPrivateOffering({
   const normalizedBuyer = getAddress(buyer);
   const offering = getAddress(offeringAddress);
   const state = await getOfferingState({ offeringAddress });
-  const curve: CurveParams = {
-    priceStart: state.priceStart,
-    priceSlope: state.priceSlope,
-  };
+  const curve = offeringStateCurve(state);
   const cap = Number(voucher.amountCapUsdc);
   const units = unitsForBudget(
     curve,

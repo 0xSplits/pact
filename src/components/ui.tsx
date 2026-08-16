@@ -9,6 +9,21 @@ const cx = (...parts: Array<string | false | null | undefined>) =>
 
 export const Loading = () => <span className="t-muted">Loading…</span>;
 
+// Check-mark glyph shared by the wallet menu, buy status dot, and status badge.
+export const CheckIcon = () => (
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="3"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden="true"
+  >
+    <path d="m5 12 4 4L19 6" />
+  </svg>
+);
+
 // Muted secondary text, usually paired with a primary value inside a Field.
 export const Sub = ({ children }: { children: ReactNode }) => (
   <span className="t-muted">{children}</span>

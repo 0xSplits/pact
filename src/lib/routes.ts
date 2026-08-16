@@ -9,6 +9,9 @@ export const statusPath = (offering: string) => "/status?offering=" + offering;
 export const buyPath = (offering: string) => "/buy?offering=" + offering;
 export const buyLinkPath = (offering: string, fragment: string) =>
   buyPath(offering) + "#" + fragment;
+// A shareable absolute URL for an app path.
+export const absoluteUrl = (path: string, origin: string = location.origin) =>
+  new URL(path, origin).href;
 
 export function currentCreatePage(
   pathname: string = location.pathname,
