@@ -175,9 +175,27 @@ body {
 .blank::placeholder {
   color: var(--muted);
 }
+.signature-row {
+  width: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 324px);
+  margin-top: 44px;
+}
+.signature-inner {
+  grid-column: 2;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  min-width: 0;
+}
+.signature-by {
+  flex: 0 0 auto;
+  margin-top: 15px;
+}
 .signature-block {
   width: min(100%, 280px);
-  margin-top: 44px;
+  min-width: 0;
+  flex: 1;
 }
 .signature-preview {
   height: 38px;
@@ -185,7 +203,7 @@ body {
   align-items: flex-end;
   overflow: hidden;
   padding: 0 5px;
-  border-bottom: 2px solid var(--line-strong);
+  border-bottom: 1px solid var(--line-strong);
   color: var(--ink);
   font-family: "Caveat", cursive;
   font-size: 26px;
@@ -198,6 +216,13 @@ body {
   width: calc(100% - 32px);
   box-sizing: border-box;
   margin: 8px 16px 0 0;
+}
+.signature-wallet {
+  margin: 4px 16px 0 0;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.4;
+  white-space: nowrap;
 }
 .blank.error {
   border-bottom-color: var(--danger);

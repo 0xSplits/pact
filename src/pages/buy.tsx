@@ -13,6 +13,7 @@ import {
   relDays,
   usdcBaseUnitsToDollars,
   basescanTx,
+  shortAddr,
   errMsg,
   MS_PER_DAY,
 } from "../lib/format.ts";
@@ -31,6 +32,7 @@ import {
 } from "../lib/routes.ts";
 import {
   availablePublicUnits,
+  quotePublicPurchase,
   getProjectName,
   isAllocationConsumed,
   buyPublicOffering,
@@ -293,9 +295,16 @@ function BuyApp() {
     txHash: string | null;
   } | null>(null); // for the connected wallet
   const [units, setUnits] = useState("");
+  const [publicQuote, setPublicQuote] = useState<{
+    units: number;
+    costUsd: number;
+  } | null>(null);
+  const [publicQuoteLoading, setPublicQuoteLoading] = useState(false);
+  const publicQuoteSeq = useRef(0);
   const [buyerName, setBuyerName] = useState("");
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [signerName, setSignerName] = useState("");
+  const [signerNameError, setSignerNameError] = useState("");
   const [busy, setBusy] = useState<"refund" | "pay" | null>(null);
   const [debugPreview, setDebugPreview] = useState(false);
   const recoveringRef = useRef(false);
@@ -353,6 +362,41 @@ function BuyApp() {
       queryKey: ["allocation-consumed", offeringAddress],
     });
   }, [unitsSoldTick]);
+
+  useEffect(() => {
+    if (voucherPayload || !offeringAddress || debugActive(debugState)) {
+      setPublicQuote(null);
+      setPublicQuoteLoading(false);
+      return;
+    }
+    const requested = Number(units) || 0;
+    if (!Number.isInteger(requested) || requested < 1) {
+      setPublicQuote(null);
+      setPublicQuoteLoading(false);
+      return;
+    }
+    const seq = ++publicQuoteSeq.current;
+    setPublicQuoteLoading(true);
+    const timer = window.setTimeout(async () => {
+      let quote: { units: number; costUsd: number } | null = null;
+      try {
+        const fresh = await quotePublicPurchase({
+          offeringAddress,
+          units: requested,
+        });
+        quote = {
+          units: requested,
+          costUsd: usdcBaseUnitsToDollars(fresh.cost),
+        };
+      } catch {
+        // Invalid or temporarily unavailable quotes render as an em dash.
+      }
+      if (seq !== publicQuoteSeq.current) return;
+      setPublicQuote(quote);
+      setPublicQuoteLoading(false);
+    }, 350);
+    return () => window.clearTimeout(timer);
+  }, [units, debugState, unitsSoldTick]);
 
   // Self-heal: the receipt lives onchain, not in a local database. A wallet
   // with a deposit recovers its purchases from Bought events.
@@ -523,6 +567,21 @@ function BuyApp() {
         View transaction
       </a>
     ) : null;
+  const publicUnitsValid =
+    Number.isInteger(requestedPublicUnits) &&
+    requestedPublicUnits >= 1 &&
+    requestedPublicUnits <= publicRemaining;
+  const estimatedCostUsd = debugActive(debugState)
+    ? quoteUnits > 0
+      ? quoteCost
+      : null
+    : publicQuote &&
+        publicUnitsValid &&
+        publicQuote.units === requestedPublicUnits
+      ? publicQuote.costUsd
+      : null;
+  const estimatedCostLoading =
+    publicUnitsValid && !debugActive(debugState) && publicQuoteLoading;
 
   const failedRefundCopy = debugRefunded
     ? "This project failed to meet the minimum before the close date."
@@ -603,17 +662,20 @@ function BuyApp() {
     );
   }
 
-  const heading = voucherPayload
-    ? `${projectName || "PACT offering"} | ${voucherPayload.voucher.buyerName}`
-    : projectName || "PACT offering";
-
   return (
     <>
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold">{heading}</h1>
-        <p className="text-sm t-muted mt-1">
-          Review the offering details and terms before making your purchase.
+      <div className="mb-10 text-center">
+        <p className="text-2xl font-bold mb-2">
+          {projectName || "PACT offering"}
         </p>
+        <h1 className="text-2xl font-bold uppercase tracking-wide">
+          Purchase Agreement for Community Tokens
+        </h1>
+        {voucherPayload ? (
+          <p className="text-sm t-muted mt-2">
+            Private allocation for {voucherPayload.voucher.buyerName}
+          </p>
+        ) : null}
       </div>
 
       <SectionTitle>Offering details</SectionTitle>
@@ -673,17 +735,16 @@ function BuyApp() {
                 <span>
                   <input
                     className="blank w-28 text-left"
-                    type="number"
+                    type="text"
                     inputMode="numeric"
-                    min="1"
-                    max={publicRemaining}
-                    step="1"
+                    pattern="[0-9]*"
                     placeholder="0"
                     autoComplete="off"
                     value={units}
-                    onChange={(e) =>
-                      setUnits(e.target.value.replace(/[^0-9]/g, ""))
-                    }
+                    onChange={(e) => {
+                      if (/^\d*$/.test(e.target.value))
+                        setUnits(e.target.value);
+                    }}
                   />
                   {requestedPublicUnits > publicRemaining ? (
                     <span className="t-danger ml-2">
@@ -696,11 +757,15 @@ function BuyApp() {
                   )}
                 </span>
               </Field>
-              <Field label="Estimated cost">
-                <span>{quoteUnits > 0 ? fmtUsd(quoteCost, "cents") : "—"}</span>
+              <Field label="Estimated cost" loading={estimatedCostLoading}>
+                <span>
+                  {estimatedCostUsd != null
+                    ? fmtUsd(estimatedCostUsd, "cents")
+                    : "—"}
+                </span>
                 <Sub>
-                  {quoteUnits > 0
-                    ? `${fmtUsd(quotePricePer, "cents")} / unit`
+                  {estimatedCostUsd != null && requestedPublicUnits > 0
+                    ? `${fmtUsd(estimatedCostUsd / requestedPublicUnits, "cents")} / unit`
                     : "— / unit"}
                 </Sub>
               </Field>
@@ -785,23 +850,43 @@ function BuyApp() {
               {fmtUsd(minUsd, "cents")} by {fmtDate(closeDate)}.
             </span>
           </label>
-          <div className="signature-block terms-signature">
-            <div className="signature-preview" aria-hidden="true">
-              {signerName || "\u00a0"}
+          <div className="signature-row terms-signature">
+            <div className="signature-inner">
+              <span className="signature-by">By:</span>
+              <div className="signature-block">
+                <div className="signature-preview" aria-hidden="true">
+                  {signerName || "\u00a0"}
+                </div>
+                <label className="sr-only" htmlFor="buyerSignatureName">
+                  Name
+                </label>
+                <input
+                  id="buyerSignatureName"
+                  className={`blank signature-input${signerNameError ? " error" : ""}`}
+                  data-error={signerNameError || undefined}
+                  aria-invalid={!!signerNameError}
+                  type="text"
+                  placeholder="Name (required, private)"
+                  autoComplete="name"
+                  required
+                  value={signerName}
+                  onChange={(e) => {
+                    setSignerName(e.target.value);
+                    if (e.target.value.trim()) setSignerNameError("");
+                  }}
+                  onBlur={() =>
+                    setSignerNameError(
+                      signerName.trim() ? "" : "Enter your name.",
+                    )
+                  }
+                />
+                {wallet ? (
+                  <div className="signature-wallet" title={wallet}>
+                    {shortAddr(wallet)}
+                  </div>
+                ) : null}
+              </div>
             </div>
-            <label className="sr-only" htmlFor="buyerSignatureName">
-              Name
-            </label>
-            <input
-              id="buyerSignatureName"
-              className="blank signature-input"
-              type="text"
-              placeholder="Name (required, private)"
-              autoComplete="name"
-              required
-              value={signerName}
-              onChange={(e) => setSignerName(e.target.value)}
-            />
           </div>
         </section>
       ) : null}

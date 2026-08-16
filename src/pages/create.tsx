@@ -22,6 +22,8 @@ import {
   fmtTokens,
   parseMoney,
   usdcBaseUnitsToDollars,
+  shortAddr,
+  errMsg,
 } from "../lib/format.ts";
 import { Button } from "../components/ui.tsx";
 import { statusPath } from "../lib/routes.ts";
@@ -586,12 +588,13 @@ function CreateApp() {
       seedOffering(deployment);
       window.location.href = statusPath(deployment.offering);
     } catch (err) {
-      setFormError("");
-      showToast(
-        isUserRejected(err)
-          ? "Request rejected."
-          : "Could not create issuance.",
-      );
+      console.error("Create issuance failed", err);
+      if (isUserRejected(err)) {
+        setFormError("");
+        showToast("Request rejected.");
+      } else {
+        setFormError(errMsg(err, "Could not create issuance."));
+      }
       setBusy(false);
     }
   }
@@ -940,34 +943,46 @@ function CreateApp() {
       </figure>
 
       {/* Signature */}
-      <div className="signature-block">
-        <div className="signature-preview" aria-hidden="true">
-          {signerName || "\u00a0"}
-        </div>
-        <label className="sr-only" htmlFor="signerName">
-          Name
-        </label>
-        <input
-          id="signerName"
-          className={
-            "blank signature-input" + (errors.signerName ? " error" : "")
-          }
-          data-error={errors.signerName || undefined}
-          type="text"
-          placeholder="Name"
-          autoComplete="name"
-          required
-          value={signerName}
-          onChange={(e) => setSigner(e.target.value)}
-          onBlur={() =>
-            setErrors((e) => ({
-              ...e,
-              signerName: signerName.trim() ? undefined : "Enter your name.",
-            }))
-          }
-        />
-        <div className="signature-project">
-          Principal, {form.projectName || "Untitled project"}
+      <div className="signature-row">
+        <div className="signature-inner">
+          <span className="signature-by">By:</span>
+          <div className="signature-block">
+            <div className="signature-preview" aria-hidden="true">
+              {signerName || "\u00a0"}
+            </div>
+            <label className="sr-only" htmlFor="signerName">
+              Name
+            </label>
+            <input
+              id="signerName"
+              className={
+                "blank signature-input" + (errors.signerName ? " error" : "")
+              }
+              data-error={errors.signerName || undefined}
+              type="text"
+              placeholder="Name"
+              autoComplete="name"
+              required
+              value={signerName}
+              onChange={(e) => setSigner(e.target.value)}
+              onBlur={() =>
+                setErrors((e) => ({
+                  ...e,
+                  signerName: signerName.trim()
+                    ? undefined
+                    : "Enter your name.",
+                }))
+              }
+            />
+            <div className="signature-project">
+              Principal, {form.projectName || "Untitled project"}
+            </div>
+            {wallet ? (
+              <div className="signature-wallet" title={wallet}>
+                {shortAddr(wallet)}
+              </div>
+            ) : null}
+          </div>
         </div>
       </div>
 

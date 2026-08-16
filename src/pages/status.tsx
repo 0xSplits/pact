@@ -36,6 +36,7 @@ import {
 } from "../lib/routes.ts";
 import {
   availablePublicUnits,
+  getOfferingState,
   offeringStateCurve,
   withdrawOffering,
   closeAndWithdrawOffering,
@@ -527,7 +528,7 @@ function ProgressTrack({
             key={i}
           >
             <span className="tip">
-              {s.label}: {fmtUsd(s.amountUsd)}
+              {s.label}: {fmtUsd(s.amountUsd, "cents")}
             </span>
           </div>
         ))}
@@ -750,7 +751,7 @@ function AllocationsTable({
                   <span className="tokencell">
                     {fmtTokens(row.units)} tokens
                     <span className="tip2">
-                      {row.units > 0 ? fmtUsd(cost / row.units, "price") : "—"}{" "}
+                      {row.units > 0 ? fmtUsd(cost / row.units, "cents") : "—"}{" "}
                       / token
                     </span>
                   </span>
@@ -1343,7 +1344,7 @@ function StatusApp() {
       )
     )
       return;
-    let publicUnitsInput: number | null = null;
+    let openUnitsInput: number | null = null;
     if (action === "set-public-units") {
       if (!offering || offering.status !== "loaded") return;
       const current = availablePublicUnits(offering);
@@ -1356,15 +1357,7 @@ function StatusApp() {
         Number(String(answer).replace(/[^0-9]/g, "")),
       );
       if (!(openUnits >= 0)) return;
-      if (openUnits > offering.remainingUnits) {
-        showToast(
-          `Only ${fmtTokens(offering.remainingUnits)} units remain in the offering.`,
-        );
-        return;
-      }
-      // The contract stores a lifetime public cap, so preserve units already
-      // sold while setting the quantity that remains publicly available.
-      publicUnitsInput = offering.publicUnitsSold + openUnits;
+      openUnitsInput = openUnits;
     }
     setBusyAction(action);
     try {
@@ -1386,7 +1379,18 @@ function StatusApp() {
         await sweepFailedUnits(base);
         showToast("Tokens returned to treasury");
       } else if (action === "set-public-units") {
-        await setPublicUnits({ ...base, publicUnits: publicUnitsInput! });
+        const fresh = await getOfferingState({
+          offeringAddress: record.offering,
+        });
+        if (openUnitsInput! > fresh.remainingUnits) {
+          throw new Error(
+            `Only ${fmtTokens(fresh.remainingUnits)} units remain in the offering.`,
+          );
+        }
+        await setPublicUnits({
+          ...base,
+          publicUnits: fresh.publicUnitsSold + openUnitsInput!,
+        });
         showToast("Public allocation updated");
       }
       await refreshOffering();
