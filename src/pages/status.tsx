@@ -1,11 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import { createRoot } from "react-dom/client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import "./status.css";
-import { injectChrome } from "../lib/ui/chrome.ts";
 import { showToast, copyText } from "../lib/ui/toast.ts";
-import { AppProviders } from "../components/wallet.tsx";
+import { mountPage } from "../components/wallet.tsx";
 import { useWallet } from "../hooks/use-wallet.ts";
 import { useOfferingState } from "../hooks/use-offering-state.ts";
 import {
@@ -1663,9 +1661,4 @@ function StatusApp() {
   );
 }
 
-injectChrome();
-createRoot(document.getElementById("app")!).render(
-  <AppProviders>
-    <StatusApp />
-  </AppProviders>,
-);
+mountPage(<StatusApp />);

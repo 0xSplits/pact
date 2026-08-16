@@ -1,10 +1,8 @@
 import type { ReactNode } from "react";
-import { createRoot } from "react-dom/client";
 import { useQuery } from "@tanstack/react-query";
 import "./home.css";
-import { injectChrome } from "../lib/ui/chrome.ts";
 import { fmtUsd, fmtTokens, usdcBaseUnitsToDollars } from "../lib/format.ts";
-import { AppProviders } from "../components/wallet.tsx";
+import { mountPage } from "../components/wallet.tsx";
 import { useWallet } from "../hooks/use-wallet.ts";
 import { buyPath, createPath, statusPath } from "../lib/routes.ts";
 import { loadWalletRecords } from "../lib/chain/offerings.ts";
@@ -208,9 +206,4 @@ function HomeApp() {
   return <Explainer />;
 }
 
-injectChrome();
-createRoot(document.getElementById("app")!).render(
-  <AppProviders>
-    <HomeApp />
-  </AppProviders>,
-);
+mountPage(<HomeApp />);
