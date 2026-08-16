@@ -9,14 +9,14 @@ export interface CurveChartConfig {
   cap: number;
   F: number;
   totalTokens: number;
-  fMin?: number;
-  fillF?: number | null;
-  fillLabel?: string;
-  hoverF?: number | null;
-  defaultF?: number;
-  forceLight?: boolean;
-  showThreshold?: boolean;
-  slice?: { from: number; to: number; label?: string };
+  fMin?: number | undefined;
+  fillF?: number | null | undefined;
+  fillLabel?: string | undefined;
+  hoverF?: number | null | undefined;
+  defaultF?: number | undefined;
+  forceLight?: boolean | undefined;
+  showThreshold?: boolean | undefined;
+  slice?: { from: number; to: number; label?: string } | undefined;
 }
 
 export function drawCurve(
@@ -169,7 +169,7 @@ export function drawCurve(
   for (const [f, v] of [
     [0, vMin],
     [F, vMax],
-  ]) {
+  ] as const) {
     ctx.beginPath();
     ctx.arc(sx(f), sy(v), 6, 0, 7);
     ctx.fill();

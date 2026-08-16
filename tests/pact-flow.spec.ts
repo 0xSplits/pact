@@ -11,7 +11,7 @@ import {
   OFFERING_ABI,
   OFFERING_FACTORY_ABI,
 } from "../src/generated/offering-contracts.ts";
-import { RPC_URL, e2eAccounts, e2eFactory, sendTx } from "./e2e-setup.ts";
+import { RPC_URL, e2eAccount, e2eFactory, sendTx } from "./e2e-setup.ts";
 
 test.describe.configure({ timeout: 60_000 });
 
@@ -109,7 +109,8 @@ async function seedOffering({
   projectName: string;
   publicUnits: number;
 }): Promise<Address> {
-  const [deployer, , , holder] = e2eAccounts();
+  const deployer = e2eAccount(0),
+    holder = e2eAccount(3);
   const factory = e2eFactory();
   const receipt = await sendTx({
     from: deployer,
@@ -133,14 +134,18 @@ async function seedOffering({
   });
   const created = receipt.logs.find(
     (log) => log.address.toLowerCase() === factory.toLowerCase(),
-  )!;
-  return getAddress("0x" + created.topics[3].slice(26));
+  );
+  const offeringTopic = created?.topics[3];
+  if (!offeringTopic) throw new Error("OfferingCreated log not found");
+  return getAddress("0x" + offeringTopic.slice(26));
 }
 
 test("issuer creates a PACT through the UI and lands on its status page", async ({
   browser,
 }) => {
-  const [issuer, , , holderA, holderB] = e2eAccounts();
+  const issuer = e2eAccount(0),
+    holderA = e2eAccount(3),
+    holderB = e2eAccount(4);
   const context = await browser.newContext();
   await installWallet(context, issuer);
   const page = await context.newPage();
@@ -223,7 +228,7 @@ test("issuer creates a PACT through the UI and lands on its status page", async 
 test("issuer changes the remaining public allocation from the status page", async ({
   browser,
 }) => {
-  const [issuer] = e2eAccounts();
+  const issuer = e2eAccount(0);
   const offering = await seedOffering({
     projectName: "Managed Public Round",
     publicUnits: 100,
@@ -253,7 +258,7 @@ test("issuer changes the remaining public allocation from the status page", asyn
 test("buyer purchases from the public tranche with real transactions", async ({
   browser,
 }) => {
-  const [, buyer] = e2eAccounts();
+  const buyer = e2eAccount(1);
   const offering = await seedOffering({
     projectName: "Public Round",
     publicUnits: 100,
@@ -337,7 +342,8 @@ test("buyer purchases from the public tranche with real transactions", async ({
 test("private allocation link claims across two browser contexts", async ({
   browser,
 }) => {
-  const [issuer, , buyer] = e2eAccounts();
+  const issuer = e2eAccount(0),
+    buyer = e2eAccount(2);
   const offering = await seedOffering({
     projectName: "Private Round",
     publicUnits: 0,
@@ -494,7 +500,7 @@ test("wallet picker can choose among multiple announced providers", async ({
       });
     },
     {
-      accounts: { first: e2eAccounts()[5], second: e2eAccounts()[6] },
+      accounts: { first: e2eAccount(5), second: e2eAccount(6) },
       rpcUrl: RPC_URL,
       factory: e2eFactory(),
     },
@@ -508,11 +514,11 @@ test("wallet picker can choose among multiple announced providers", async ({
   ).toBeVisible();
   await page.getByRole("button", { name: "Second Wallet" }).click();
   await expect(page.locator("#walletToggle")).toContainText(
-    short(e2eAccounts()[6]),
+    short(e2eAccount(6)),
   );
   await page.reload();
   await expect(page.locator("#walletToggle")).toContainText(
-    short(e2eAccounts()[6]),
+    short(e2eAccount(6)),
   );
   await context.close();
 });

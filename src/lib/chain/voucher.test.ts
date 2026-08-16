@@ -155,7 +155,7 @@ test("allocation ledger add/list/revoke round-trips", () => {
   // Saving the same allocation replaces, not duplicates.
   saveAllocationLedgerRow(offering, { ...row, name: "Bobby" }, storage);
   assert.equal(listAllocationLedger(offering, storage).length, 1);
-  assert.equal(listAllocationLedger(offering, storage)[0].name, "Bobby");
+  assert.equal(listAllocationLedger(offering, storage)[0]?.name, "Bobby");
   markAllocationLedgerRowRevoked(offering, row.allocationId, 7, storage);
   assert.deepEqual(listAllocationLedger(offering, storage), [
     { ...row, name: "Bobby", revokedAt: 7 },

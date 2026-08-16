@@ -110,13 +110,7 @@ test("cachedScan falls back to a full rescan on a corrupt cache", async () => {
 test("a chunk that throws leaves prior progress cached, then resumes", async () => {
   const storage = fakeStorage();
   let calls = 0;
-  const getLogs = async ({
-    fromBlock,
-    toBlock,
-  }: {
-    fromBlock: number;
-    toBlock: number;
-  }) => {
+  const getLogs = async ({ fromBlock }: { fromBlock: number }) => {
     calls++;
     if (calls === 2) throw new Error("rpc hiccup");
     return fromBlock === 100 ? [{ id: 1 }] : [{ id: 2 }];
@@ -171,7 +165,7 @@ test("create-flow seed survives the next scan and dedupes against it", async () 
   });
   assert.deepEqual(offerings, [record]);
   assert.equal(
-    getLogs.ranges[0][0],
+    getLogs.ranges[0]?.[0],
     100,
     "seeding does not skip unscanned history",
   );

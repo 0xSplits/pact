@@ -28,7 +28,7 @@ function existingConstant(name: string, fallback: string): string {
   if (!source) return fallback;
   const text = fs.readFileSync(source, "utf8");
   const match = text.match(new RegExp(name + " = '?([^';\\n]*)'?"));
-  return match ? match[1] : fallback;
+  return match?.[1] ?? fallback;
 }
 
 const factory = readArtifact("OfferingFactory.sol", "OfferingFactory");

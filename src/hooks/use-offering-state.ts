@@ -39,7 +39,10 @@ export function useOfferingState({
     queryKey: stateKey(offeringAddress, buyer),
     enabled: !!offeringAddress,
     queryFn: () =>
-      getOfferingState({ offeringAddress: offeringAddress!, buyer }),
+      getOfferingState({
+        offeringAddress: offeringAddress!,
+        buyer: buyer ?? null,
+      }),
     refetchInterval: POLL_MS,
   });
 

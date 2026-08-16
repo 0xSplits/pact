@@ -581,7 +581,7 @@ function AllocationEntryRow({
   function formatAmount(value: string) {
     const raw = value.replace(/,/g, "").replace(/[^0-9.]/g, "");
     const parts = raw.split(".");
-    const intPart = parts[0].replace(/^0+(?=\d)/, "");
+    const intPart = (parts[0] ?? "").replace(/^0+(?=\d)/, "");
     const decPart =
       parts.length > 1 ? parts.slice(1).join("").slice(0, 2) : null;
     const intDisplay = intPart ? Number(intPart).toLocaleString("en-US") : "";
@@ -917,8 +917,8 @@ function AllocationsTable({
 
 interface CapTableState {
   status: "loading" | "loaded" | "error";
-  holders?: Array<{ address: string; balance: number }>;
-  error?: string;
+  holders?: Array<{ address: string; balance: number }> | undefined;
+  error?: string | undefined;
 }
 
 function CapTable({

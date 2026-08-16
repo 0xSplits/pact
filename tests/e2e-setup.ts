@@ -66,6 +66,11 @@ export const e2eFactory = (): Address =>
   process.env.PACT_E2E_FACTORY as Address;
 export const e2eAccounts = (): Address[] =>
   JSON.parse(process.env.PACT_E2E_ACCOUNTS!);
+export const e2eAccount = (index: number): Address => {
+  const account = e2eAccounts()[index];
+  if (!account) throw new Error("no e2e account at index " + index);
+  return account;
+};
 
 export default async function globalSetup(_config: FullConfig) {
   const artifact = (relative: string) =>
@@ -105,6 +110,8 @@ export default async function globalSetup(_config: FullConfig) {
 
   const accounts: Address[] = await rpc("eth_accounts");
   const [deployer, buyerA, buyerB] = accounts;
+  if (!deployer || !buyerA || !buyerB)
+    throw new Error("anvil returned fewer than 3 accounts");
 
   const usdc = artifact("Mocks.sol/MockUSDC.json");
   await rpc("anvil_setCode", [BASE_USDC, usdc.deployedBytecode.object]);
