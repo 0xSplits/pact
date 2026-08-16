@@ -292,11 +292,12 @@ function BuyApp() {
               String(p.allocationId).toLowerCase() ===
                 String(voucherPayload.voucher.allocationId).toLowerCase()),
         );
-        if (mine.length) {
+        const last = mine[mine.length - 1];
+        if (last) {
           setReceipt({
             units: mine.reduce((s, p) => s + p.units, 0),
             cost: mine.reduce((s, p) => s + p.cost, 0),
-            txHash: mine[mine.length - 1].txHash,
+            txHash: last.txHash,
           });
         }
       } catch (err) {

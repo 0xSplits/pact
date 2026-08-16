@@ -17,7 +17,7 @@ const localHttps =
     : undefined;
 
 // Dev/preview-server equivalent of static-host cleanUrls: /create → create.html etc.
-const rewriteCleanUrls: Connect.NextHandleFunction = (req, res, next) => {
+const rewriteCleanUrls: Connect.NextHandleFunction = (req, _res, next) => {
   const pathname = new URL(req.url || "/", "http://pact.local").pathname;
   const target = (
     {
@@ -46,7 +46,7 @@ const cleanRoutes: Plugin = {
 export default defineConfig(({ isPreview }) => ({
   appType: "mpa",
   plugins: [react(), tailwindcss(), cleanRoutes],
-  server: { https: isPreview ? undefined : localHttps },
+  server: !isPreview && localHttps ? { https: localHttps } : {},
   // Playwright targets a stable HTTP preview URL. A developer's trusted
   // localhost certificate must not silently change the E2E server protocol.
   build: {

@@ -123,7 +123,9 @@ async function loadIssuanceTotals(records: OfferingRecord[]) {
   );
   const values = (await readMany(calls)).map(Number);
   return records.map((record, i) => {
-    const [raised, unitsSold, remainingUnits] = values.slice(i * 3, i * 3 + 3);
+    const raised = values[i * 3] ?? 0;
+    const unitsSold = values[i * 3 + 1] ?? 0;
+    const remainingUnits = values[i * 3 + 2] ?? 0;
     const curve = {
       priceStart: record.priceStart,
       priceSlope: record.priceSlope,

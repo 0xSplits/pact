@@ -70,11 +70,13 @@ export interface CachedScanOptions<T> {
   fromBlock: number;
   map: (log: any) => T | null;
   dedupeKey: (item: T) => string;
-  getLogs?: (
-    args: Record<string, unknown> & { fromBlock: number; toBlock: number },
-  ) => Promise<any[]>;
-  latestBlock?: number;
-  storage?: KVStorage;
+  getLogs?:
+    | ((
+        args: Record<string, unknown> & { fromBlock: number; toBlock: number },
+      ) => Promise<any[]>)
+    | undefined;
+  latestBlock?: number | undefined;
+  storage?: KVStorage | undefined;
 }
 
 // Incremental log scan: resumes from the cache's high-water mark, decodes and
@@ -138,8 +140,8 @@ const deployBlockDefault = (): number => {
 // Options shared by the listing scans; tests inject fakes through these.
 export interface ScanOptions {
   getLogs?: CachedScanOptions<unknown>["getLogs"];
-  latestBlock?: number;
-  storage?: KVStorage;
+  latestBlock?: number | undefined;
+  storage?: KVStorage | undefined;
 }
 
 // Every offering ever created by the factory (the listing cache is global;
@@ -211,7 +213,7 @@ export async function listBought({
   ...options
 }: ScanOptions & {
   offering: string;
-  deployBlock?: number;
+  deployBlock?: number | undefined;
 }): Promise<Purchase[]> {
   return cachedScan<Purchase>({
     key: "pact:bought:" + String(offering).toLowerCase(),
@@ -271,10 +273,10 @@ export async function getPactTokenHolders({
   latestBlock,
 }: {
   pactToken: string;
-  deployBlock?: number;
-  tokenId?: number;
-  getLogs?: typeof rpcGetLogs;
-  latestBlock?: number;
+  deployBlock?: number | undefined;
+  tokenId?: number | undefined;
+  getLogs?: typeof rpcGetLogs | undefined;
+  latestBlock?: number | undefined;
 }): Promise<Array<{ address: Address; balance: number }>> {
   const address = getAddress(pactToken);
   const to = latestBlock != null ? latestBlock : await getLatestBlockNumber();
