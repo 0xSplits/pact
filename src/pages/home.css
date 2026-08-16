@@ -1,6 +1,21 @@
 /* Home page: explainer sections. */
-.overview-section + .overview-section { margin-top: 26px; }
-.overview-section h2 { font-size: var(--text-lg); font-weight: 600; margin-bottom: 8px; }
-.overview-section p { line-height: 1.65; text-wrap: pretty; }
-.overview-section ol { margin: 0; padding-left: 18px; line-height: 1.65; }
-.overview-section li + li { margin-top: 8px; }
+.overview-section + .overview-section {
+  margin-top: 26px;
+}
+.overview-section h2 {
+  font-size: var(--text-lg);
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+.overview-section p {
+  line-height: 1.65;
+  text-wrap: pretty;
+}
+.overview-section ol {
+  margin: 0;
+  padding-left: 18px;
+  line-height: 1.65;
+}
+.overview-section li + li {
+  margin-top: 8px;
+}

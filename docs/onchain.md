@@ -62,7 +62,7 @@ Both tranches share one linear curve (`costFor` over total units sold).
   up to `publicUnits`, an owner-adjustable cap (`setPublicUnits`).
 - **Private**: the rest is claimable only via allocation vouchers.
   `buyPrivate` takes an owner-signed EIP-712 voucher endorsing a throwaway
-  per-allocation *link key*; the link key rides in the share URL fragment and
+  per-allocation _link key_; the link key rides in the share URL fragment and
   signs the claiming buyer's address at purchase time, so the link is the
   sole capability and a claim in the mempool can't be frontrun. Vouchers are
   USDC-capped, one-shot (`AllocationAlreadyConsumed`), and have no expiry;

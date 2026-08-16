@@ -12,10 +12,12 @@ export const BASE_CHAIN_ID = 8453;
 export const PACT_RPC_OVERRIDE: string | undefined =
   (globalThis as Record<string, any>).PACT_RPC_URL || undefined;
 const ALCHEMY_API_KEY = import.meta.env?.VITE_ALCHEMY_API_KEY;
-export const ALCHEMY_RPC_URL: string | undefined =
-  ALCHEMY_API_KEY ? `https://base-mainnet.g.alchemy.com/v2/${ALCHEMY_API_KEY}` : undefined;
+export const ALCHEMY_RPC_URL: string | undefined = ALCHEMY_API_KEY
+  ? `https://base-mainnet.g.alchemy.com/v2/${ALCHEMY_API_KEY}`
+  : undefined;
 
-export const BASE_USDC_ADDRESS = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' as const;
+export const BASE_USDC_ADDRESS =
+  "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913" as const;
 export const USDC_SCALE = 1000000;
 
 export function toUsdcBaseUnits(dollars: number | string): number {

@@ -1,19 +1,23 @@
-import type { ReactNode } from 'react';
-import { createRoot } from 'react-dom/client';
-import { useQuery } from '@tanstack/react-query';
-import './home.css';
-import { injectChrome } from '../lib/ui/chrome.ts';
-import { fmtDollars, fmtTokens, usdcBaseUnitsToDollars } from '../lib/format.ts';
-import { AppProviders } from '../components/wallet.tsx';
-import { useWallet } from '../hooks/use-wallet.ts';
-import { buyPath, createPath, statusPath } from '../lib/routes.ts';
-import { listOfferings, listPurchases } from '../lib/chain/offerings.ts';
-import { readMany } from '../lib/chain/onchain.ts';
-import type { OfferingRecord, Purchase } from '../lib/chain/onchain.ts';
-import { costForUnits } from '../lib/chain/curve.ts';
-import { OFFERING_ABI } from '../generated/offering-contracts.ts';
+import type { ReactNode } from "react";
+import { createRoot } from "react-dom/client";
+import { useQuery } from "@tanstack/react-query";
+import "./home.css";
+import { injectChrome } from "../lib/ui/chrome.ts";
+import {
+  fmtDollars,
+  fmtTokens,
+  usdcBaseUnitsToDollars,
+} from "../lib/format.ts";
+import { AppProviders } from "../components/wallet.tsx";
+import { useWallet } from "../hooks/use-wallet.ts";
+import { buyPath, createPath, statusPath } from "../lib/routes.ts";
+import { listOfferings, listPurchases } from "../lib/chain/offerings.ts";
+import { readMany } from "../lib/chain/onchain.ts";
+import type { OfferingRecord, Purchase } from "../lib/chain/onchain.ts";
+import { costForUnits } from "../lib/chain/curve.ts";
+import { OFFERING_ABI } from "../generated/offering-contracts.ts";
 
-const PAPER = 'paper px-10 py-12 sm:px-14 sm:py-16';
+const PAPER = "paper px-10 py-12 sm:px-14 sm:py-16";
 
 function Explainer() {
   return (
@@ -21,43 +25,81 @@ function Explainer() {
       <div className={PAPER}>
         <div className="mb-9">
           <h1 className="text-2xl font-bold">PACT</h1>
-          <p className="mt-1 text-sm t-muted">Purchase Agreement for Community Tokens</p>
+          <p className="mt-1 text-sm t-muted">
+            Purchase Agreement for Community Tokens
+          </p>
         </div>
 
         <div className="mb-10">
           <section className="overview-section">
             <h2>Why</h2>
             <p>
-              Every project starts before incorporation. Capital can be raised at this stage, but it&rsquo;s clunky: receipts are email threads, working capital sits in personal accounts, and the cap table is undefined. Deals at this stage don&rsquo;t need legal paperwork, since it&rsquo;s trust, reputation, and the repeat game that holds participants accountable.
+              Every project starts before incorporation. Capital can be raised
+              at this stage, but it&rsquo;s clunky: receipts are email threads,
+              working capital sits in personal accounts, and the cap table is
+              undefined. Deals at this stage don&rsquo;t need legal paperwork,
+              since it&rsquo;s trust, reputation, and the repeat game that holds
+              participants accountable.
             </p>
           </section>
           <section className="overview-section">
             <h2>What</h2>
             <p>
-              PACT is a lightweight tool for raising capital without a legal framework. It&rsquo;s a placeholder for future value: equity, tokens, revenue share, or whatever the project turns into. Creators get a funded treasury and a programmable cap table; backers get public receipts and a claim on the project&rsquo;s future value.
+              PACT is a lightweight tool for raising capital without a legal
+              framework. It&rsquo;s a placeholder for future value: equity,
+              tokens, revenue share, or whatever the project turns into.
+              Creators get a funded treasury and a programmable cap table;
+              backers get public receipts and a claim on the project&rsquo;s
+              future value.
             </p>
           </section>
           <section className="overview-section">
             <h2>How</h2>
             <ol className="list-decimal">
-              <li>Create a private issuance with a cap table, target amount, valuation, and close date. Holders receive their units; the rest go on a bonding curve to be purchased by backers.</li>
-              <li>Send each backer a private allocation link, or share the public buy link. Backers purchase their allocations and receive units in return.</li>
-              <li>If the round hits its minimum, the treasury withdraws and the round closes. If it doesn&rsquo;t, backers are refunded.</li>
+              <li>
+                Create a private issuance with a cap table, target amount,
+                valuation, and close date. Holders receive their units; the rest
+                go on a bonding curve to be purchased by backers.
+              </li>
+              <li>
+                Send each backer a private allocation link, or share the public
+                buy link. Backers purchase their allocations and receive units
+                in return.
+              </li>
+              <li>
+                If the round hits its minimum, the treasury withdraws and the
+                round closes. If it doesn&rsquo;t, backers are refunded.
+              </li>
             </ol>
           </section>
         </div>
 
         <div className="flex justify-end">
-          <a className="cta inline-flex items-center justify-center px-6 py-3 text-base font-semibold" href={createPath()}>Create PACT</a>
+          <a
+            className="cta inline-flex items-center justify-center px-6 py-3 text-base font-semibold"
+            href={createPath()}
+          >
+            Create PACT
+          </a>
         </div>
       </div>
 
-      <p className="mt-6 text-sm t-muted text-center">Experimental and unaudited — use with caution.</p>
+      <p className="mt-6 text-sm t-muted text-center">
+        Experimental and unaudited — use with caution.
+      </p>
     </>
   );
 }
 
-function DashboardTable({ title, empty, children }: { title: string; empty: string; children?: ReactNode }) {
+function DashboardTable({
+  title,
+  empty,
+  children,
+}: {
+  title: string;
+  empty: string;
+  children?: ReactNode;
+}) {
   return (
     <section className="mb-8">
       <div className="font-bold mb-2">{title}</div>
@@ -66,21 +108,31 @@ function DashboardTable({ title, empty, children }: { title: string; empty: stri
   );
 }
 
-const isSame = (a: string | null | undefined, b: string | null | undefined) => String(a || '').toLowerCase() === String(b || '').toLowerCase();
+const isSame = (a: string | null | undefined, b: string | null | undefined) =>
+  String(a || "").toLowerCase() === String(b || "").toLowerCase();
 
 // Live raised/target per issuance in one multicall: target is what the curve
 // yields if every remaining unit sells from the current position.
 async function loadIssuanceTotals(records: OfferingRecord[]) {
-  const calls = records.flatMap(record => ['raised', 'unitsSold', 'remainingUnits'].map(functionName => ({
-    address: record.offering,
-    abi: OFFERING_ABI,
-    functionName,
-  })));
+  const calls = records.flatMap((record) =>
+    ["raised", "unitsSold", "remainingUnits"].map((functionName) => ({
+      address: record.offering,
+      abi: OFFERING_ABI,
+      functionName,
+    })),
+  );
   const values = (await readMany(calls)).map(Number);
   return records.map((record, i) => {
     const [raised, unitsSold, remainingUnits] = values.slice(i * 3, i * 3 + 3);
-    const curve = { priceStart: record.priceStart, priceSlope: record.priceSlope };
-    return { ...record, raised, target: raised + costForUnits(curve, unitsSold, remainingUnits) };
+    const curve = {
+      priceStart: record.priceStart,
+      priceSlope: record.priceSlope,
+    };
+    return {
+      ...record,
+      raised,
+      target: raised + costForUnits(curve, unitsSold, remainingUnits),
+    };
   });
 }
 
@@ -96,21 +148,42 @@ function Dashboard({ records }: { records: DashboardRecords }) {
       <div className="mb-8 flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold">Your PACTs</h1>
-          <p className="mt-1 text-sm t-muted">Issuances and purchase receipts connected to this wallet.</p>
+          <p className="mt-1 text-sm t-muted">
+            Issuances and purchase receipts connected to this wallet.
+          </p>
         </div>
-        <a className="cta inline-flex items-center justify-center px-4 py-2 text-sm font-semibold whitespace-nowrap" href={createPath()}>Create PACT</a>
+        <a
+          className="cta inline-flex items-center justify-center px-4 py-2 text-sm font-semibold whitespace-nowrap"
+          href={createPath()}
+        >
+          Create PACT
+        </a>
       </div>
 
       <DashboardTable title="Issuances" empty="No issuances yet.">
         {pacts.length ? (
           <table className="exhibit">
-            <thead><tr><th>Project</th><th className="num">Raised</th><th className="num">Target</th></tr></thead>
+            <thead>
+              <tr>
+                <th>Project</th>
+                <th className="num">Raised</th>
+                <th className="num">Target</th>
+              </tr>
+            </thead>
             <tbody>
-              {pacts.map(pact => (
+              {pacts.map((pact) => (
                 <tr key={pact.offering}>
-                  <td><a className="linkbtn" href={statusPath(pact.offering)}>{pact.projectName || 'Untitled issuance'}</a></td>
-                  <td className="num">{fmtDollars(usdcBaseUnitsToDollars(pact.raised || 0))}</td>
-                  <td className="num">{fmtDollars(usdcBaseUnitsToDollars(pact.target || 0))}</td>
+                  <td>
+                    <a className="linkbtn" href={statusPath(pact.offering)}>
+                      {pact.projectName || "Untitled issuance"}
+                    </a>
+                  </td>
+                  <td className="num">
+                    {fmtDollars(usdcBaseUnitsToDollars(pact.raised || 0))}
+                  </td>
+                  <td className="num">
+                    {fmtDollars(usdcBaseUnitsToDollars(pact.target || 0))}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -121,12 +194,25 @@ function Dashboard({ records }: { records: DashboardRecords }) {
       <DashboardTable title="Purchases" empty="No purchases yet.">
         {purchases.length ? (
           <table className="exhibit">
-            <thead><tr><th>Project</th><th className="num">Amount</th><th className="num">Units</th></tr></thead>
+            <thead>
+              <tr>
+                <th>Project</th>
+                <th className="num">Amount</th>
+                <th className="num">Units</th>
+              </tr>
+            </thead>
             <tbody>
-              {purchases.map(purchase => (
-                <tr key={purchase.txHash + ':' + purchase.logIndex}>
-                  <td><a className="linkbtn" href={buyPath(purchase.offering)}>{(purchase.record && purchase.record.projectName) || 'Untitled purchase'}</a></td>
-                  <td className="num">{fmtDollars(usdcBaseUnitsToDollars(purchase.cost))}</td>
+              {purchases.map((purchase) => (
+                <tr key={purchase.txHash + ":" + purchase.logIndex}>
+                  <td>
+                    <a className="linkbtn" href={buyPath(purchase.offering)}>
+                      {(purchase.record && purchase.record.projectName) ||
+                        "Untitled purchase"}
+                    </a>
+                  </td>
+                  <td className="num">
+                    {fmtDollars(usdcBaseUnitsToDollars(purchase.cost))}
+                  </td>
                   <td className="num">{fmtTokens(purchase.units)}</td>
                 </tr>
               ))}
@@ -141,12 +227,14 @@ function Dashboard({ records }: { records: DashboardRecords }) {
 function HomeApp() {
   const wallet = useWallet();
   const { data: records, isPending } = useQuery({
-    queryKey: ['home-records', wallet ? wallet.toLowerCase() : null],
+    queryKey: ["home-records", wallet ? wallet.toLowerCase() : null],
     enabled: !!wallet,
     queryFn: async (): Promise<DashboardRecords> => {
       try {
         const offerings = await listOfferings();
-        const mine = offerings.filter(r => isSame(r.issuer, wallet) || isSame(r.treasury, wallet));
+        const mine = offerings.filter(
+          (r) => isSame(r.issuer, wallet) || isSame(r.treasury, wallet),
+        );
         const [pacts, purchases] = await Promise.all([
           mine.length ? loadIssuanceTotals(mine).catch(() => mine) : [],
           listPurchases({ wallet: wallet!, offerings }).catch(() => []),
@@ -176,4 +264,8 @@ function HomeApp() {
 }
 
 injectChrome();
-createRoot(document.getElementById('app')!).render(<AppProviders><HomeApp /></AppProviders>);
+createRoot(document.getElementById("app")!).render(
+  <AppProviders>
+    <HomeApp />
+  </AppProviders>,
+);

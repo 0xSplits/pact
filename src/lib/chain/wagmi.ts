@@ -9,18 +9,21 @@
 // Alchemy URL never enters a wallet; only our own transport uses it. The
 // PACT_RPC_OVERRIDE (e2e) bypasses the fallback entirely so tests always
 // talk to their anvil.
-import { createConfig, fallback, http } from 'wagmi';
-import { injected, walletConnect } from 'wagmi/connectors';
-import { base } from 'viem/chains';
-import { ALCHEMY_RPC_URL, PACT_RPC_OVERRIDE } from './chain.ts';
+import { createConfig, fallback, http } from "wagmi";
+import { injected, walletConnect } from "wagmi/connectors";
+import { base } from "viem/chains";
+import { ALCHEMY_RPC_URL, PACT_RPC_OVERRIDE } from "./chain.ts";
 
-const walletConnectProjectId: string | undefined = import.meta.env?.VITE_WALLETCONNECT_PROJECT_ID;
+const walletConnectProjectId: string | undefined = import.meta.env
+  ?.VITE_WALLETCONNECT_PROJECT_ID;
 
 export const wagmiConfig = createConfig({
   chains: [base],
   connectors: [
     injected(),
-    ...(walletConnectProjectId ? [walletConnect({ projectId: walletConnectProjectId })] : []),
+    ...(walletConnectProjectId
+      ? [walletConnect({ projectId: walletConnectProjectId })]
+      : []),
   ],
   transports: {
     [base.id]: PACT_RPC_OVERRIDE

@@ -3,9 +3,14 @@
 // share URL and signs the claiming buyer's address at purchase time, so the
 // link is the sole capability and a claim in the mempool can't be frontrun.
 // Framework-free so the node test runner can exercise it directly.
-import { encodeAbiParameters, keccak256 } from 'viem';
-import type { Address, Hex } from 'viem';
-import { generatePrivateKey, privateKeyToAccount, sign, serializeSignature } from 'viem/accounts';
+import { encodeAbiParameters, keccak256 } from "viem";
+import type { Address, Hex } from "viem";
+import {
+  generatePrivateKey,
+  privateKeyToAccount,
+  sign,
+  serializeSignature,
+} from "viem/accounts";
 
 export interface Voucher {
   allocationId: Hex;
@@ -16,22 +21,35 @@ export interface Voucher {
 }
 
 // A getItem/setItem pair; tests substitute an in-memory map for localStorage.
-export type KVStorage = Pick<Storage, 'getItem' | 'setItem'>;
+export type KVStorage = Pick<Storage, "getItem" | "setItem">;
 
 export const VOUCHER_TYPES = {
   Voucher: [
-    { name: 'allocationId', type: 'bytes32' },
-    { name: 'buyerName', type: 'string' },
-    { name: 'amountCapUsdc', type: 'uint256' },
-    { name: 'linkKey', type: 'address' },
+    { name: "allocationId", type: "bytes32" },
+    { name: "buyerName", type: "string" },
+    { name: "amountCapUsdc", type: "uint256" },
+    { name: "linkKey", type: "address" },
   ],
 } as const;
 
-export function voucherTypedData({ offering, chainId, voucher }: { offering: Address; chainId: number; voucher: Voucher }) {
+export function voucherTypedData({
+  offering,
+  chainId,
+  voucher,
+}: {
+  offering: Address;
+  chainId: number;
+  voucher: Voucher;
+}) {
   return {
-    domain: { name: 'PACT', version: '1', chainId, verifyingContract: offering },
+    domain: {
+      name: "PACT",
+      version: "1",
+      chainId,
+      verifyingContract: offering,
+    },
     types: VOUCHER_TYPES,
-    primaryType: 'Voucher' as const,
+    primaryType: "Voucher" as const,
     message: {
       allocationId: voucher.allocationId,
       buyerName: voucher.buyerName,
@@ -43,25 +61,51 @@ export function voucherTypedData({ offering, chainId, voucher }: { offering: Add
 
 // Fresh link key + allocation id. The id is derived from the key, so it is
 // unique per allocation without a second source of randomness.
-export function newAllocationKey(): { linkPrivateKey: Hex; linkKey: Address; allocationId: Hex } {
+export function newAllocationKey(): {
+  linkPrivateKey: Hex;
+  linkKey: Address;
+  allocationId: Hex;
+} {
   const linkPrivateKey = generatePrivateKey();
   const linkKey = privateKeyToAccount(linkPrivateKey).address;
   return { linkPrivateKey, linkKey, allocationId: keccak256(linkKey) };
 }
 
 // Mirrors Offering.claimDigest: keccak256(abi.encode(offering, allocationId, buyer)).
-export function claimDigest({ offering, allocationId, buyer }: { offering: Address; allocationId: Hex; buyer: Address }): Hex {
-  return keccak256(encodeAbiParameters(
-    [{ type: 'address' }, { type: 'bytes32' }, { type: 'address' }],
-    [offering, allocationId, buyer],
-  ));
+export function claimDigest({
+  offering,
+  allocationId,
+  buyer,
+}: {
+  offering: Address;
+  allocationId: Hex;
+  buyer: Address;
+}): Hex {
+  return keccak256(
+    encodeAbiParameters(
+      [{ type: "address" }, { type: "bytes32" }, { type: "address" }],
+      [offering, allocationId, buyer],
+    ),
+  );
 }
 
-export async function signClaim({ linkPrivateKey, offering, allocationId, buyer }: { linkPrivateKey: Hex; offering: Address; allocationId: Hex; buyer: Address }): Promise<Hex> {
-  return serializeSignature(await sign({
-    hash: claimDigest({ offering, allocationId, buyer }),
-    privateKey: linkPrivateKey,
-  }));
+export async function signClaim({
+  linkPrivateKey,
+  offering,
+  allocationId,
+  buyer,
+}: {
+  linkPrivateKey: Hex;
+  offering: Address;
+  allocationId: Hex;
+  buyer: Address;
+}): Promise<Hex> {
+  return serializeSignature(
+    await sign({
+      hash: claimDigest({ offering, allocationId, buyer }),
+      privateKey: linkPrivateKey,
+    }),
+  );
 }
 
 // --- share-link fragment codec ---------------------------------------------
@@ -73,32 +117,47 @@ const FRAGMENT_VERSION = 1;
 
 function toBase64Url(text: string): string {
   const bytes = new TextEncoder().encode(text);
-  let binary = '';
+  let binary = "";
   for (const b of bytes) binary += String.fromCharCode(b);
-  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  return btoa(binary)
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
 }
 
 function fromBase64Url(encoded: string): string {
-  const binary = atob(String(encoded).replace(/-/g, '+').replace(/_/g, '/'));
-  const bytes = Uint8Array.from(binary, c => c.charCodeAt(0));
+  const binary = atob(String(encoded).replace(/-/g, "+").replace(/_/g, "/"));
+  const bytes = Uint8Array.from(binary, (c) => c.charCodeAt(0));
   return new TextDecoder().decode(bytes);
 }
 
-export function encodeVoucherFragment({ voucher, ownerSig, linkPrivateKey }: { voucher: Voucher; ownerSig: Hex; linkPrivateKey: Hex }): string {
-  return toBase64Url(JSON.stringify({
-    v: FRAGMENT_VERSION,
-    a: voucher.allocationId,
-    n: voucher.buyerName,
-    c: String(voucher.amountCapUsdc),
-    s: ownerSig,
-    k: linkPrivateKey,
-  }));
+export function encodeVoucherFragment({
+  voucher,
+  ownerSig,
+  linkPrivateKey,
+}: {
+  voucher: Voucher;
+  ownerSig: Hex;
+  linkPrivateKey: Hex;
+}): string {
+  return toBase64Url(
+    JSON.stringify({
+      v: FRAGMENT_VERSION,
+      a: voucher.allocationId,
+      n: voucher.buyerName,
+      c: String(voucher.amountCapUsdc),
+      s: ownerSig,
+      k: linkPrivateKey,
+    }),
+  );
 }
 
-const isHex = (value: unknown, bytes: number) => new RegExp('^0x[0-9a-fA-F]{' + bytes * 2 + '}$').test(String(value || ''));
+const isHex = (value: unknown, bytes: number) =>
+  new RegExp("^0x[0-9a-fA-F]{" + bytes * 2 + "}$").test(String(value || ""));
 // Owner signatures vary by wallet: 65 bytes from an EOA, an opaque ERC-1271
 // blob (WebAuthn payload and all) from a passkey/smart wallet.
-const isSignatureHex = (value: unknown) => /^0x(?:[0-9a-fA-F]{2}){65,4096}$/.test(String(value || ''));
+const isSignatureHex = (value: unknown) =>
+  /^0x(?:[0-9a-fA-F]{2}){65,4096}$/.test(String(value || ""));
 
 export interface DecodedVoucherLink {
   voucher: Voucher & { amountCapUsdc: bigint };
@@ -108,10 +167,19 @@ export interface DecodedVoucherLink {
 
 // Returns { voucher, ownerSig, linkPrivateKey } or throws on any malformed payload.
 export function decodeVoucherFragment(fragment: string): DecodedVoucherLink {
-  const payload = JSON.parse(fromBase64Url(String(fragment || '').replace(/^#/, '')));
-  if (payload.v !== FRAGMENT_VERSION) throw new Error('Unsupported link version.');
-  if (!isHex(payload.a, 32) || !isHex(payload.k, 32) || !isSignatureHex(payload.s)) throw new Error('Malformed link.');
-  if (typeof payload.n !== 'string' || !/^\d+$/.test(String(payload.c))) throw new Error('Malformed link.');
+  const payload = JSON.parse(
+    fromBase64Url(String(fragment || "").replace(/^#/, "")),
+  );
+  if (payload.v !== FRAGMENT_VERSION)
+    throw new Error("Unsupported link version.");
+  if (
+    !isHex(payload.a, 32) ||
+    !isHex(payload.k, 32) ||
+    !isSignatureHex(payload.s)
+  )
+    throw new Error("Malformed link.");
+  if (typeof payload.n !== "string" || !/^\d+$/.test(String(payload.c)))
+    throw new Error("Malformed link.");
   return {
     voucher: {
       allocationId: payload.a,
@@ -138,19 +206,29 @@ export interface AllocationLedgerRow {
   revokedAt?: number;
 }
 
-const ledgerKey = (offering: string) => 'pact:allocations:' + String(offering).toLowerCase();
+const ledgerKey = (offering: string) =>
+  "pact:allocations:" + String(offering).toLowerCase();
 
-export function listAllocationLedger(offering: string, storage: KVStorage = localStorage): AllocationLedgerRow[] {
+export function listAllocationLedger(
+  offering: string,
+  storage: KVStorage = localStorage,
+): AllocationLedgerRow[] {
   try {
-    const rows = JSON.parse(storage.getItem(ledgerKey(offering)) || '[]');
+    const rows = JSON.parse(storage.getItem(ledgerKey(offering)) || "[]");
     return Array.isArray(rows) ? rows : [];
   } catch {
     return [];
   }
 }
 
-export function saveAllocationLedgerRow(offering: string, row: AllocationLedgerRow, storage: KVStorage = localStorage): void {
-  const rows = listAllocationLedger(offering, storage).filter(r => r.allocationId !== row.allocationId);
+export function saveAllocationLedgerRow(
+  offering: string,
+  row: AllocationLedgerRow,
+  storage: KVStorage = localStorage,
+): void {
+  const rows = listAllocationLedger(offering, storage).filter(
+    (r) => r.allocationId !== row.allocationId,
+  );
   rows.push(row);
   storage.setItem(ledgerKey(offering), JSON.stringify(rows));
 }
@@ -158,7 +236,14 @@ export function saveAllocationLedgerRow(offering: string, row: AllocationLedgerR
 // Revoked rows are kept, not deleted: the issuer's ledger is the only record
 // an unclaimed allocation ever existed (the AllocationCancelled event carries
 // just the id), so a mark beats an erasure.
-export function markAllocationLedgerRowRevoked(offering: string, allocationId: string, revokedAt: number, storage: KVStorage = localStorage): void {
-  const rows = listAllocationLedger(offering, storage).map(r => r.allocationId === allocationId ? { ...r, revokedAt } : r);
+export function markAllocationLedgerRowRevoked(
+  offering: string,
+  allocationId: string,
+  revokedAt: number,
+  storage: KVStorage = localStorage,
+): void {
+  const rows = listAllocationLedger(offering, storage).map((r) =>
+    r.allocationId === allocationId ? { ...r, revokedAt } : r,
+  );
   storage.setItem(ledgerKey(offering), JSON.stringify(rows));
 }
