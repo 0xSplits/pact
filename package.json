@@ -15,6 +15,8 @@
     "test": "node --test \"src/**/*.test.ts\"",
     "typecheck": "tsc --noEmit",
     "test:contracts": "forge test --root contracts",
+    "check:e2e-impact": "node scripts/check-e2e-impact.ts",
+    "validate": "npm run typecheck && npm test && forge fmt --check --root contracts && npm run test:contracts && npm run build:contracts && npm run test:e2e",
     "deploy:factory": "forge script contracts/script/Deploy.s.sol:Deploy --root contracts --rpc-url https://mainnet.base.org --broadcast --verify",
     "test:e2e": "vite build && playwright test"
   },
