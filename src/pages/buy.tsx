@@ -13,7 +13,6 @@ import {
   relDays,
   usdcBaseUnitsToDollars,
   basescanTx,
-  shortAddr,
   errMsg,
   MS_PER_DAY,
 } from "../lib/format.ts";
@@ -880,11 +879,6 @@ function BuyApp() {
                     )
                   }
                 />
-                {wallet ? (
-                  <div className="signature-wallet" title={wallet}>
-                    {shortAddr(wallet)}
-                  </div>
-                ) : null}
               </div>
             </div>
           </div>

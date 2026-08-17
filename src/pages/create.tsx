@@ -22,7 +22,6 @@ import {
   fmtTokens,
   parseMoney,
   usdcBaseUnitsToDollars,
-  shortAddr,
   errMsg,
 } from "../lib/format.ts";
 import { Button } from "../components/ui.tsx";
@@ -960,7 +959,7 @@ function CreateApp() {
               }
               data-error={errors.signerName || undefined}
               type="text"
-              placeholder="Name"
+              placeholder="Name (required, private)"
               autoComplete="name"
               required
               value={signerName}
@@ -974,14 +973,6 @@ function CreateApp() {
                 }))
               }
             />
-            <div className="signature-project">
-              Principal, {form.projectName || "Untitled project"}
-            </div>
-            {wallet ? (
-              <div className="signature-wallet" title={wallet}>
-                {shortAddr(wallet)}
-              </div>
-            ) : null}
           </div>
         </div>
       </div>
