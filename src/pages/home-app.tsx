@@ -142,7 +142,7 @@ function Dashboard({ records }: { records: WalletRecords }) {
                 <th>Project</th>
                 <th className="num">Raised</th>
                 <th className="num">Target</th>
-                <th>Status</th>
+                <th className="num">Status</th>
               </tr>
             </thead>
             <tbody>
@@ -159,7 +159,7 @@ function Dashboard({ records }: { records: WalletRecords }) {
                   <td className="num">
                     {fmtUsd(usdcBaseUnitsToDollars(pact.target || 0), "cents")}
                   </td>
-                  <td>
+                  <td className="num">
                     <StatusCell
                       lifecycle={pact.lifecycle}
                       closeDate={pact.closeDate}
@@ -180,7 +180,7 @@ function Dashboard({ records }: { records: WalletRecords }) {
                 <th>Project</th>
                 <th className="num">Amount</th>
                 <th className="num">Units</th>
-                <th>Status</th>
+                <th className="num">Status</th>
               </tr>
             </thead>
             <tbody>
@@ -196,7 +196,7 @@ function Dashboard({ records }: { records: WalletRecords }) {
                     {fmtUsd(usdcBaseUnitsToDollars(purchase.cost), "cents")}
                   </td>
                   <td className="num">{fmtTokens(purchase.units)}</td>
-                  <td>
+                  <td className="num">
                     <StatusCell
                       lifecycle={purchase.lifecycle}
                       closeDate={purchase.record.closeDate}
