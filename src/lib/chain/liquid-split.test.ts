@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
+
 import { test } from "vitest";
-import { buildOfferingFactoryInputs } from "./liquid-split.ts";
-import { deriveOfferingCurve, costForUnits, unitsForBudget } from "./curve.ts";
+
 import { toUsdcBaseUnits } from "./chain.ts";
+import { costForUnits, deriveOfferingCurve, unitsForBudget } from "./curve.ts";
+import { buildOfferingFactoryInputs } from "./liquid-split.ts";
 
 const addr = (n: number) => "0x" + String(n).padStart(40, "0");
 

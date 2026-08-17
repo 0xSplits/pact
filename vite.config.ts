@@ -1,10 +1,11 @@
 /// <reference types="vitest/config" />
 import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+
+import tailwindcss from "@tailwindcss/vite";
+import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 import type { Connect, Plugin } from "vite";
-import react from "@vitejs/plugin-react";
-import tailwindcss from "@tailwindcss/vite";
 
 const page = (name: string) => fileURLToPath(new URL(name, import.meta.url));
 const localCertificate = page(".tmp/localhost.pem");

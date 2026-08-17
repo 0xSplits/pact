@@ -7,24 +7,6 @@
 // Amounts are plain numbers in USDC base units. That is safe well past any
 // raise size this prototype targets (Number stays exact below ~$9B). The
 // bigint→number conversion happens exactly where reads and events decode.
-import {
-  BASE_CHAIN_ID,
-  BASE_USDC_ADDRESS,
-  globalOverride,
-  toUsdcBaseUnits,
-} from "./chain.ts";
-import { buildOfferingFactoryInputs } from "./liquid-split.ts";
-import { deriveOfferingCurve, costForUnits, unitsForBudget } from "./curve.ts";
-import type { CurveParams, Pact } from "./curve.ts";
-import { voucherTypedData, signClaim } from "./voucher.ts";
-import type { Voucher } from "./voucher.ts";
-import {
-  OFFERING_FACTORY_ADDRESS,
-  OFFERING_FACTORY_ABI,
-  OFFERING_ABI,
-  PACT_TOKEN_ABI,
-} from "#generated/offering-contracts.ts";
-
 import { erc20Abi, getAddress, isAddressEqual, parseEventLogs } from "viem";
 import type {
   Abi,
@@ -47,6 +29,25 @@ import {
   waitForTransactionReceipt,
   writeContract,
 } from "wagmi/actions";
+
+import {
+  OFFERING_ABI,
+  OFFERING_FACTORY_ABI,
+  OFFERING_FACTORY_ADDRESS,
+  PACT_TOKEN_ABI,
+} from "#generated/offering-contracts.ts";
+
+import {
+  BASE_CHAIN_ID,
+  BASE_USDC_ADDRESS,
+  globalOverride,
+  toUsdcBaseUnits,
+} from "./chain.ts";
+import { costForUnits, deriveOfferingCurve, unitsForBudget } from "./curve.ts";
+import type { CurveParams, Pact } from "./curve.ts";
+import { buildOfferingFactoryInputs } from "./liquid-split.ts";
+import { signClaim, voucherTypedData } from "./voucher.ts";
+import type { Voucher } from "./voucher.ts";
 import { wagmiConfig } from "./wagmi.ts";
 
 const client = () => getPublicClient(wagmiConfig);

@@ -1,14 +1,16 @@
 // The one mount path every page entry uses: chrome, StrictMode, error
 // boundary, provider stack. Kept apart from the component files so they stay
 // pure component modules (Fast Refresh boundaries).
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Component, StrictMode } from "react";
 import type { ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { createRoot } from "react-dom/client";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { WagmiProvider } from "wagmi";
-import { injectChrome } from "#lib/ui/chrome.ts";
+
 import { wagmiConfig } from "#lib/chain/wagmi.ts";
+import { injectChrome } from "#lib/ui/chrome.ts";
+
 import { WalletButton } from "./wallet.tsx";
 
 const queryClient = new QueryClient();

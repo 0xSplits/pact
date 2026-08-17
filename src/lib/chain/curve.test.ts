@@ -1,5 +1,7 @@
-import { test } from "vitest";
 import assert from "node:assert/strict";
+
+import { test } from "vitest";
+
 import { costForUnits, fractionAt, fractionAtRaise } from "./curve.ts";
 import type { Pact } from "./curve.ts";
 

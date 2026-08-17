@@ -1,9 +1,11 @@
-import { test } from "vitest";
 import assert from "node:assert/strict";
+
+import { test } from "vitest";
+
 import {
-  MS_PER_DAY,
   fmtUsd,
   formatAmountInput,
+  MS_PER_DAY,
   parseMoney,
   relDays,
 } from "./format.ts";

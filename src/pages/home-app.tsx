@@ -1,11 +1,13 @@
-import type { ReactNode } from "react";
-import { useQuery } from "@tanstack/react-query";
 import "./home.css";
-import { fmtUsd, fmtTokens, usdcBaseUnitsToDollars } from "#lib/format.ts";
+
+import { useQuery } from "@tanstack/react-query";
+import type { ReactNode } from "react";
+
 import { useWallet } from "#hooks/use-wallet.ts";
-import { buyPath, createPath, statusPath } from "#lib/routes.ts";
 import { loadWalletRecords } from "#lib/chain/offerings.ts";
 import type { WalletRecords } from "#lib/chain/offerings.ts";
+import { fmtTokens, fmtUsd, usdcBaseUnitsToDollars } from "#lib/format.ts";
+import { buyPath, createPath, statusPath } from "#lib/routes.ts";
 
 const PAPER = "paper px-10 py-12 sm:px-14 sm:py-16";
 

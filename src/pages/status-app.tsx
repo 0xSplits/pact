@@ -1,72 +1,10 @@
+import "./status.css";
+
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import "./status.css";
-import { showToast, copyText } from "#lib/ui/toast.ts";
-import { useWallet } from "#hooks/use-wallet.ts";
-import { useOfferingState } from "#hooks/use-offering-state.ts";
-import {
-  fmtUsd,
-  fmtPct,
-  fmtTokens,
-  fmtDate,
-  fmtShortDate,
-  relDays,
-  formatAmountInput,
-  parseMoney,
-  usdcBaseUnitsToDollars,
-  shortAddr,
-  basescanTx,
-  errMsg,
-  MS_PER_DAY,
-} from "#lib/format.ts";
-import { costForUnits, valuationForUnitIndex } from "#lib/chain/curve.ts";
-import { TOTAL_LIQUID_SPLIT_UNITS } from "#lib/chain/liquid-split.ts";
-import { isSameAddress } from "#lib/validate.ts";
-import { debugActive } from "#lib/ui/debug-menu.ts";
-import { useDebugMenu } from "#hooks/use-debug-menu.ts";
-import type { OfferingSnapshot } from "#hooks/use-offering-state.ts";
-import {
-  absoluteUrl,
-  createPath,
-  currentOfferingAddress,
-  buyPath,
-  buyLinkPath,
-} from "#lib/routes.ts";
-import {
-  availablePublicUnits,
-  getOfferingState,
-  offeringStateCurve,
-  withdrawOffering,
-  closeAndWithdrawOffering,
-  markOfferingFailed,
-  refundAllOffering,
-  sweepFailedUnits,
-  setPublicUnits,
-  cancelAllocation,
-  signVoucher,
-} from "#lib/chain/onchain.ts";
-import type {
-  OfferingRecord,
-  OfferingState,
-  Purchase,
-} from "#lib/chain/onchain.ts";
 import type { Address, Hex } from "viem";
-import {
-  listOfferings,
-  findOffering,
-  listBought,
-  getPactTokenHolders,
-} from "#lib/chain/offerings.ts";
-import {
-  newAllocationKey,
-  encodeVoucherFragment,
-  listAllocationLedger,
-  saveAllocationLedgerRow,
-  markAllocationLedgerRowRevoked,
-} from "#lib/chain/voucher.ts";
-import type { AllocationLedgerRow } from "#lib/chain/voucher.ts";
-import { toUsdcBaseUnits } from "#lib/chain/chain.ts";
+
 import {
   AddressLink,
   Button,
@@ -79,6 +17,70 @@ import {
   Sub,
   TextButton,
 } from "#components/ui.tsx";
+import { useDebugMenu } from "#hooks/use-debug-menu.ts";
+import { useOfferingState } from "#hooks/use-offering-state.ts";
+import type { OfferingSnapshot } from "#hooks/use-offering-state.ts";
+import { useWallet } from "#hooks/use-wallet.ts";
+import { toUsdcBaseUnits } from "#lib/chain/chain.ts";
+import { costForUnits, valuationForUnitIndex } from "#lib/chain/curve.ts";
+import { TOTAL_LIQUID_SPLIT_UNITS } from "#lib/chain/liquid-split.ts";
+import {
+  findOffering,
+  getPactTokenHolders,
+  listBought,
+  listOfferings,
+} from "#lib/chain/offerings.ts";
+import {
+  availablePublicUnits,
+  cancelAllocation,
+  closeAndWithdrawOffering,
+  getOfferingState,
+  markOfferingFailed,
+  offeringStateCurve,
+  refundAllOffering,
+  setPublicUnits,
+  signVoucher,
+  sweepFailedUnits,
+  withdrawOffering,
+} from "#lib/chain/onchain.ts";
+import type {
+  OfferingRecord,
+  OfferingState,
+  Purchase,
+} from "#lib/chain/onchain.ts";
+import {
+  encodeVoucherFragment,
+  listAllocationLedger,
+  markAllocationLedgerRowRevoked,
+  newAllocationKey,
+  saveAllocationLedgerRow,
+} from "#lib/chain/voucher.ts";
+import type { AllocationLedgerRow } from "#lib/chain/voucher.ts";
+import {
+  basescanTx,
+  errMsg,
+  fmtDate,
+  fmtPct,
+  fmtShortDate,
+  fmtTokens,
+  fmtUsd,
+  formatAmountInput,
+  MS_PER_DAY,
+  parseMoney,
+  relDays,
+  shortAddr,
+  usdcBaseUnitsToDollars,
+} from "#lib/format.ts";
+import {
+  absoluteUrl,
+  buyLinkPath,
+  buyPath,
+  createPath,
+  currentOfferingAddress,
+} from "#lib/routes.ts";
+import { debugActive } from "#lib/ui/debug-menu.ts";
+import { copyText, showToast } from "#lib/ui/toast.ts";
+import { isSameAddress } from "#lib/validate.ts";
 
 const TOTAL_TOKENS = TOTAL_LIQUID_SPLIT_UNITS;
 

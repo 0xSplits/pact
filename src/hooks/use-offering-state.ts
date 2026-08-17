@@ -1,8 +1,9 @@
-import { useCallback } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useCallback } from "react";
+import type { Address } from "viem";
+
 import { getOfferingState } from "#lib/chain/onchain.ts";
 import type { OfferingState } from "#lib/chain/onchain.ts";
-import type { Address } from "viem";
 import { errMsg } from "#lib/format.ts";
 
 const POLL_MS = 15000;

@@ -1,6 +1,7 @@
 // Builds the OfferingFactory holder inputs from a PACT's cap table.
 // Framework-free so the node test runner can exercise it directly.
 import type { Address } from "viem";
+
 import { isAddress } from "#lib/validate.ts";
 
 // Splits' default Liquid Split is exactly 1,000 units, where each unit is 0.1%.

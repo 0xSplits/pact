@@ -1,43 +1,9 @@
+import "./buy.css";
+
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { showToast } from "#lib/ui/toast.ts";
-import { useWallet } from "#hooks/use-wallet.ts";
-import { useOfferingState } from "#hooks/use-offering-state.ts";
-import {
-  fmtUsd,
-  fmtPct,
-  fmtTokens,
-  fmtDate,
-  relDays,
-  usdcBaseUnitsToDollars,
-  basescanTx,
-  errMsg,
-  MS_PER_DAY,
-} from "#lib/format.ts";
-import {
-  costForUnits,
-  unitsForBudget,
-  valuationForUnitIndex,
-} from "#lib/chain/curve.ts";
-import { TOTAL_LIQUID_SPLIT_UNITS } from "#lib/chain/liquid-split.ts";
-import { isSameAddress } from "#lib/validate.ts";
-import { debugActive } from "#lib/ui/debug-menu.ts";
-import { useDebugMenu } from "#hooks/use-debug-menu.ts";
-import { currentOfferingAddress, currentVoucherFragment } from "#lib/routes.ts";
-import {
-  availablePublicUnits,
-  getProjectName,
-  isAllocationConsumed,
-  buyPublicOffering,
-  buyPrivateOffering,
-  offeringStateCurve,
-  refundOffering,
-} from "#lib/chain/onchain.ts";
-import type { OfferingState } from "#lib/chain/onchain.ts";
-import type { DecodedVoucherLink } from "#lib/chain/voucher.ts";
-import { listBought } from "#lib/chain/offerings.ts";
-import { decodeVoucherFragment } from "#lib/chain/voucher.ts";
+
 import {
   AddressLink,
   Button,
@@ -49,8 +15,44 @@ import {
   SignatureBlock,
   Sub,
 } from "#components/ui.tsx";
+import { useDebugMenu } from "#hooks/use-debug-menu.ts";
 import { useErrorTip } from "#hooks/use-error-tip.ts";
-import "./buy.css";
+import { useOfferingState } from "#hooks/use-offering-state.ts";
+import { useWallet } from "#hooks/use-wallet.ts";
+import {
+  costForUnits,
+  unitsForBudget,
+  valuationForUnitIndex,
+} from "#lib/chain/curve.ts";
+import { TOTAL_LIQUID_SPLIT_UNITS } from "#lib/chain/liquid-split.ts";
+import { listBought } from "#lib/chain/offerings.ts";
+import {
+  availablePublicUnits,
+  buyPrivateOffering,
+  buyPublicOffering,
+  getProjectName,
+  isAllocationConsumed,
+  offeringStateCurve,
+  refundOffering,
+} from "#lib/chain/onchain.ts";
+import type { OfferingState } from "#lib/chain/onchain.ts";
+import type { DecodedVoucherLink } from "#lib/chain/voucher.ts";
+import { decodeVoucherFragment } from "#lib/chain/voucher.ts";
+import {
+  basescanTx,
+  errMsg,
+  fmtDate,
+  fmtPct,
+  fmtTokens,
+  fmtUsd,
+  MS_PER_DAY,
+  relDays,
+  usdcBaseUnitsToDollars,
+} from "#lib/format.ts";
+import { currentOfferingAddress, currentVoucherFragment } from "#lib/routes.ts";
+import { debugActive } from "#lib/ui/debug-menu.ts";
+import { showToast } from "#lib/ui/toast.ts";
+import { isSameAddress } from "#lib/validate.ts";
 
 const TOTAL_TOKENS = TOTAL_LIQUID_SPLIT_UNITS;
 const offeringAddress = currentOfferingAddress();

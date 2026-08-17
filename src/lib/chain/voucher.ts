@@ -8,8 +8,8 @@ import type { Address, Hex } from "viem";
 import {
   generatePrivateKey,
   privateKeyToAccount,
-  sign,
   serializeSignature,
+  sign,
 } from "viem/accounts";
 
 export interface Voucher {

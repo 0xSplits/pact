@@ -4,26 +4,28 @@
 // as parameters so tests run against fakes and never hit real RPC.
 import { getAbiItem, getAddress, zeroAddress } from "viem";
 import type { Address } from "viem";
+
 import {
-  OFFERING_FACTORY_ABI,
   OFFERING_ABI,
-  PACT_TOKEN_ABI,
+  OFFERING_FACTORY_ABI,
   OFFERING_FACTORY_ADDRESS,
   OFFERING_FACTORY_DEPLOY_BLOCK,
+  PACT_TOKEN_ABI,
 } from "#generated/offering-contracts.ts";
+import { isSameAddress } from "#lib/validate.ts";
+
+import { globalOverride } from "./chain.ts";
+import { costForUnits } from "./curve.ts";
 import {
-  getLogs as rpcGetLogs,
   getLatestBlockNumber,
   offeringRecordFromLog,
   offeringStateCurve,
   purchaseFromLog,
   readMany,
+  getLogs as rpcGetLogs,
 } from "./onchain.ts";
 import type { OfferingRecord, Purchase } from "./onchain.ts";
 import type { KVStorage } from "./voucher.ts";
-import { globalOverride } from "./chain.ts";
-import { costForUnits } from "./curve.ts";
-import { isSameAddress } from "#lib/validate.ts";
 
 // Public Base RPC caps eth_getLogs at 10k-block ranges.
 export const SCAN_CHUNK_BLOCKS = 10000;
