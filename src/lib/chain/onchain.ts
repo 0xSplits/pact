@@ -36,19 +36,22 @@ import {
   OFFERING_FACTORY_ADDRESS,
   PACT_TOKEN_ABI,
 } from "#generated/offering-contracts.ts";
-
 import {
   BASE_CHAIN_ID,
   BASE_USDC_ADDRESS,
   globalOverride,
   toUsdcBaseUnits,
-} from "./chain.ts";
-import { costForUnits, deriveOfferingCurve, unitsForBudget } from "./curve.ts";
-import type { CurveParams, Pact } from "./curve.ts";
-import { buildOfferingFactoryInputs } from "./liquid-split.ts";
-import { signClaim, voucherTypedData } from "./voucher.ts";
-import type { Voucher } from "./voucher.ts";
-import { wagmiConfig } from "./wagmi.ts";
+} from "#lib/chain/chain.ts";
+import {
+  costForUnits,
+  deriveOfferingCurve,
+  unitsForBudget,
+} from "#lib/chain/curve.ts";
+import type { CurveParams, Pact } from "#lib/chain/curve.ts";
+import { buildOfferingFactoryInputs } from "#lib/chain/liquid-split.ts";
+import { signClaim, voucherTypedData } from "#lib/chain/voucher.ts";
+import type { Voucher } from "#lib/chain/voucher.ts";
+import { wagmiConfig } from "#lib/chain/wagmi.ts";
 
 const client = () => getPublicClient(wagmiConfig);
 

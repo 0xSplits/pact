@@ -5,8 +5,6 @@ import { fileURLToPath } from "node:url";
 
 import { test } from "vitest";
 
-import { buildGoldenFixture } from "#scripts/generate-voucher-fixture.ts";
-
 import {
   decodeVoucherFragment,
   encodeVoucherFragment,
@@ -14,7 +12,8 @@ import {
   markAllocationLedgerRowRevoked,
   newAllocationKey,
   saveAllocationLedgerRow,
-} from "./voucher.ts";
+} from "#lib/chain/voucher.ts";
+import { buildGoldenFixture } from "#scripts/generate-voucher-fixture.ts";
 
 const fakeStorage = () => {
   const map = new Map<string, string>();

@@ -13,7 +13,9 @@
     "#hooks/*": "./src/hooks/*",
     "#components/*": "./src/components/*",
     "#generated/*": "./src/generated/*",
-    "#scripts/*": "./scripts/*"
+    "#scripts/*": "./scripts/*",
+    "#pages/*": "./src/pages/*",
+    "#tests/*": "./tests/*"
   },
   "scripts": {
     "dev": "vite",

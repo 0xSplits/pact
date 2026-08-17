@@ -12,8 +12,7 @@ import {
   OFFERING_ABI,
   OFFERING_FACTORY_ABI,
 } from "#generated/offering-contracts.ts";
-
-import { e2eAccount, e2eFactory, RPC_URL, sendTx } from "./e2e-setup.ts";
+import { e2eAccount, e2eFactory, RPC_URL, sendTx } from "#tests/e2e-setup.ts";
 
 test.describe.configure({ timeout: 60_000 });
 

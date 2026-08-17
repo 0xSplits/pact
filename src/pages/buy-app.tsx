@@ -1,4 +1,4 @@
-import "./buy.css";
+import "#pages/buy.css";
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";

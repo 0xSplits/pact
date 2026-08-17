@@ -1,4 +1,4 @@
-import "./status.css";
+import "#pages/status.css";
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";

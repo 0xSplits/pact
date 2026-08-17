@@ -1,4 +1,4 @@
-import "./create.css";
+import "#pages/create.css";
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";

@@ -11,7 +11,7 @@ import {
   currentStatusPage,
   currentVoucherFragment,
   statusPath,
-} from "./routes.ts";
+} from "#lib/routes.ts";
 
 const OFFERING = "0x692f4B9Fd0940fb5F2Ed2f32435A2DbFDA23b5F8";
 

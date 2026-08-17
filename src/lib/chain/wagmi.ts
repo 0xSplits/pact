@@ -13,7 +13,7 @@ import { base } from "viem/chains";
 import { createConfig, fallback, http } from "wagmi";
 import { injected, walletConnect } from "wagmi/connectors";
 
-import { ALCHEMY_RPC_URL, PACT_RPC_OVERRIDE } from "./chain.ts";
+import { ALCHEMY_RPC_URL, PACT_RPC_OVERRIDE } from "#lib/chain/chain.ts";
 
 const walletConnectProjectId: string | undefined = import.meta.env
   ?.VITE_WALLETCONNECT_PROJECT_ID;

@@ -6,7 +6,7 @@
     "react/rules-of-hooks": "error",
     "react/only-export-components": ["warn", { "allowConstantExport": true }],
     "import/no-default-export": "error",
-    "no-restricted-imports": ["error", { "patterns": ["../*"] }]
+    "no-restricted-imports": ["error", { "patterns": ["./*", "../*"] }]
   },
   "overrides": [
     {

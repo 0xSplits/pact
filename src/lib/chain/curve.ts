@@ -1,8 +1,8 @@
 // Bonding-curve math, shared by the create/buy/status pages and the onchain
 // module. Prices are in USDC base units per whole Liquid Split unit; the
 // contract sells unit `i` (zero-indexed) at `priceStart + priceSlope * i`.
-import { USDC_SCALE } from "./chain.ts";
-import { TOTAL_LIQUID_SPLIT_UNITS } from "./liquid-split.ts";
+import { USDC_SCALE } from "#lib/chain/chain.ts";
+import { TOTAL_LIQUID_SPLIT_UNITS } from "#lib/chain/liquid-split.ts";
 
 // Contract curve parameters: USDC base units per whole unit.
 export interface CurveParams {

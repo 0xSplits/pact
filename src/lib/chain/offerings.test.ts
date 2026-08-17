@@ -9,7 +9,7 @@ import {
   listOfferings,
   SCAN_CHUNK_BLOCKS,
   seedOffering,
-} from "./offerings.ts";
+} from "#lib/chain/offerings.ts";
 
 const fakeStorage = () => {
   const map = new Map<string, string>();

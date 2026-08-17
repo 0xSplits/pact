@@ -12,10 +12,8 @@ import {
   OFFERING_FACTORY_DEPLOY_BLOCK,
   PACT_TOKEN_ABI,
 } from "#generated/offering-contracts.ts";
-import { isSameAddress } from "#lib/validate.ts";
-
-import { globalOverride } from "./chain.ts";
-import { costForUnits } from "./curve.ts";
+import { globalOverride } from "#lib/chain/chain.ts";
+import { costForUnits } from "#lib/chain/curve.ts";
 import {
   getLatestBlockNumber,
   offeringRecordFromLog,
@@ -23,9 +21,10 @@ import {
   purchaseFromLog,
   readMany,
   getLogs as rpcGetLogs,
-} from "./onchain.ts";
-import type { OfferingRecord, Purchase } from "./onchain.ts";
-import type { KVStorage } from "./voucher.ts";
+} from "#lib/chain/onchain.ts";
+import type { OfferingRecord, Purchase } from "#lib/chain/onchain.ts";
+import type { KVStorage } from "#lib/chain/voucher.ts";
+import { isSameAddress } from "#lib/validate.ts";
 
 // Public Base RPC caps eth_getLogs at 10k-block ranges.
 export const SCAN_CHUNK_BLOCKS = 10000;

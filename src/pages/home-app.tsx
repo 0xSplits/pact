@@ -1,4 +1,4 @@
-import "./home.css";
+import "#pages/home.css";
 
 import { useQuery } from "@tanstack/react-query";
 import type { ReactNode } from "react";

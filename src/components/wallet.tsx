@@ -7,6 +7,7 @@ import { useEffect, useRef, useState } from "react";
 import { useAccount, useConnect, useDisconnect } from "wagmi";
 import type { Connector } from "wagmi";
 
+import { CheckIcon } from "#components/ui.tsx";
 import { loadWalletRecords } from "#lib/chain/offerings.ts";
 import { shortAddr } from "#lib/format.ts";
 import {
@@ -20,8 +21,6 @@ import {
 } from "#lib/routes.ts";
 import { showToast } from "#lib/ui/toast.ts";
 import { isSameAddress } from "#lib/validate.ts";
-
-import { CheckIcon } from "./ui.tsx";
 
 // The Splits Connect extension, keyed by its EIP-6963 rdns: pinned first when
 // installed, offered as a Chrome Web Store link when not.

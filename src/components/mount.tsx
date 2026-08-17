@@ -8,10 +8,9 @@ import { createPortal } from "react-dom";
 import { createRoot } from "react-dom/client";
 import { WagmiProvider } from "wagmi";
 
+import { WalletButton } from "#components/wallet.tsx";
 import { wagmiConfig } from "#lib/chain/wagmi.ts";
 import { injectChrome } from "#lib/ui/chrome.ts";
-
-import { WalletButton } from "./wallet.tsx";
 
 const queryClient = new QueryClient();
 
