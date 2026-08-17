@@ -13,7 +13,7 @@ import type {
   Abi,
   AbiEvent,
   Address,
-  ContractFunctionParameters,
+  ContractFunctionName,
   Hex,
   Log,
   TransactionReceipt,
@@ -22,7 +22,7 @@ import {
   getAccount,
   getCapabilities,
   getPublicClient,
-  readContracts,
+  readContract,
   sendCalls,
   signTypedData,
   switchChain,
@@ -155,17 +155,6 @@ export interface OfferingState {
 async function ensureBase(): Promise<void> {
   if (getAccount(wagmiConfig).chainId === BASE_CHAIN_ID) return;
   await switchChain(wagmiConfig, { chainId: BASE_CHAIN_ID });
-}
-
-// Batched reads in one multicall round trip; wagmi degrades to per-call
-// reads when the aggregate call fails.
-export async function readMany(
-  calls: ContractFunctionParameters[],
-): Promise<unknown[]> {
-  return readContracts(wagmiConfig, {
-    contracts: calls,
-    allowFailure: false,
-  }) as Promise<unknown[]>;
 }
 
 // Maps a viem-decoded OfferingCreated log to the JSON-safe record the listing
@@ -339,60 +328,80 @@ export async function getOfferingState({
 }): Promise<OfferingState> {
   const offering = getAddress(offeringAddress);
   const normalizedBuyer = buyer ? getAddress(buyer) : null;
-  const fields = [
-    "remainingUnits",
-    "unitsSold",
-    "minMet",
-    "state",
-    "raised",
-    "withdrawn",
-    "raiseMin",
-    "closeDate",
-    "owner",
-    "treasury",
-    "pactToken",
-    "priceStart",
-    "priceSlope",
-    "publicUnits",
-    "publicUnitsSold",
-  ] as const;
-  const calls: ContractFunctionParameters[] = fields.map((functionName) => ({
-    address: offering,
-    abi: OFFERING_ABI,
-    functionName,
-  }));
-  if (normalizedBuyer)
-    calls.push({
+  // Individual typed reads: the public client batches same-tick calls into
+  // one multicall round trip (wagmi's default batch.multicall), so this costs
+  // a single RPC request while keeping per-field return types.
+  const read = <
+    functionName extends ContractFunctionName<typeof OFFERING_ABI, "view">,
+  >(
+    functionName: functionName,
+  ) =>
+    readContract(wagmiConfig, {
       address: offering,
       abi: OFFERING_ABI,
-      functionName: "deposits",
-      args: [normalizedBuyer],
+      functionName,
     });
-  const values = await readMany(calls);
-  // Zip results back to their field names so reordering or inserting a field
-  // can never silently shift every value after it.
-  const v = Object.fromEntries(
-    fields.map((name, i) => [name, values[i]]),
-  ) as Record<(typeof fields)[number], unknown>;
+  const [
+    remainingUnits,
+    unitsSold,
+    minMet,
+    state,
+    raised,
+    withdrawn,
+    raiseMin,
+    closeDate,
+    owner,
+    treasury,
+    pactToken,
+    priceStart,
+    priceSlope,
+    publicUnits,
+    publicUnitsSold,
+    deposit,
+  ] = await Promise.all([
+    read("remainingUnits"),
+    read("unitsSold"),
+    read("minMet"),
+    read("state"),
+    read("raised"),
+    read("withdrawn"),
+    read("raiseMin"),
+    read("closeDate"),
+    read("owner"),
+    read("treasury"),
+    read("pactToken"),
+    read("priceStart"),
+    read("priceSlope"),
+    read("publicUnits"),
+    read("publicUnitsSold"),
+    normalizedBuyer
+      ? readContract(wagmiConfig, {
+          address: offering,
+          abi: OFFERING_ABI,
+          functionName: "deposits",
+          args: [normalizedBuyer],
+        })
+      : null,
+  ]);
   const result: OfferingState = {
     offeringAddress: offering,
-    remainingUnits: Number(v.remainingUnits),
-    unitsSold: Number(v.unitsSold),
-    minMet: v.minMet as boolean,
-    state: Number(v.state),
-    raised: BigInt(v.raised as bigint),
-    withdrawn: BigInt(v.withdrawn as bigint),
-    raiseMin: BigInt(v.raiseMin as bigint),
-    closeDate: Number(v.closeDate),
-    owner: getAddress(v.owner as string),
-    treasury: getAddress(v.treasury as string),
-    pactToken: getAddress(v.pactToken as string),
-    priceStart: BigInt(v.priceStart as bigint),
-    priceSlope: BigInt(v.priceSlope as bigint),
-    publicUnits: Number(v.publicUnits),
-    publicUnitsSold: Number(v.publicUnitsSold),
+    remainingUnits: Number(remainingUnits),
+    unitsSold: Number(unitsSold),
+    minMet,
+    state: Number(state),
+    raised,
+    withdrawn,
+    raiseMin,
+    closeDate: Number(closeDate),
+    owner: getAddress(owner),
+    treasury: getAddress(treasury),
+    pactToken: getAddress(pactToken),
+    priceStart,
+    priceSlope,
+    publicUnits: Number(publicUnits),
+    publicUnitsSold: Number(publicUnitsSold),
   };
-  if (normalizedBuyer) result.deposit = BigInt(values[fields.length] as bigint);
+  if (deposit != null) result.deposit = deposit;
   return result;
 }
 
