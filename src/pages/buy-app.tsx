@@ -351,7 +351,7 @@ export function BuyApp() {
     queryClient.invalidateQueries({
       queryKey: ["allocation-consumed", offeringAddress],
     });
-  }, [unitsSoldTick]);
+  }, [unitsSoldTick, queryClient]);
 
   useErrorTip(signerNameError);
 

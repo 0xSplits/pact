@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import "./status.css";
@@ -1302,12 +1302,15 @@ export function StatusApp() {
           : undefined,
       };
 
-  const refreshRecordDetails = (current: OfferingRecord) => {
-    queryClient.invalidateQueries({ queryKey: ["bought", current.offering] });
-    queryClient.invalidateQueries({
-      queryKey: ["cap-table", current.offering],
-    });
-  };
+  const refreshRecordDetails = useCallback(
+    (current: OfferingRecord) => {
+      queryClient.invalidateQueries({ queryKey: ["bought", current.offering] });
+      queryClient.invalidateQueries({
+        queryKey: ["cap-table", current.offering],
+      });
+    },
+    [queryClient],
+  );
 
   useEffect(() => {
     if (record) setLedger(listAllocationLedger(record.offering));
@@ -1324,7 +1327,7 @@ export function StatusApp() {
       return;
     }
     refreshRecordDetails(record);
-  }, [soldUnits]);
+  }, [soldUnits, record, refreshRecordDetails]);
 
   async function handleOfferingAction(action: string) {
     if (debugActive(debugState)) {

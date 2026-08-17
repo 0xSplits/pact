@@ -7,9 +7,12 @@ import type { DebugMenuOptions } from "#lib/ui/debug-menu.ts";
 export function useDebugMenu(states: DebugMenuOptions["states"]): string {
   const [debugState, setDebugState] = useState("live");
   const debugRef = useRef("live");
+  // Mount-once: the menu is built from the first render's states; callers
+  // pass fresh inline arrays, so depending on `states` would remount it.
+  const statesRef = useRef(states);
   useEffect(() => {
     initDebugMenu({
-      states,
+      states: statesRef.current,
       getState: () => debugRef.current,
       setState: (state) => {
         debugRef.current = state;
