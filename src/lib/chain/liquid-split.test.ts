@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 import { buildOfferingFactoryInputs } from "./liquid-split.ts";
 import { deriveOfferingCurve, costForUnits, unitsForBudget } from "./curve.ts";
 import { toUsdcBaseUnits } from "./chain.ts";

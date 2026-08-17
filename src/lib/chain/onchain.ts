@@ -23,7 +23,7 @@ import {
   OFFERING_FACTORY_ABI,
   OFFERING_ABI,
   PACT_TOKEN_ABI,
-} from "../../generated/offering-contracts.ts";
+} from "#generated/offering-contracts.ts";
 
 import { erc20Abi, getAddress, isAddressEqual, parseEventLogs } from "viem";
 import type {
@@ -551,7 +551,7 @@ async function atomicBatchSupported(account: Address): Promise<boolean> {
     });
     const status = capabilities.atomic?.status;
     return status === "supported" || status === "ready";
-  } catch (err) {
+  } catch {
     return false;
   }
 }

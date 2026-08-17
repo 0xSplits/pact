@@ -10,7 +10,7 @@ import {
   PACT_TOKEN_ABI,
   OFFERING_FACTORY_ADDRESS,
   OFFERING_FACTORY_DEPLOY_BLOCK,
-} from "../../generated/offering-contracts.ts";
+} from "#generated/offering-contracts.ts";
 import {
   getLogs as rpcGetLogs,
   getLatestBlockNumber,
@@ -23,7 +23,7 @@ import type { OfferingRecord, Purchase } from "./onchain.ts";
 import type { KVStorage } from "./voucher.ts";
 import { globalOverride } from "./chain.ts";
 import { costForUnits } from "./curve.ts";
-import { isSameAddress } from "../validate.ts";
+import { isSameAddress } from "#lib/validate.ts";
 
 // Public Base RPC caps eth_getLogs at 10k-block ranges.
 export const SCAN_CHUNK_BLOCKS = 10000;
@@ -62,7 +62,7 @@ function readCache<T>(
       Array.isArray(parsed.items)
     )
       return parsed;
-  } catch (err) {}
+  } catch {}
   return null; // corrupt or missing cache falls back to a full rescan
 }
 
@@ -108,7 +108,7 @@ export async function cachedScan<T>({
       let item: T | null = null;
       try {
         item = map(log);
-      } catch (err) {} // foreign log matching the topic — not ours to decode
+      } catch {} // foreign log matching the topic — not ours to decode
       if (!item || seen.has(dedupeKey(item))) continue;
       seen.add(dedupeKey(item));
       items.push(item);
@@ -310,7 +310,7 @@ export async function loadWalletRecords(
       listPurchases({ wallet, offerings }).catch(() => []),
     ]);
     return { pacts, purchases };
-  } catch (err) {
+  } catch {
     return { pacts: [], purchases: [] };
   }
 }

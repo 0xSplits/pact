@@ -2,10 +2,10 @@ import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import "./status.css";
-import { showToast, copyText } from "../lib/ui/toast.ts";
-import { mountPage } from "../components/wallet.tsx";
-import { useWallet } from "../hooks/use-wallet.ts";
-import { useOfferingState } from "../hooks/use-offering-state.ts";
+import { showToast, copyText } from "#lib/ui/toast.ts";
+import { mountPage } from "#components/wallet.tsx";
+import { useWallet } from "#hooks/use-wallet.ts";
+import { useOfferingState } from "#hooks/use-offering-state.ts";
 import {
   fmtUsd,
   fmtPct,
@@ -20,20 +20,20 @@ import {
   basescanTx,
   errMsg,
   MS_PER_DAY,
-} from "../lib/format.ts";
-import { costForUnits, valuationForUnitIndex } from "../lib/chain/curve.ts";
-import { TOTAL_LIQUID_SPLIT_UNITS } from "../lib/chain/liquid-split.ts";
-import { isSameAddress } from "../lib/validate.ts";
-import { debugActive } from "../lib/ui/debug-menu.ts";
-import { useDebugMenu } from "../hooks/use-debug-menu.ts";
-import type { OfferingSnapshot } from "../hooks/use-offering-state.ts";
+} from "#lib/format.ts";
+import { costForUnits, valuationForUnitIndex } from "#lib/chain/curve.ts";
+import { TOTAL_LIQUID_SPLIT_UNITS } from "#lib/chain/liquid-split.ts";
+import { isSameAddress } from "#lib/validate.ts";
+import { debugActive } from "#lib/ui/debug-menu.ts";
+import { useDebugMenu } from "#hooks/use-debug-menu.ts";
+import type { OfferingSnapshot } from "#hooks/use-offering-state.ts";
 import {
   absoluteUrl,
   createPath,
   currentOfferingAddress,
   buyPath,
   buyLinkPath,
-} from "../lib/routes.ts";
+} from "#lib/routes.ts";
 import {
   availablePublicUnits,
   getOfferingState,
@@ -46,28 +46,28 @@ import {
   setPublicUnits,
   cancelAllocation,
   signVoucher,
-} from "../lib/chain/onchain.ts";
+} from "#lib/chain/onchain.ts";
 import type {
   OfferingRecord,
   OfferingState,
   Purchase,
-} from "../lib/chain/onchain.ts";
+} from "#lib/chain/onchain.ts";
 import type { Address, Hex } from "viem";
 import {
   listOfferings,
   findOffering,
   listBought,
   getPactTokenHolders,
-} from "../lib/chain/offerings.ts";
+} from "#lib/chain/offerings.ts";
 import {
   newAllocationKey,
   encodeVoucherFragment,
   listAllocationLedger,
   saveAllocationLedgerRow,
   markAllocationLedgerRowRevoked,
-} from "../lib/chain/voucher.ts";
-import type { AllocationLedgerRow } from "../lib/chain/voucher.ts";
-import { toUsdcBaseUnits } from "../lib/chain/chain.ts";
+} from "#lib/chain/voucher.ts";
+import type { AllocationLedgerRow } from "#lib/chain/voucher.ts";
+import { toUsdcBaseUnits } from "#lib/chain/chain.ts";
 import {
   AddressLink,
   Button,
@@ -79,7 +79,7 @@ import {
   SectionTitle,
   Sub,
   TextButton,
-} from "../components/ui.tsx";
+} from "#components/ui.tsx";
 
 const TOTAL_TOKENS = TOTAL_LIQUID_SPLIT_UNITS;
 

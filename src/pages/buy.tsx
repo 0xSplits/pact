@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { showToast } from "../lib/ui/toast.ts";
-import { mountPage } from "../components/wallet.tsx";
-import { useWallet } from "../hooks/use-wallet.ts";
-import { useOfferingState } from "../hooks/use-offering-state.ts";
+import { showToast } from "#lib/ui/toast.ts";
+import { mountPage } from "#components/wallet.tsx";
+import { useWallet } from "#hooks/use-wallet.ts";
+import { useOfferingState } from "#hooks/use-offering-state.ts";
 import {
   fmtUsd,
   fmtPct,
@@ -15,20 +15,17 @@ import {
   basescanTx,
   errMsg,
   MS_PER_DAY,
-} from "../lib/format.ts";
+} from "#lib/format.ts";
 import {
   costForUnits,
   unitsForBudget,
   valuationForUnitIndex,
-} from "../lib/chain/curve.ts";
-import { TOTAL_LIQUID_SPLIT_UNITS } from "../lib/chain/liquid-split.ts";
-import { isSameAddress } from "../lib/validate.ts";
-import { debugActive } from "../lib/ui/debug-menu.ts";
-import { useDebugMenu } from "../hooks/use-debug-menu.ts";
-import {
-  currentOfferingAddress,
-  currentVoucherFragment,
-} from "../lib/routes.ts";
+} from "#lib/chain/curve.ts";
+import { TOTAL_LIQUID_SPLIT_UNITS } from "#lib/chain/liquid-split.ts";
+import { isSameAddress } from "#lib/validate.ts";
+import { debugActive } from "#lib/ui/debug-menu.ts";
+import { useDebugMenu } from "#hooks/use-debug-menu.ts";
+import { currentOfferingAddress, currentVoucherFragment } from "#lib/routes.ts";
 import {
   availablePublicUnits,
   getProjectName,
@@ -37,11 +34,11 @@ import {
   buyPrivateOffering,
   offeringStateCurve,
   refundOffering,
-} from "../lib/chain/onchain.ts";
-import type { OfferingState } from "../lib/chain/onchain.ts";
-import type { DecodedVoucherLink } from "../lib/chain/voucher.ts";
-import { listBought } from "../lib/chain/offerings.ts";
-import { decodeVoucherFragment } from "../lib/chain/voucher.ts";
+} from "#lib/chain/onchain.ts";
+import type { OfferingState } from "#lib/chain/onchain.ts";
+import type { DecodedVoucherLink } from "#lib/chain/voucher.ts";
+import { listBought } from "#lib/chain/offerings.ts";
+import { decodeVoucherFragment } from "#lib/chain/voucher.ts";
 import {
   AddressLink,
   Button,
@@ -52,8 +49,8 @@ import {
   SectionTitle,
   SignatureBlock,
   Sub,
-} from "../components/ui.tsx";
-import { useErrorTip } from "../hooks/use-error-tip.ts";
+} from "#components/ui.tsx";
+import { useErrorTip } from "#hooks/use-error-tip.ts";
 import "./buy.css";
 
 const TOTAL_TOKENS = TOTAL_LIQUID_SPLIT_UNITS;
@@ -67,7 +64,7 @@ function parseFragment(): {
   if (!fragment) return { voucher: null, voucherError: "" };
   try {
     return { voucher: decodeVoucherFragment(fragment), voucherError: "" };
-  } catch (err) {
+  } catch {
     return {
       voucher: null,
       voucherError:

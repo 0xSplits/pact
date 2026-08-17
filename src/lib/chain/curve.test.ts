@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test } from "vitest";
 import assert from "node:assert/strict";
 import { costForUnits, fractionAt, fractionAtRaise } from "./curve.ts";
 import type { Pact } from "./curve.ts";

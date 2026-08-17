@@ -10,7 +10,7 @@ import type { Address } from "viem";
 import {
   OFFERING_ABI,
   OFFERING_FACTORY_ABI,
-} from "../src/generated/offering-contracts.ts";
+} from "#generated/offering-contracts.ts";
 import { RPC_URL, e2eAccount, e2eFactory, sendTx } from "./e2e-setup.ts";
 
 test.describe.configure({ timeout: 60_000 });

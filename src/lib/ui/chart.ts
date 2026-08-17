@@ -3,7 +3,7 @@
 //   fMin  — threshold fraction (where the minimum raise is reached) → marker
 //   fillF — current fill fraction (how far the round has sold) → "Now" marker + shading
 //   hoverF — readout fraction → post-money valuation and price-per-token pill
-import { fmtUsd } from "../format.ts";
+import { fmtUsd } from "#lib/format.ts";
 
 // Plot padding in canvas pixels — drawCurve and attachCurveHover must agree
 // on it for the hover-x → fraction inverse mapping to line up.

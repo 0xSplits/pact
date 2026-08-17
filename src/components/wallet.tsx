@@ -6,7 +6,7 @@ import { Component, StrictMode, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { createRoot } from "react-dom/client";
-import { injectChrome } from "../lib/ui/chrome.ts";
+import { injectChrome } from "#lib/ui/chrome.ts";
 import {
   QueryClient,
   QueryClientProvider,
@@ -14,10 +14,10 @@ import {
 } from "@tanstack/react-query";
 import { WagmiProvider, useAccount, useConnect, useDisconnect } from "wagmi";
 import type { Connector } from "wagmi";
-import { wagmiConfig } from "../lib/chain/wagmi.ts";
-import { loadWalletRecords } from "../lib/chain/offerings.ts";
-import { shortAddr } from "../lib/format.ts";
-import { isSameAddress } from "../lib/validate.ts";
+import { wagmiConfig } from "#lib/chain/wagmi.ts";
+import { loadWalletRecords } from "#lib/chain/offerings.ts";
+import { shortAddr } from "#lib/format.ts";
+import { isSameAddress } from "#lib/validate.ts";
 import { CheckIcon } from "./ui.tsx";
 import {
   buyPath,
@@ -27,8 +27,8 @@ import {
   currentOfferingAddress,
   currentStatusPage,
   statusPath,
-} from "../lib/routes.ts";
-import { showToast } from "../lib/ui/toast.ts";
+} from "#lib/routes.ts";
+import { showToast } from "#lib/ui/toast.ts";
 
 const queryClient = new QueryClient();
 
@@ -234,7 +234,7 @@ function WalletButton() {
     setOpen(false);
     try {
       await connectAsync({ connector });
-    } catch (err) {
+    } catch {
       setError("Wallet rejected");
       showToast("Could not connect wallet.");
     }
@@ -249,7 +249,7 @@ function WalletButton() {
       await navigator.clipboard.writeText(account!);
       setOpen(false);
       showToast("Address copied");
-    } catch (err) {
+    } catch {
       showToast("Could not copy address");
     }
   }

@@ -11,7 +11,7 @@ import { fileURLToPath } from "node:url";
 import { getContractAddress, keccak256 } from "viem";
 import type { Hex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
-import { voucherTypedData, signClaim } from "../src/lib/chain/voucher.ts";
+import { voucherTypedData, signClaim } from "#lib/chain/voucher.ts";
 
 const key = (n: bigint): Hex =>
   ("0x" + n.toString(16).padStart(64, "0")) as Hex;

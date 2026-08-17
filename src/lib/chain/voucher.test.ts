@@ -1,4 +1,4 @@
-import test from "node:test";
+import { test } from "vitest";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
@@ -11,7 +11,7 @@ import {
   saveAllocationLedgerRow,
   markAllocationLedgerRowRevoked,
 } from "./voucher.ts";
-import { buildGoldenFixture } from "../../../scripts/generate-voucher-fixture.ts";
+import { buildGoldenFixture } from "#scripts/generate-voucher-fixture.ts";
 
 const fakeStorage = () => {
   const map = new Map<string, string>();

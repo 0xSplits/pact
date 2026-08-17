@@ -1,21 +1,21 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import "./create.css";
-import { mountPage } from "../components/wallet.tsx";
-import { useWallet } from "../hooks/use-wallet.ts";
-import { drawCurve, attachCurveHover } from "../lib/ui/chart.ts";
-import type { CurveChartConfig } from "../lib/ui/chart.ts";
+import { mountPage } from "#components/wallet.tsx";
+import { useWallet } from "#hooks/use-wallet.ts";
+import { drawCurve, attachCurveHover } from "#lib/ui/chart.ts";
+import type { CurveChartConfig } from "#lib/ui/chart.ts";
 import type { Address } from "viem";
-import { isAddress } from "../lib/validate.ts";
-import { TOTAL_LIQUID_SPLIT_UNITS } from "../lib/chain/liquid-split.ts";
-import { createOffering } from "../lib/chain/onchain.ts";
-import { seedOffering } from "../lib/chain/offerings.ts";
+import { isAddress } from "#lib/validate.ts";
+import { TOTAL_LIQUID_SPLIT_UNITS } from "#lib/chain/liquid-split.ts";
+import { createOffering } from "#lib/chain/onchain.ts";
+import { seedOffering } from "#lib/chain/offerings.ts";
 import {
   deriveOfferingCurve,
   costForUnits,
   fractionAtRaise,
-} from "../lib/chain/curve.ts";
-import type { Pact } from "../lib/chain/curve.ts";
+} from "#lib/chain/curve.ts";
+import type { Pact } from "#lib/chain/curve.ts";
 import {
   fmtUsd,
   fmtPct,
@@ -23,11 +23,11 @@ import {
   parseMoney,
   usdcBaseUnitsToDollars,
   errMsg,
-} from "../lib/format.ts";
-import { Button, SignatureBlock } from "../components/ui.tsx";
-import { useErrorTip } from "../hooks/use-error-tip.ts";
-import { statusPath } from "../lib/routes.ts";
-import { showToast } from "../lib/ui/toast.ts";
+} from "#lib/format.ts";
+import { Button, SignatureBlock } from "#components/ui.tsx";
+import { useErrorTip } from "#hooks/use-error-tip.ts";
+import { statusPath } from "#lib/routes.ts";
+import { showToast } from "#lib/ui/toast.ts";
 
 const TOTAL_SHARES = TOTAL_LIQUID_SPLIT_UNITS; // 0.1% = 1 token
 const oneDecimal = (v: string | number) =>
