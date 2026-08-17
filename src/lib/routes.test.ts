@@ -1,15 +1,17 @@
-import test from "node:test";
 import assert from "node:assert/strict";
+
+import { test } from "vitest";
+
 import {
-  statusPath,
-  buyPath,
   buyLinkPath,
-  currentOfferingAddress,
-  currentVoucherFragment,
-  currentCreatePage,
-  currentStatusPage,
+  buyPath,
   currentBuyPage,
-} from "./routes.ts";
+  currentCreatePage,
+  currentOfferingAddress,
+  currentStatusPage,
+  currentVoucherFragment,
+  statusPath,
+} from "#lib/routes.ts";
 
 const OFFERING = "0x692f4B9Fd0940fb5F2Ed2f32435A2DbFDA23b5F8";
 

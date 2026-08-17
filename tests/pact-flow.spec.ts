@@ -3,15 +3,16 @@
 // to anvil's unlocked accounts — anvil signs and sends everything, including
 // the EIP-712 voucher signatures, so the private-claim scenario exercises the
 // real Solidity verifier (second coverage of the golden-vector boundary).
-import { test, expect } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import type { BrowserContext, Page } from "@playwright/test";
 import { encodeFunctionData, getAddress } from "viem";
 import type { Address } from "viem";
+
 import {
   OFFERING_ABI,
   OFFERING_FACTORY_ABI,
-} from "../src/generated/offering-contracts.ts";
-import { RPC_URL, e2eAccount, e2eFactory, sendTx } from "./e2e-setup.ts";
+} from "#generated/offering-contracts.ts";
+import { e2eAccount, e2eFactory, RPC_URL, sendTx } from "#tests/e2e-setup.ts";
 
 test.describe.configure({ timeout: 60_000 });
 

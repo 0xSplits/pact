@@ -1,24 +1,15 @@
-// The wallet button + menu in the fixed top-right chrome, plus the provider
-// stack every page mounts. Connection state lives in wagmi; this component
-// renders it into the same #walletToggle / .wallet-menu markup the CSS and
-// e2e selectors already target.
-import { Component, StrictMode, useEffect, useRef, useState } from "react";
-import type { ReactNode } from "react";
-import { createPortal } from "react-dom";
-import { createRoot } from "react-dom/client";
-import { injectChrome } from "../lib/ui/chrome.ts";
-import {
-  QueryClient,
-  QueryClientProvider,
-  useQuery,
-} from "@tanstack/react-query";
-import { WagmiProvider, useAccount, useConnect, useDisconnect } from "wagmi";
+// The wallet button + menu in the fixed top-right chrome. Connection state
+// lives in wagmi; this component renders it into the same #walletToggle /
+// .wallet-menu markup the CSS and e2e selectors already target. mount.tsx
+// portals <WalletButton /> into every page.
+import { useQuery } from "@tanstack/react-query";
+import { useEffect, useRef, useState } from "react";
+import { useAccount, useConnect, useDisconnect } from "wagmi";
 import type { Connector } from "wagmi";
-import { wagmiConfig } from "../lib/chain/wagmi.ts";
-import { loadWalletRecords } from "../lib/chain/offerings.ts";
-import { shortAddr } from "../lib/format.ts";
-import { isSameAddress } from "../lib/validate.ts";
-import { CheckIcon } from "./ui.tsx";
+
+import { CheckIcon } from "#components/ui.tsx";
+import { loadWalletRecords } from "#lib/chain/offerings.ts";
+import { shortAddr } from "#lib/format.ts";
 import {
   buyPath,
   createPath,
@@ -27,65 +18,9 @@ import {
   currentOfferingAddress,
   currentStatusPage,
   statusPath,
-} from "../lib/routes.ts";
-import { showToast } from "../lib/ui/toast.ts";
-
-const queryClient = new QueryClient();
-
-// Without a boundary a render throw unmounts the whole tree, leaving a blank
-// page with the failure visible only in the console.
-class RootErrorBoundary extends Component<
-  { children: ReactNode },
-  { error: Error | null }
-> {
-  state: { error: Error | null } = { error: null };
-
-  static getDerivedStateFromError(error: Error) {
-    return { error };
-  }
-
-  render() {
-    if (this.state.error) {
-      return (
-        <div className="paper px-10 py-12 sm:px-14 sm:py-16">
-          <h1 className="text-2xl font-bold">Something went wrong</h1>
-          <p className="mt-4 text-sm t-muted">{this.state.error.message}</p>
-          <p className="mt-4 text-sm">
-            Reload the page to try again. Onchain state is unaffected.
-          </p>
-        </div>
-      );
-    }
-    return this.props.children;
-  }
-}
-
-// The one mount path every page uses: chrome, StrictMode, error boundary,
-// provider stack.
-export function mountPage(app: ReactNode) {
-  injectChrome();
-  createRoot(document.getElementById("app")!).render(
-    <StrictMode>
-      <RootErrorBoundary>
-        <AppProviders>{app}</AppProviders>
-      </RootErrorBoundary>
-    </StrictMode>,
-  );
-}
-
-export function AppProviders({ children }: { children: ReactNode }) {
-  return (
-    <WagmiProvider config={wagmiConfig}>
-      <QueryClientProvider client={queryClient}>
-        {children}
-        {createPortal(
-          <WalletButton />,
-          document.getElementById("walletMount")!,
-        )}
-      </QueryClientProvider>
-    </WagmiProvider>
-  );
-}
+} from "#lib/routes.ts";
+import { showToast } from "#lib/ui/toast.ts";
+import { isSameAddress } from "#lib/validate.ts";
 
 // The Splits Connect extension, keyed by its EIP-6963 rdns: pinned first when
 // installed, offered as a Chrome Web Store link when not.
@@ -202,7 +137,7 @@ function WalletRecordGroups() {
   );
 }
 
-function WalletButton() {
+export function WalletButton() {
   const account = useAccount().address ?? null;
   const { connectAsync, connectors, isPending } = useConnect();
   const { disconnect } = useDisconnect();
@@ -234,7 +169,7 @@ function WalletButton() {
     setOpen(false);
     try {
       await connectAsync({ connector });
-    } catch (err) {
+    } catch {
       setError("Wallet rejected");
       showToast("Could not connect wallet.");
     }
@@ -249,7 +184,7 @@ function WalletButton() {
       await navigator.clipboard.writeText(account!);
       setOpen(false);
       showToast("Address copied");
-    } catch (err) {
+    } catch {
       showToast("Could not copy address");
     }
   }

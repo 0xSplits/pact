@@ -1,17 +1,19 @@
-import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+
+import { test } from "vitest";
+
 import {
-  newAllocationKey,
-  encodeVoucherFragment,
   decodeVoucherFragment,
+  encodeVoucherFragment,
   listAllocationLedger,
-  saveAllocationLedgerRow,
   markAllocationLedgerRowRevoked,
-} from "./voucher.ts";
-import { buildGoldenFixture } from "../../../scripts/generate-voucher-fixture.ts";
+  newAllocationKey,
+  saveAllocationLedgerRow,
+} from "#lib/chain/voucher.ts";
+import { buildGoldenFixture } from "#scripts/generate-voucher-fixture.ts";
 
 const fakeStorage = () => {
   const map = new Map<string, string>();

@@ -3,7 +3,8 @@
 // so vanilla pages and React pages render identically.
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 import type { Address } from "viem";
-import { basescanAddress, shortAddr } from "../lib/format.ts";
+
+import { basescanAddress, shortAddr } from "#lib/format.ts";
 
 const cx = (...parts: Array<string | false | null | undefined>) =>
   parts.filter(Boolean).join(" ");

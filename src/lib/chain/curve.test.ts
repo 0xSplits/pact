@@ -1,7 +1,9 @@
-import test from "node:test";
 import assert from "node:assert/strict";
-import { costForUnits, fractionAt, fractionAtRaise } from "./curve.ts";
-import type { Pact } from "./curve.ts";
+
+import { test } from "vitest";
+
+import { costForUnits, fractionAt, fractionAtRaise } from "#lib/chain/curve.ts";
+import type { Pact } from "#lib/chain/curve.ts";
 
 const band = { vMin: 40_000, vMax: 60_000, cap: 50_000, F: 0.2, rmax: 10_000 };
 

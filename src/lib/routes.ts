@@ -3,7 +3,8 @@
 // private claims). Query-param style needs no path rewrites on static hosting.
 // Framework-free so the node test runner can exercise it directly.
 import type { Address } from "viem";
-import { isAddress } from "./validate.ts";
+
+import { isAddress } from "#lib/validate.ts";
 
 export const createPath = () => "/create";
 export const statusPath = (offering: Address) => "/status?offering=" + offering;

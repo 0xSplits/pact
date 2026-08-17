@@ -4,8 +4,9 @@
 // read and receipt poll at a local anvil instead of public Base RPC.
 // `VITE_ALCHEMY_API_KEY` is the build-time Alchemy key (domain-restrict it,
 // it ships in the bundle); absent both, the rate-limited public RPC keeps
-// zero-setup dev working. Optional-chained because node:test runs this file
-// where import.meta.env doesn't exist. wagmi.ts turns this resolution into
+// zero-setup dev working. Optional-chained so the module also loads outside
+// Vite (bare node, test runners) where import.meta.env may not exist.
+// wagmi.ts turns this resolution into
 // the app transport: override wins outright, otherwise Alchemy with the
 // chain's public RPC as fallback.
 export const BASE_CHAIN_ID = 8453;

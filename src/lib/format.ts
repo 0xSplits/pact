@@ -1,5 +1,5 @@
 // Shared display formatting helpers for the React pages.
-import { USDC_SCALE } from "./chain/chain.ts";
+import { USDC_SCALE } from "#lib/chain/chain.ts";
 
 export const MS_PER_DAY = 86400000;
 

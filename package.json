@@ -8,17 +8,27 @@
   "engines": {
     "node": ">=22.18.0"
   },
+  "imports": {
+    "#lib/*": "./src/lib/*",
+    "#hooks/*": "./src/hooks/*",
+    "#components/*": "./src/components/*",
+    "#generated/*": "./src/generated/*",
+    "#scripts/*": "./scripts/*",
+    "#pages/*": "./src/pages/*",
+    "#tests/*": "./tests/*"
+  },
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "build:contracts": "forge build --root contracts && node scripts/export-contracts.ts",
-    "test": "node --test \"src/**/*.test.ts\"",
+    "test": "vitest run",
     "typecheck": "tsc --noEmit",
+    "lint": "oxlint",
     "format": "prettier . --write",
     "format:check": "prettier . --check",
     "test:contracts": "forge test --root contracts",
     "check:e2e-impact": "node scripts/check-e2e-impact.ts",
-    "validate": "npm run typecheck && npm run format:check && npm test && forge fmt --check --root contracts && npm run test:contracts && npm run build:contracts && npm run test:e2e",
+    "validate": "npm run typecheck && npm run lint && npm run format:check && npm test && forge fmt --check --root contracts && npm run test:contracts && npm run build:contracts && npm run test:e2e",
     "deploy:factory": "forge script contracts/script/Deploy.s.sol:Deploy --root contracts --rpc-url https://mainnet.base.org --broadcast --verify",
     "test:e2e": "vite build && playwright test"
   },
@@ -33,6 +43,7 @@
     "ws": "8.21.0"
   },
   "devDependencies": {
+    "@ianvs/prettier-plugin-sort-imports": "4.7.1",
     "@playwright/test": "^1.62.1",
     "@tailwindcss/vite": "^4.3.2",
     "@types/node": "^26.2.0",
@@ -40,10 +51,12 @@
     "@types/react-dom": "^19.2.4",
     "@vitejs/plugin-react": "^5.2.0",
     "forge-std": "github:foundry-rs/forge-std#v1.14.0",
+    "oxlint": "^1.78.0",
     "prettier": "3.9.6",
     "solady": "github:vectorized/solady#v0.1.26",
     "tailwindcss": "^4.3.2",
     "typescript": "^7.0.2",
-    "vite": "^7.3.0"
+    "vite": "^7.3.0",
+    "vitest": "^4.1.10"
   }
 }

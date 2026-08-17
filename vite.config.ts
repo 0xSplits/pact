@@ -1,9 +1,11 @@
+/// <reference types="vitest/config" />
 import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+
+import tailwindcss from "@tailwindcss/vite";
+import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 import type { Connect, Plugin } from "vite";
-import react from "@vitejs/plugin-react";
-import tailwindcss from "@tailwindcss/vite";
 
 const page = (name: string) => fileURLToPath(new URL(name, import.meta.url));
 const localCertificate = page(".tmp/localhost.pem");
@@ -47,6 +49,8 @@ export default defineConfig(({ isPreview }) => ({
   appType: "mpa",
   plugins: [react(), tailwindcss(), cleanRoutes],
   server: !isPreview && localHttps ? { https: localHttps } : {},
+  // Playwright owns tests/*.spec.ts; vitest only runs the colocated unit tests.
+  test: { include: ["src/**/*.test.ts"] },
   // Playwright targets a stable HTTP preview URL. A developer's trusted
   // localhost certificate must not silently change the E2E server protocol.
   build: {

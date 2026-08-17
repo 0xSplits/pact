@@ -1,12 +1,14 @@
-import test from "node:test";
 import assert from "node:assert/strict";
+
+import { test } from "vitest";
+
 import {
-  MS_PER_DAY,
   fmtUsd,
   formatAmountInput,
+  MS_PER_DAY,
   parseMoney,
   relDays,
-} from "./format.ts";
+} from "#lib/format.ts";
 
 test("fmtUsd auto shows cents only when present", () => {
   assert.equal(fmtUsd(1234), "$1,234");

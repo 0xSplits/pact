@@ -27,7 +27,7 @@ export function copyText(text: string, message: string = "Copied"): void {
       try {
         document.execCommand("copy");
         showToast(message);
-      } catch (err) {}
+      } catch {}
       ta.remove();
     });
 }
