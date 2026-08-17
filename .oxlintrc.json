@@ -10,6 +10,10 @@
   },
   "overrides": [
     {
+      "files": ["src/components/mount.tsx"],
+      "rules": { "react/only-export-components": "off" }
+    },
+    {
       "files": [
         "vite.config.ts",
         "playwright.config.ts",
