@@ -666,6 +666,9 @@ async function payWithApproval({
   return { approveTxHash, buyTxHash, buyReceipt };
 }
 
+// +1% slippage headroom, ceil-divided so the buffer never rounds to zero.
+const withSlippage = (cost: bigint): bigint => (cost * 101n + 99n) / 100n;
+
 export async function quotePublicPurchase({
   offeringAddress,
   units,
@@ -681,8 +684,7 @@ export async function quotePublicPurchase({
     throw new Error(`Only ${available} public units remain.`);
   const curve = offeringStateCurve(state);
   const cost = costForUnits(curve, state.unitsSold, units);
-  // +1% slippage headroom, ceil-divided so the buffer never rounds to zero.
-  const maxCost = (cost * 101n + 99n) / 100n;
+  const maxCost = withSlippage(cost);
   return { state, units, cost, maxCost };
 }
 
@@ -754,7 +756,7 @@ export async function buyPrivateOffering({
   const cost = costForUnits(curve, state.unitsSold, units);
   // The voucher cap bounds slippage: price drift between invite and claim is
   // accepted, but never beyond the dollars the owner endorsed.
-  const costWithSlippage = (cost * 101n + 99n) / 100n;
+  const costWithSlippage = withSlippage(cost);
   const maxCost = costWithSlippage < cap ? costWithSlippage : cap;
 
   const claimSig = await signClaim({

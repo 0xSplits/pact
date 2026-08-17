@@ -94,7 +94,13 @@ export function deriveOfferingCurve(pact: PactCurveInputs): CurveParams | null {
   const floor = pact.valuation.floor;
   const ceiling = pact.valuation.ceiling;
   const offeringUnits = pact.newMoney.tokens;
-  if (!(floor > 0) || !(ceiling >= floor) || !(offeringUnits > 0)) return null;
+  if (
+    !(floor > 0) ||
+    !(ceiling >= floor) ||
+    !Number.isInteger(offeringUnits) ||
+    offeringUnits <= 0
+  )
+    return null;
   const perUnitFloor =
     toUsdcBaseUnits(floor) / BigInt(TOTAL_LIQUID_SPLIT_UNITS);
   const priceStart = perUnitFloor > 1n ? perUnitFloor : 1n;
