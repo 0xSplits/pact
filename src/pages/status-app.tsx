@@ -99,25 +99,26 @@ function debugOfferingSnapshot(
   if (!debugActive(debugState) || ["loading", "error"].includes(debugState))
     return live;
   const offerTokens = live ? live.unitsSold + live.remainingUnits : 200;
+  const raiseMin = BigInt(record.raiseMin);
   const base = {
     remainingUnits: offerTokens,
     unitsSold: 0,
-    raised: 0,
-    withdrawn: 0,
-    raiseMin: record.raiseMin,
+    raised: 0n,
+    withdrawn: 0n,
+    raiseMin,
     closeDate: Math.floor((Date.now() + 7 * MS_PER_DAY) / 1000),
     owner: record.treasury,
     treasury: record.treasury,
     pactToken: record.pactToken,
-    priceStart: record.priceStart,
-    priceSlope: record.priceSlope,
+    priceStart: BigInt(record.priceStart),
+    priceSlope: BigInt(record.priceSlope),
     publicUnits: record.publicUnits,
     publicUnitsSold: 0,
     minMet: false,
     state: 0,
     ...(live || {}),
   };
-  const securedBase = Math.round(record.raiseMin * 1.2);
+  const securedBase = (raiseMin * 12n) / 10n;
   const quarterUnits = Math.max(1, Math.floor(offerTokens / 4));
   const halfUnits = Math.max(1, Math.floor(offerTokens / 2));
   if (debugState === "funding") {
@@ -125,8 +126,8 @@ function debugOfferingSnapshot(
       ...base,
       unitsSold: quarterUnits,
       remainingUnits: offerTokens - quarterUnits,
-      raised: Math.floor(record.raiseMin / 2),
-      withdrawn: 0,
+      raised: raiseMin / 2n,
+      withdrawn: 0n,
       minMet: false,
       state: 0,
     };
@@ -137,7 +138,7 @@ function debugOfferingSnapshot(
       unitsSold: halfUnits,
       remainingUnits: offerTokens - halfUnits,
       raised: securedBase,
-      withdrawn: 0,
+      withdrawn: 0n,
       minMet: true,
       state: 0,
     };
@@ -158,8 +159,8 @@ function debugOfferingSnapshot(
       ...base,
       unitsSold: quarterUnits,
       remainingUnits: offerTokens - quarterUnits,
-      raised: Math.floor(record.raiseMin / 2),
-      withdrawn: 0,
+      raised: raiseMin / 2n,
+      withdrawn: 0n,
       closeDate: Math.floor((Date.now() - MS_PER_DAY) / 1000),
       minMet: false,
       state: 1,
@@ -246,10 +247,10 @@ function offeringActionsFor({
   const isOwner = ownerAddress
     ? isSameAddress(connectedWallet, ownerAddress)
     : false;
-  const claimable = Math.max(
-    0,
-    usdcBaseUnitsToDollars(onchainOffering.raised) -
-      usdcBaseUnitsToDollars(onchainOffering.withdrawn),
+  const claimable = usdcBaseUnitsToDollars(
+    onchainOffering.raised > onchainOffering.withdrawn
+      ? onchainOffering.raised - onchainOffering.withdrawn
+      : 0n,
   );
   const pastClose = Date.now() > closeDate;
   const canTopUp =
@@ -641,7 +642,7 @@ interface FundedRow {
   isPublic: boolean;
   buyer: Address;
   units: number;
-  cost: number;
+  cost: string;
   txHash: string | null;
   blockNumber: number | null;
   link: string | null;
@@ -1110,9 +1111,10 @@ function deriveStatusView({
     return { label: "Loading…", tone: "loading", note: "" };
   })();
   const claimable = onchainOffering
-    ? Math.max(
-        0,
-        raisedTotal - usdcBaseUnitsToDollars(onchainOffering.withdrawn),
+    ? usdcBaseUnitsToDollars(
+        onchainOffering.raised > onchainOffering.withdrawn
+          ? onchainOffering.raised - onchainOffering.withdrawn
+          : 0n,
       )
     : 0;
   const remainingUnits = onchainOffering ? onchainOffering.remainingUnits : 0;
@@ -1138,7 +1140,7 @@ function deriveStatusView({
     new Set(bought.map((p) => p.buyer.toLowerCase())),
   );
   const refundTotal = usdcBaseUnitsToDollars(
-    bought.reduce((sum, p) => sum + p.cost, 0),
+    bought.reduce((sum, p) => sum + BigInt(p.cost), 0n),
   );
   // The ledger rows come from localStorage, so coerce before summing.
   const allocatedTotal = rows.open.reduce(

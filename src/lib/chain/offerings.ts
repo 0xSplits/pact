@@ -192,7 +192,14 @@ export function seedOffering(
   ) {
     cache.items.push(record);
   }
-  storage.setItem(key, JSON.stringify(cache));
+  // Callers pass richer deployment objects (bigint curve params included);
+  // JSON.stringify throws on bigint, so store them as decimal strings.
+  storage.setItem(
+    key,
+    JSON.stringify(cache, (_k, v) =>
+      typeof v === "bigint" ? v.toString() : v,
+    ),
+  );
 }
 
 // The lookup is deliberately loose: it matches case-insensitively, so any
@@ -266,7 +273,7 @@ export async function listPurchases({
 // yields if every remaining unit sells from the current position.
 export async function loadIssuanceTotals(
   records: OfferingRecord[],
-): Promise<Array<OfferingRecord & { raised: number; target: number }>> {
+): Promise<Array<OfferingRecord & { raised: bigint; target: bigint }>> {
   const calls = records.flatMap((record) =>
     ["raised", "unitsSold", "remainingUnits"].map((functionName) => ({
       address: record.offering,
@@ -274,11 +281,11 @@ export async function loadIssuanceTotals(
       functionName,
     })),
   );
-  const values = (await readMany(calls)).map(Number);
+  const values = await readMany(calls);
   return records.map((record, i) => {
-    const raised = values[i * 3] ?? 0;
-    const unitsSold = values[i * 3 + 1] ?? 0;
-    const remainingUnits = values[i * 3 + 2] ?? 0;
+    const raised = BigInt((values[i * 3] as bigint) ?? 0n);
+    const unitsSold = Number(values[i * 3 + 1] ?? 0);
+    const remainingUnits = Number(values[i * 3 + 2] ?? 0);
     const curve = offeringStateCurve(record);
     return {
       ...record,
@@ -289,7 +296,7 @@ export async function loadIssuanceTotals(
 }
 
 export interface WalletRecords {
-  pacts: Array<OfferingRecord & { raised?: number; target?: number }>;
+  pacts: Array<OfferingRecord & { raised?: bigint; target?: bigint }>;
   purchases: Array<Purchase & { record: OfferingRecord }>;
 }
 

@@ -2,7 +2,12 @@ import assert from "node:assert/strict";
 
 import { test } from "vitest";
 
-import { costForUnits, fractionAt, fractionAtRaise } from "#lib/chain/curve.ts";
+import {
+  costForUnits,
+  fractionAt,
+  fractionAtRaise,
+  unitsForBudget,
+} from "#lib/chain/curve.ts";
 import type { Pact } from "#lib/chain/curve.ts";
 
 const band = { vMin: 40_000, vMax: 60_000, cap: 50_000, F: 0.2, rmax: 10_000 };
@@ -32,9 +37,19 @@ test("fractionAt delegates to fractionAtRaise", () => {
 });
 
 test("costForUnits sums the linear curve", () => {
-  const curve = { priceStart: 100, priceSlope: 10 };
+  const curve = { priceStart: 100n, priceSlope: 10n };
   // units 3,4: (100+3*10) + (100+4*10)
-  assert.equal(costForUnits(curve, 3, 2), 270);
-  assert.equal(costForUnits(curve, 0, 0), 0);
-  assert.equal(costForUnits(null, 0, 5), 0);
+  assert.equal(costForUnits(curve, 3, 2), 270n);
+  assert.equal(costForUnits(curve, 0, 0), 0n);
+  assert.equal(costForUnits(null, 0, 5), 0n);
+});
+
+// The costs must mirror the contract's uint256 arithmetic bit-for-bit,
+// including a budget that lands between whole-unit boundaries.
+test("costForUnits and unitsForBudget mirror contract integer math", () => {
+  const curve = { priceStart: 40000n, priceSlope: 100n };
+  assert.equal(costForUnits(curve, 0, 110), 4999500n);
+  assert.equal(costForUnits(curve, 110, 19), 986100n);
+  // A 5_000000 budget floors to 110 whole units, leaving sub-unit dust.
+  assert.equal(unitsForBudget(curve, 0, 200, 5000000n), 110);
 });

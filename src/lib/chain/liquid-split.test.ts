@@ -58,16 +58,20 @@ test("derives conservative USDC curve params", () => {
   });
 
   assert.ok(result);
-  assert.equal(result.priceStart, 40000000);
-  assert.equal(result.priceSlope, 100000);
-  assert.equal(toUsdcBaseUnits(123.4567899), 123456789);
+  assert.equal(result.priceStart, 40000000n);
+  assert.equal(result.priceSlope, 100000n);
+  // parseUnits rounds half-away-from-zero past six decimals; float dollars
+  // with sub-base-unit noise never truncate a base unit away.
+  assert.equal(toUsdcBaseUnits(123.4567899), 123456790n);
+  assert.equal(toUsdcBaseUnits(2.01), 2010000n);
+  assert.equal(toUsdcBaseUnits(4.2), 4200000n);
 });
 
 test("quotes whole units within a USDC budget along the curve", () => {
-  const curve = { priceStart: 40000000, priceSlope: 100000 };
-  const units = unitsForBudget(curve, 50, 150, 1500000000);
+  const curve = { priceStart: 40000000n, priceSlope: 100000n };
+  const units = unitsForBudget(curve, 50, 150, 1500000000n);
   assert.equal(units, 32);
-  assert.ok(costForUnits(curve, 50, units) <= 1500000000);
-  assert.ok(costForUnits(curve, 50, units + 1) > 1500000000);
-  assert.equal(unitsForBudget(curve, 0, 150, 1000), 0);
+  assert.ok(costForUnits(curve, 50, units) <= 1500000000n);
+  assert.ok(costForUnits(curve, 50, units + 1) > 1500000000n);
+  assert.equal(unitsForBudget(curve, 0, 150, 1000n), 0);
 });

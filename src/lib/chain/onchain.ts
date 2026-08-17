@@ -4,9 +4,10 @@
 // at; the wallet is only asked to switch chains, sign transactions, and sign
 // allocation vouchers.
 //
-// Amounts are plain numbers in USDC base units. That is safe well past any
-// raise size this prototype targets (Number stays exact below ~$9B). The
-// bigint→number conversion happens exactly where reads and events decode.
+// Amounts are bigint USDC base units end to end, mirroring the contract's
+// uint256 math exactly. The only conversions are at the edges: parseUnits on
+// dollar input (chain.ts), formatUnits at the display boundary (format.ts),
+// and decimal strings inside the JSON localStorage caches.
 import { erc20Abi, getAddress, isAddressEqual, parseEventLogs } from "viem";
 import type {
   Abi,
@@ -94,29 +95,33 @@ function assertNotReverted(receipt: { status: string }, message: string): void {
 }
 
 // The offering record shape cached by the listing scan (offerings.ts) and
-// seeded by the create flow, decoded from an OfferingCreated log.
+// seeded by the create flow, decoded from an OfferingCreated log. USDC
+// amounts are decimal strings so the record stays JSON-safe for the cache;
+// convert with BigInt() (which also accepts the integer numbers older cached
+// entries carry) before doing math.
 export interface OfferingRecord {
   offering: Address;
   pactToken: Address;
   issuer: Address;
   treasury: Address;
   projectName: string;
-  raiseMin: number;
+  raiseMin: string;
   closeDate: number;
-  priceStart: number;
-  priceSlope: number;
+  priceStart: string;
+  priceSlope: string;
   publicUnits: number;
   blockNumber: number | null;
   txHash: string | null;
 }
 
 // The purchase shape used across the app, decoded from a Bought log.
+// `cost` is a decimal string for the same JSON-cache reason as above.
 export interface Purchase {
   offering: Address;
   buyer: Address;
   allocationId: Hex;
   units: number;
-  cost: number;
+  cost: string;
   buyerName: string;
   blockNumber: number | null;
   txHash: string | null;
@@ -131,18 +136,18 @@ export interface OfferingState {
   unitsSold: number;
   minMet: boolean;
   state: number;
-  raised: number;
-  withdrawn: number;
-  raiseMin: number;
+  raised: bigint;
+  withdrawn: bigint;
+  raiseMin: bigint;
   closeDate: number;
   owner: Address;
   treasury: Address;
   pactToken: Address;
-  priceStart: number;
-  priceSlope: number;
+  priceStart: bigint;
+  priceSlope: bigint;
   publicUnits: number;
   publicUnitsSold: number;
-  deposit?: number;
+  deposit?: bigint;
 }
 
 // wagmi's switchChain adds the chain (with viem's public-RPC base metadata,
@@ -163,8 +168,9 @@ export async function readMany(
   }) as Promise<unknown[]>;
 }
 
-// Maps a viem-decoded OfferingCreated log to the all-number, JSON-safe record
-// the listing caches store (a bigint anywhere in it would break them).
+// Maps a viem-decoded OfferingCreated log to the JSON-safe record the listing
+// caches store (bigint amounts become decimal strings — JSON.stringify throws
+// on bigint).
 export function offeringRecordFromLog(log: {
   args: {
     issuer: Address;
@@ -188,17 +194,17 @@ export function offeringRecordFromLog(log: {
     issuer: getAddress(args.issuer),
     treasury: getAddress(args.treasury),
     projectName: args.projectName,
-    raiseMin: Number(args.raiseMin),
+    raiseMin: BigInt(args.raiseMin).toString(),
     closeDate: Number(args.closeDate),
-    priceStart: Number(args.priceStart),
-    priceSlope: Number(args.priceSlope),
+    priceStart: BigInt(args.priceStart).toString(),
+    priceSlope: BigInt(args.priceSlope).toString(),
     publicUnits: Number(args.publicUnits),
     blockNumber: log.blockNumber != null ? Number(log.blockNumber) : null,
     txHash: log.transactionHash || null,
   };
 }
 
-// Maps a viem-decoded Bought log to the all-number purchase shape.
+// Maps a viem-decoded Bought log to the JSON-safe purchase shape.
 export function purchaseFromLog(log: {
   address: string;
   args: {
@@ -218,7 +224,7 @@ export function purchaseFromLog(log: {
     buyer: getAddress(args.buyer),
     allocationId: args.allocationId,
     units: Number(args.units),
-    cost: Number(args.cost),
+    cost: BigInt(args.cost).toString(),
     buyerName: args.buyerName || "",
     blockNumber: log.blockNumber != null ? Number(log.blockNumber) : null,
     txHash: log.transactionHash || null,
@@ -294,10 +300,10 @@ export async function createOffering({
     functionName: "createOffering",
     args: [
       pact.projectName,
-      BigInt(toUsdcBaseUnits(pact.raise.min)),
+      toUsdcBaseUnits(pact.raise.min),
       BigInt(closeDate),
-      BigInt(curve.priceStart),
-      BigInt(curve.priceSlope),
+      curve.priceStart,
+      curve.priceSlope,
       BigInt(publicUnits),
       treasury,
       inputs.holderAccounts,
@@ -374,28 +380,30 @@ export async function getOfferingState({
     unitsSold: Number(v.unitsSold),
     minMet: v.minMet as boolean,
     state: Number(v.state),
-    raised: Number(v.raised),
-    withdrawn: Number(v.withdrawn),
-    raiseMin: Number(v.raiseMin),
+    raised: BigInt(v.raised as bigint),
+    withdrawn: BigInt(v.withdrawn as bigint),
+    raiseMin: BigInt(v.raiseMin as bigint),
     closeDate: Number(v.closeDate),
     owner: getAddress(v.owner as string),
     treasury: getAddress(v.treasury as string),
     pactToken: getAddress(v.pactToken as string),
-    priceStart: Number(v.priceStart),
-    priceSlope: Number(v.priceSlope),
+    priceStart: BigInt(v.priceStart as bigint),
+    priceSlope: BigInt(v.priceSlope as bigint),
     publicUnits: Number(v.publicUnits),
     publicUnitsSold: Number(v.publicUnitsSold),
   };
-  if (normalizedBuyer) result.deposit = Number(values[fields.length]);
+  if (normalizedBuyer) result.deposit = BigInt(values[fields.length] as bigint);
   return result;
 }
 
-// Curve parameters straight off an offering-state read.
-export const offeringStateCurve = (
-  state: Pick<OfferingState, "priceStart" | "priceSlope">,
-): CurveParams => ({
-  priceStart: state.priceStart,
-  priceSlope: state.priceSlope,
+// Curve parameters straight off an offering-state read (bigint) or a cached
+// record (decimal strings; legacy caches may still hold integer numbers).
+export const offeringStateCurve = (state: {
+  priceStart: bigint | string | number;
+  priceSlope: bigint | string | number;
+}): CurveParams => ({
+  priceStart: BigInt(state.priceStart),
+  priceSlope: BigInt(state.priceSlope),
 });
 
 // Public units still purchasable: capped by both remaining supply and the
@@ -589,7 +597,7 @@ async function payWithApproval({
 }: {
   buyer: Address;
   offering: Address;
-  amount: number;
+  amount: bigint;
   buyCall: BuyCall;
 }): Promise<{
   approveTxHash: Hex | null;
@@ -599,9 +607,9 @@ async function payWithApproval({
   const approveArgs = {
     abi: erc20Abi,
     functionName: "approve",
-    args: [offering, BigInt(amount)],
+    args: [offering, amount],
   } as const;
-  const needsApproval = (await usdcAllowance(buyer, offering)) < BigInt(amount);
+  const needsApproval = (await usdcAllowance(buyer, offering)) < amount;
 
   if (needsApproval && (await atomicBatchSupported(buyer))) {
     const { id } = await sendCalls(wagmiConfig, {
@@ -673,7 +681,8 @@ export async function quotePublicPurchase({
     throw new Error(`Only ${available} public units remain.`);
   const curve = offeringStateCurve(state);
   const cost = costForUnits(curve, state.unitsSold, units);
-  const maxCost = Math.ceil(cost * 1.01);
+  // +1% slippage headroom, ceil-divided so the buffer never rounds to zero.
+  const maxCost = (cost * 101n + 99n) / 100n;
   return { state, units, cost, maxCost };
 }
 
@@ -701,7 +710,7 @@ export async function buyPublicOffering({
       address: offering,
       abi: OFFERING_ABI,
       functionName: "buyPublic",
-      args: [BigInt(quote.units), BigInt(quote.maxCost), buyerName],
+      args: [BigInt(quote.units), quote.maxCost, buyerName],
     },
   });
   assertNotReverted(buyReceipt, "Offering purchase reverted.");
@@ -731,7 +740,7 @@ export async function buyPrivateOffering({
   const offering = getAddress(offeringAddress);
   const state = await getOfferingState({ offeringAddress });
   const curve = offeringStateCurve(state);
-  const cap = Number(voucher.amountCapUsdc);
+  const cap = BigInt(voucher.amountCapUsdc);
   const units = unitsForBudget(
     curve,
     state.unitsSold,
@@ -745,7 +754,8 @@ export async function buyPrivateOffering({
   const cost = costForUnits(curve, state.unitsSold, units);
   // The voucher cap bounds slippage: price drift between invite and claim is
   // accepted, but never beyond the dollars the owner endorsed.
-  const maxCost = Math.min(cap, Math.ceil(cost * 1.01));
+  const costWithSlippage = (cost * 101n + 99n) / 100n;
+  const maxCost = costWithSlippage < cap ? costWithSlippage : cap;
 
   const claimSig = await signClaim({
     linkPrivateKey,
@@ -771,7 +781,7 @@ export async function buyPrivateOffering({
         ownerSig,
         claimSig,
         BigInt(units),
-        BigInt(maxCost),
+        maxCost,
       ],
     },
   });

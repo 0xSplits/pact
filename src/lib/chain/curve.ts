@@ -1,13 +1,18 @@
 // Bonding-curve math, shared by the create/buy/status pages and the onchain
 // module. Prices are in USDC base units per whole Liquid Split unit; the
 // contract sells unit `i` (zero-indexed) at `priceStart + priceSlope * i`.
-import { USDC_SCALE } from "#lib/chain/chain.ts";
+// Base-unit amounts are bigint so the math mirrors the contract's uint256
+// arithmetic exactly; only the valuation-band derivation (sqrt) and display
+// conversions run in floats.
+import { formatUnits } from "viem";
+
+import { toUsdcBaseUnits, USDC_DECIMALS } from "#lib/chain/chain.ts";
 import { TOTAL_LIQUID_SPLIT_UNITS } from "#lib/chain/liquid-split.ts";
 
 // Contract curve parameters: USDC base units per whole unit.
 export interface CurveParams {
-  priceStart: number;
-  priceSlope: number;
+  priceStart: bigint;
+  priceSlope: bigint;
 }
 
 // The PACT document the create flow assembles (see buildPact in create.tsx).
@@ -90,21 +95,21 @@ export function deriveOfferingCurve(pact: PactCurveInputs): CurveParams | null {
   const ceiling = pact.valuation.ceiling;
   const offeringUnits = pact.newMoney.tokens;
   if (!(floor > 0) || !(ceiling >= floor) || !(offeringUnits > 0)) return null;
-  const priceStart = Math.max(
-    1,
-    Math.floor((floor * USDC_SCALE) / TOTAL_LIQUID_SPLIT_UNITS),
-  );
-  const slopeRaw = Math.floor(
-    ((ceiling - floor) * USDC_SCALE) / TOTAL_LIQUID_SPLIT_UNITS / offeringUnits,
-  );
-  const priceSlope = ceiling > floor ? Math.max(1, slopeRaw) : 0;
+  const perUnitFloor =
+    toUsdcBaseUnits(floor) / BigInt(TOTAL_LIQUID_SPLIT_UNITS);
+  const priceStart = perUnitFloor > 1n ? perUnitFloor : 1n;
+  const slopeRaw =
+    (toUsdcBaseUnits(ceiling) - toUsdcBaseUnits(floor)) /
+    BigInt(TOTAL_LIQUID_SPLIT_UNITS) /
+    BigInt(offeringUnits);
+  const priceSlope = ceiling > floor ? (slopeRaw > 1n ? slopeRaw : 1n) : 0n;
   return { priceStart, priceSlope };
 }
 
 // Curve parameters for an existing PACT: what the contract was deployed with,
 // falling back to re-deriving them from the stored valuation band.
 export function offeringCurveParams(pact: Pact): CurveParams | null {
-  if (pact.curveParams && pact.curveParams.priceStart > 0)
+  if (pact.curveParams && pact.curveParams.priceStart > 0n)
     return pact.curveParams;
   return deriveOfferingCurve(pact);
 }
@@ -114,11 +119,12 @@ export function costForUnits(
   curve: CurveParams | null | undefined,
   sold: number,
   units: number,
-): number {
-  if (!curve || !(units > 0)) return 0;
+): bigint {
+  if (!curve || !Number.isInteger(units) || units <= 0) return 0n;
+  const u = BigInt(units);
   return (
-    units * curve.priceStart +
-    curve.priceSlope * (sold * units + (units * (units - 1)) / 2)
+    u * curve.priceStart +
+    curve.priceSlope * (BigInt(sold) * u + (u * (u - 1n)) / 2n)
   );
 }
 
@@ -127,7 +133,7 @@ export function unitsForBudget(
   curve: CurveParams,
   sold: number,
   remaining: number,
-  budget: number,
+  budget: bigint,
 ): number {
   let units = 0;
   for (let candidate = 1; candidate <= remaining; candidate++) {
@@ -143,6 +149,7 @@ export function valuationForUnitIndex(
   totalTokens: number,
 ): number {
   if (!curve) return 0;
-  const price = curve.priceStart + curve.priceSlope * Math.max(0, unitIndex);
-  return (price * totalTokens) / USDC_SCALE;
+  const price =
+    curve.priceStart + curve.priceSlope * BigInt(Math.max(0, unitIndex));
+  return Number(formatUnits(price * BigInt(totalTokens), USDC_DECIMALS));
 }
