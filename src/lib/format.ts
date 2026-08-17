@@ -1,5 +1,7 @@
 // Shared display formatting helpers for the React pages.
-import { USDC_SCALE } from "#lib/chain/chain.ts";
+import { formatUnits } from "viem";
+
+import { USDC_DECIMALS } from "#lib/chain/chain.ts";
 
 export const MS_PER_DAY = 86400000;
 
@@ -74,8 +76,12 @@ export function formatAmountInput(value: string): string {
   return decPart == null ? intDisplay : (intDisplay || "0") + "." + decPart;
 }
 
-export const usdcBaseUnitsToDollars = (n: number | null | undefined) =>
-  Number(n || 0) / USDC_SCALE;
+// The one bigint→float boundary: base units become dollars for display and
+// chart math only, after formatUnits has already done the exact division.
+// Accepts numbers/strings so legacy localStorage cache values still convert.
+export const usdcBaseUnitsToDollars = (
+  n: bigint | number | string | null | undefined,
+) => Number(formatUnits(BigInt(n ?? 0), USDC_DECIMALS));
 export const shortAddr = (a: string | null | undefined) =>
   a && a.length > 12 ? a.slice(0, 6) + "…" + a.slice(-4) : a || "";
 export const basescanTx = (hash: string) =>

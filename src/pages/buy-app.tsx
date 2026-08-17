@@ -95,15 +95,15 @@ function debugOfferingSnapshot(
     unitsSold: 50,
     minMet: false,
     state: 0,
-    raised: 55_000000,
-    withdrawn: 0,
-    raiseMin: 100_000000,
+    raised: 55_000000n,
+    withdrawn: 0n,
+    raiseMin: 100_000000n,
     closeDate: Math.floor((Date.now() + 7 * MS_PER_DAY) / 1000),
-    priceStart: 1_000000,
-    priceSlope: 1000,
+    priceStart: 1_000000n,
+    priceSlope: 1000n,
     publicUnits: 100,
     publicUnitsSold: 20,
-    deposit: 0,
+    deposit: 0n,
     ...(live || {}),
   };
   if (debugState === "funding") return { ...base, state: 0, minMet: false };
@@ -113,7 +113,7 @@ function debugOfferingSnapshot(
       state: 1,
       minMet: false,
       closeDate: Math.floor((Date.now() - MS_PER_DAY) / 1000),
-      deposit: 25_000000,
+      deposit: 25_000000n,
     };
   if (debugState === "refunded")
     return {
@@ -121,7 +121,7 @@ function debugOfferingSnapshot(
       state: 1,
       minMet: false,
       closeDate: Math.floor((Date.now() - MS_PER_DAY) / 1000),
-      deposit: 0,
+      deposit: 0n,
     };
   if (debugState === "closed") return { ...base, state: 2, minMet: true };
   return live;
@@ -138,7 +138,7 @@ function deriveBuyView({
   debugState,
 }: {
   offeringState: OfferingView;
-  receipt: { units: number; cost: number; txHash: string | null } | null;
+  receipt: { units: number; cost: bigint; txHash: string | null } | null;
   wallet: string | null;
   units: string;
   consumed: boolean | null;
@@ -174,24 +174,25 @@ function deriveBuyView({
   const minUsd = usdcBaseUnitsToDollars(offeringState.raiseMin);
 
   const isPaid =
-    !!receipt || (debugActive(debugState) && (offeringState.deposit || 0) > 0);
+    !!receipt ||
+    (debugActive(debugState) && (offeringState.deposit ?? 0n) > 0n);
   const paidUnits = receipt ? receipt.units : 0;
   const paidCostUsd = usdcBaseUnitsToDollars(
-    receipt ? receipt.cost : offeringState.deposit || 0,
+    receipt ? receipt.cost : (offeringState.deposit ?? 0n),
   );
   const pricePer = paidUnits > 0 ? paidCostUsd / paidUnits : 0;
 
   // Quote for what the buyer is about to purchase.
   const budgetUsdc = voucherPayload
-    ? Number(voucherPayload.voucher.amountCapUsdc)
-    : 0;
+    ? BigInt(voucherPayload.voucher.amountCapUsdc)
+    : 0n;
   const requestedPublicUnits = Number(units) || 0;
   const publicUnitsValid =
     Number.isInteger(requestedPublicUnits) &&
     requestedPublicUnits >= 1 &&
     requestedPublicUnits <= publicRemaining;
   const quoteUnits = voucherPayload
-    ? budgetUsdc > 0
+    ? budgetUsdc > 0n
       ? unitsForBudget(
           curve,
           offeringState.unitsSold,
@@ -209,7 +210,7 @@ function deriveBuyView({
 
   const claimedByOther = !!voucherPayload && !!consumed && !isPaid;
   const refundableDeposit =
-    offeringFailed && wallet && (offeringState.deposit || 0) > 0
+    offeringFailed && wallet && (offeringState.deposit ?? 0n) > 0n
       ? usdcBaseUnitsToDollars(offeringState.deposit)
       : 0;
   const canStillPurchase =
@@ -289,7 +290,7 @@ function StatusDot({ refundable = false }) {
 export function BuyApp() {
   const [receipt, setReceipt] = useState<{
     units: number;
-    cost: number;
+    cost: bigint;
     txHash: string | null;
   } | null>(null); // for the connected wallet
   const [units, setUnits] = useState("");
@@ -360,14 +361,12 @@ export function BuyApp() {
   // Self-heal: the receipt lives onchain, not in a local database. A wallet
   // with a deposit recovers its purchases from Bought events.
   const deposit =
-    offering && offering.status === "loaded"
-      ? Number(offering.deposit || 0)
-      : 0;
+    offering && offering.status === "loaded" ? (offering.deposit ?? 0n) : 0n;
   useEffect(() => {
     if (
       !wallet ||
       !offeringAddress ||
-      deposit <= 0 ||
+      deposit <= 0n ||
       receipt ||
       recoveringRef.current
     )
@@ -390,7 +389,7 @@ export function BuyApp() {
         if (last) {
           setReceipt({
             units: mine.reduce((s, p) => s + p.units, 0),
-            cost: mine.reduce((s, p) => s + p.cost, 0),
+            cost: mine.reduce((s, p) => s + BigInt(p.cost), 0n),
             txHash: last.txHash,
           });
         }
@@ -452,7 +451,7 @@ export function BuyApp() {
       }
       setReceipt((prev) => ({
         units: (prev ? prev.units : 0) + (purchase.units || 0),
-        cost: (prev ? prev.cost : 0) + (purchase.cost || 0),
+        cost: (prev ? prev.cost : 0n) + BigInt(purchase.cost || 0),
         txHash: purchase.buyTxHash,
       }));
       refreshOffering();
