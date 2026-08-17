@@ -8,12 +8,11 @@ import type { Address, Hex } from "viem";
 import {
   AddressLink,
   Button,
-  CheckIcon,
   DefList,
   Field,
-  Loading,
   Notice,
   SectionTitle,
+  StatusBadge,
   Sub,
   TextButton,
 } from "#components/ui.tsx";
@@ -24,6 +23,8 @@ import { useWallet } from "#hooks/use-wallet.ts";
 import { toUsdcBaseUnits } from "#lib/chain/chain.ts";
 import { costForUnits, valuationForUnitIndex } from "#lib/chain/curve.ts";
 import { TOTAL_LIQUID_SPLIT_UNITS } from "#lib/chain/liquid-split.ts";
+import { offeringStatus } from "#lib/chain/offering-status.ts";
+import type { StatusInfo } from "#lib/chain/offering-status.ts";
 import {
   findOffering,
   getPactTokenHolders,
@@ -178,36 +179,6 @@ function debugOfferingSnapshot(
     };
   }
   return live;
-}
-
-interface StatusInfo {
-  label: string;
-  tone: string;
-  note: string;
-}
-
-function offeringStatus(
-  onchainOffering: OfferingView | null,
-  open: boolean,
-  secured: boolean,
-): StatusInfo {
-  if (onchainOffering && onchainOffering.state === 1)
-    return {
-      label: "Failed",
-      tone: "failed",
-      note: "Minimum amount not met by close date",
-    };
-  if (onchainOffering && onchainOffering.state === 2)
-    return { label: "Closed", tone: "closed", note: "Round closed" };
-  if (secured)
-    return { label: "Open", tone: "secured", note: "Minimum reached" };
-  if (!open)
-    return {
-      label: "Below minimum",
-      tone: "failed",
-      note: "Close date passed",
-    };
-  return { label: "Open", tone: "funding", note: "Minimum not yet reached" };
 }
 
 interface OfferingAction {
@@ -370,57 +341,6 @@ function disabledContractReadActions(
         },
       ];
   return disabled.map((action) => ({ ...action, disabled: true, tooltip }));
-}
-
-function StatusBadge({ status }: { status: StatusInfo }) {
-  if (status.tone === "loading") return <Loading />;
-  const icons = {
-    secured: <CheckIcon />,
-    closed: (
-      <svg
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="3"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      >
-        <path d="M7 12h10" />
-      </svg>
-    ),
-    failed: (
-      <svg
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="3"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      >
-        <path d="M6 6l12 12M18 6 6 18" />
-      </svg>
-    ),
-    funding: (
-      <svg viewBox="0 0 24 24" fill="currentColor">
-        <circle cx="12" cy="12" r="3" />
-      </svg>
-    ),
-  };
-  const tone =
-    (["secured", "closed", "failed", "funding"] as const).find(
-      (t) => t === status.tone,
-    ) || "funding";
-  return (
-    <>
-      <span className="status-state">
-        <span className={`status-dot ${tone}`} aria-hidden="true">
-          {icons[tone]}
-        </span>
-        <span>{status.label}</span>
-      </span>
-      {status.note ? <Sub>{status.note}</Sub> : null}
-    </>
-  );
 }
 
 const CopyIcon = () => (
@@ -1090,8 +1010,13 @@ function deriveStatusView({
   const minUsd = usdcBaseUnitsToDollars(
     onchainOffering ? onchainOffering.raiseMin : record.raiseMin,
   );
-  const secured = onchainOffering ? onchainOffering.minMet : false;
-  const localStatus = offeringStatus(onchainOffering, open, secured);
+  const localStatus = onchainOffering
+    ? offeringStatus({
+        state: onchainOffering.state,
+        minMet: onchainOffering.minMet,
+        closeDate: onchainOffering.closeDate || record.closeDate,
+      })
+    : null;
   const statusInfo: StatusInfo = (() => {
     if (debugState === "loading")
       return { label: "Loading…", tone: "loading", note: "" };
@@ -1101,7 +1026,7 @@ function deriveStatusView({
         tone: "failed",
         note: "Refresh to retry",
       };
-    if (onchainOffering) return localStatus;
+    if (localStatus) return localStatus;
     if (offering && offering.status === "error")
       return {
         label: "Contract read failed",

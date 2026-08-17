@@ -4,6 +4,7 @@
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 import type { Address } from "viem";
 
+import type { StatusInfo } from "#lib/chain/offering-status.ts";
 import { basescanAddress, shortAddr } from "#lib/format.ts";
 
 const cx = (...parts: Array<string | false | null | undefined>) =>
@@ -195,6 +196,59 @@ export function SignatureBlock({
         </div>
       </div>
     </div>
+  );
+}
+
+// Lifecycle dot + label shared by the status page and the home dashboard
+// tables (pass note: "" where there is no room for the sub-note).
+export function StatusBadge({ status }: { status: StatusInfo }) {
+  if (status.tone === "loading") return <Loading />;
+  const icons = {
+    secured: <CheckIcon />,
+    closed: (
+      <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="3"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M7 12h10" />
+      </svg>
+    ),
+    failed: (
+      <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="3"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M6 6l12 12M18 6 6 18" />
+      </svg>
+    ),
+    funding: (
+      <svg viewBox="0 0 24 24" fill="currentColor">
+        <circle cx="12" cy="12" r="3" />
+      </svg>
+    ),
+  };
+  const tone =
+    (["secured", "closed", "failed", "funding"] as const).find(
+      (t) => t === status.tone,
+    ) || "funding";
+  return (
+    <>
+      <span className="status-state">
+        <span className={`status-dot ${tone}`} aria-hidden="true">
+          {icons[tone]}
+        </span>
+        <span>{status.label}</span>
+      </span>
+      {status.note ? <Sub>{status.note}</Sub> : null}
+    </>
   );
 }
 

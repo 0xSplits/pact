@@ -4,6 +4,7 @@
 // as parameters so tests run against fakes and never hit real RPC.
 import { getAbiItem, getAddress, zeroAddress } from "viem";
 import type { Address } from "viem";
+import { readContract } from "wagmi/actions";
 
 import {
   OFFERING_ABI,
@@ -19,11 +20,11 @@ import {
   offeringRecordFromLog,
   offeringStateCurve,
   purchaseFromLog,
-  readMany,
   getLogs as rpcGetLogs,
 } from "#lib/chain/onchain.ts";
 import type { OfferingRecord, Purchase } from "#lib/chain/onchain.ts";
 import type { KVStorage } from "#lib/chain/voucher.ts";
+import { wagmiConfig } from "#lib/chain/wagmi.ts";
 import { isSameAddress } from "#lib/validate.ts";
 
 // Public Base RPC caps eth_getLogs at 10k-block ranges.
@@ -269,40 +270,35 @@ export async function listPurchases({
     }));
 }
 
-// Live raised/target per issuance in one multicall: target is what the curve
-// yields if every remaining unit sells from the current position.
-export async function loadIssuanceTotals(
-  records: OfferingRecord[],
-): Promise<Array<OfferingRecord & { raised: bigint; target: bigint }>> {
-  const calls = records.flatMap((record) =>
-    ["raised", "unitsSold", "remainingUnits"].map((functionName) => ({
-      address: record.offering,
-      abi: OFFERING_ABI,
-      functionName,
-    })),
-  );
-  const values = await readMany(calls);
-  return records.map((record, i) => {
-    const raised = BigInt((values[i * 3] as bigint) ?? 0n);
-    const unitsSold = Number(values[i * 3 + 1] ?? 0);
-    const remainingUnits = Number(values[i * 3 + 2] ?? 0);
-    const curve = offeringStateCurve(record);
-    return {
-      ...record,
-      raised,
-      target: raised + costForUnits(curve, unitsSold, remainingUnits),
-    };
-  });
+export interface OfferingLifecycle {
+  state: number;
+  minMet: boolean;
 }
 
 export interface WalletRecords {
-  pacts: Array<OfferingRecord & { raised?: bigint; target?: bigint }>;
-  purchases: Array<Purchase & { record: OfferingRecord }>;
+  pacts: Array<
+    OfferingRecord & {
+      raised?: bigint;
+      target?: bigint;
+      lifecycle?: OfferingLifecycle | undefined;
+    }
+  >;
+  purchases: Array<
+    Purchase & {
+      record: OfferingRecord;
+      lifecycle?: OfferingLifecycle | undefined;
+    }
+  >;
 }
 
 // Everything the wallet menu and home dashboard show for a connected wallet:
-// this wallet's issuances (with live totals) and its purchase receipts.
-// Scan failures degrade to empty groups rather than a stuck loader.
+// this wallet's issuances with live totals (target is what the curve yields
+// if every remaining unit sells from the current position), its purchase
+// receipts, and lifecycle state for every offering either group touches.
+// Individual typed reads over the deduped set; the public client batches
+// same-tick calls into one multicall round trip (wagmi's default
+// batch.multicall). Scan failures degrade to empty groups and a failing read
+// to that record's live fields only, never a stuck loader.
 export async function loadWalletRecords(
   wallet: Address,
 ): Promise<WalletRecords> {
@@ -313,11 +309,90 @@ export async function loadWalletRecords(
         isSameAddress(record.issuer, wallet) ||
         isSameAddress(record.treasury, wallet),
     );
-    const [pacts, purchases] = await Promise.all([
-      mine.length ? loadIssuanceTotals(mine).catch(() => mine) : [],
-      listPurchases({ wallet, offerings }).catch(() => []),
+    const purchases: Array<Purchase & { record: OfferingRecord }> =
+      await listPurchases({ wallet, offerings }).catch(() => []);
+
+    const seen = new Set<string>();
+    const lifecycleRecords = [
+      ...mine,
+      ...purchases.map((purchase) => purchase.record),
+    ].filter((record) => {
+      const key = record.offering.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+
+    const lifecycleByOffering = new Map<string, OfferingLifecycle>();
+    const totalsByOffering = new Map<
+      string,
+      { raised: bigint; target: bigint }
+    >();
+    await Promise.all([
+      ...lifecycleRecords.map(async (record) => {
+        try {
+          const [state, minMet] = await Promise.all([
+            readContract(wagmiConfig, {
+              address: record.offering,
+              abi: OFFERING_ABI,
+              functionName: "state",
+            }),
+            readContract(wagmiConfig, {
+              address: record.offering,
+              abi: OFFERING_ABI,
+              functionName: "minMet",
+            }),
+          ]);
+          lifecycleByOffering.set(record.offering.toLowerCase(), {
+            state: Number(state),
+            minMet,
+          });
+        } catch {} // row renders without live fields
+      }),
+      ...mine.map(async (record) => {
+        try {
+          const [raised, unitsSold, remainingUnits] = await Promise.all([
+            readContract(wagmiConfig, {
+              address: record.offering,
+              abi: OFFERING_ABI,
+              functionName: "raised",
+            }),
+            readContract(wagmiConfig, {
+              address: record.offering,
+              abi: OFFERING_ABI,
+              functionName: "unitsSold",
+            }),
+            readContract(wagmiConfig, {
+              address: record.offering,
+              abi: OFFERING_ABI,
+              functionName: "remainingUnits",
+            }),
+          ]);
+          const curve = offeringStateCurve(record);
+          totalsByOffering.set(record.offering.toLowerCase(), {
+            raised,
+            target:
+              raised +
+              costForUnits(curve, Number(unitsSold), Number(remainingUnits)),
+          });
+        } catch {} // row renders without live totals
+      }),
     ]);
-    return { pacts, purchases };
+    const lifecycleOf = (record: OfferingRecord) =>
+      lifecycleByOffering.get(record.offering.toLowerCase());
+
+    const pacts = mine.map((record) => ({
+      ...record,
+      ...(totalsByOffering.get(record.offering.toLowerCase()) ?? {}),
+      lifecycle: lifecycleOf(record),
+    }));
+    return {
+      pacts,
+      purchases: purchases.map((purchase) => ({
+        ...purchase,
+        lifecycle: lifecycleOf(purchase.record),
+      })),
+    };
   } catch {
     return { pacts: [], purchases: [] };
   }
@@ -367,18 +442,18 @@ export async function getPactTokenHolders({
     a.toLowerCase() > b.toLowerCase() ? 1 : -1,
   );
   if (!sorted.length) return [];
-  const balances = await readMany(
-    sorted.map((account) => ({
-      address,
-      abi: PACT_TOKEN_ABI,
-      functionName: "balanceOf",
-      args: [account, BigInt(tokenId)],
+  const holders = await Promise.all(
+    sorted.map(async (account) => ({
+      address: account,
+      balance: Number(
+        await readContract(wagmiConfig, {
+          address,
+          abi: PACT_TOKEN_ABI,
+          functionName: "balanceOf",
+          args: [account, BigInt(tokenId)],
+        }),
+      ),
     })),
   );
-  return sorted
-    .map((account, index) => ({
-      address: account,
-      balance: Number(balances[index]),
-    }))
-    .filter((holder) => holder.balance > 0);
+  return holders.filter((holder) => holder.balance > 0);
 }
