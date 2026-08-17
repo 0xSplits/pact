@@ -3,9 +3,11 @@ import "#pages/home.css";
 import { useQuery } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 
+import { StatusBadge } from "#components/ui.tsx";
 import { useWallet } from "#hooks/use-wallet.ts";
+import { offeringStatus } from "#lib/chain/offering-status.ts";
 import { loadWalletRecords } from "#lib/chain/offerings.ts";
-import type { WalletRecords } from "#lib/chain/offerings.ts";
+import type { OfferingLifecycle, WalletRecords } from "#lib/chain/offerings.ts";
 import { fmtTokens, fmtUsd, usdcBaseUnitsToDollars } from "#lib/format.ts";
 import { buyPath, createPath, statusPath } from "#lib/routes.ts";
 
@@ -100,6 +102,19 @@ function DashboardTable({
   );
 }
 
+// Live reads degrade to no lifecycle; show absence rather than a stale guess.
+function StatusCell({
+  lifecycle,
+  closeDate,
+}: {
+  lifecycle: OfferingLifecycle | undefined;
+  closeDate: number;
+}) {
+  if (!lifecycle) return <span className="t-muted">—</span>;
+  const status = offeringStatus({ ...lifecycle, closeDate });
+  return <StatusBadge status={{ ...status, note: "" }} />;
+}
+
 function Dashboard({ records }: { records: WalletRecords }) {
   const { pacts, purchases } = records;
   return (
@@ -127,6 +142,7 @@ function Dashboard({ records }: { records: WalletRecords }) {
                 <th>Project</th>
                 <th className="num">Raised</th>
                 <th className="num">Target</th>
+                <th>Status</th>
               </tr>
             </thead>
             <tbody>
@@ -143,6 +159,12 @@ function Dashboard({ records }: { records: WalletRecords }) {
                   <td className="num">
                     {fmtUsd(usdcBaseUnitsToDollars(pact.target || 0), "cents")}
                   </td>
+                  <td>
+                    <StatusCell
+                      lifecycle={pact.lifecycle}
+                      closeDate={pact.closeDate}
+                    />
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -158,6 +180,7 @@ function Dashboard({ records }: { records: WalletRecords }) {
                 <th>Project</th>
                 <th className="num">Amount</th>
                 <th className="num">Units</th>
+                <th>Status</th>
               </tr>
             </thead>
             <tbody>
@@ -173,6 +196,12 @@ function Dashboard({ records }: { records: WalletRecords }) {
                     {fmtUsd(usdcBaseUnitsToDollars(purchase.cost), "cents")}
                   </td>
                   <td className="num">{fmtTokens(purchase.units)}</td>
+                  <td>
+                    <StatusCell
+                      lifecycle={purchase.lifecycle}
+                      closeDate={purchase.record.closeDate}
+                    />
+                  </td>
                 </tr>
               ))}
             </tbody>

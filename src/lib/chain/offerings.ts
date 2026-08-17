@@ -269,40 +269,33 @@ export async function listPurchases({
     }));
 }
 
-// Live raised/target per issuance in one multicall: target is what the curve
-// yields if every remaining unit sells from the current position.
-export async function loadIssuanceTotals(
-  records: OfferingRecord[],
-): Promise<Array<OfferingRecord & { raised: bigint; target: bigint }>> {
-  const calls = records.flatMap((record) =>
-    ["raised", "unitsSold", "remainingUnits"].map((functionName) => ({
-      address: record.offering,
-      abi: OFFERING_ABI,
-      functionName,
-    })),
-  );
-  const values = await readMany(calls);
-  return records.map((record, i) => {
-    const raised = BigInt((values[i * 3] as bigint) ?? 0n);
-    const unitsSold = Number(values[i * 3 + 1] ?? 0);
-    const remainingUnits = Number(values[i * 3 + 2] ?? 0);
-    const curve = offeringStateCurve(record);
-    return {
-      ...record,
-      raised,
-      target: raised + costForUnits(curve, unitsSold, remainingUnits),
-    };
-  });
+export interface OfferingLifecycle {
+  state: number;
+  minMet: boolean;
 }
 
 export interface WalletRecords {
-  pacts: Array<OfferingRecord & { raised?: bigint; target?: bigint }>;
-  purchases: Array<Purchase & { record: OfferingRecord }>;
+  pacts: Array<
+    OfferingRecord & {
+      raised?: bigint;
+      target?: bigint;
+      lifecycle?: OfferingLifecycle | undefined;
+    }
+  >;
+  purchases: Array<
+    Purchase & {
+      record: OfferingRecord;
+      lifecycle?: OfferingLifecycle | undefined;
+    }
+  >;
 }
 
 // Everything the wallet menu and home dashboard show for a connected wallet:
-// this wallet's issuances (with live totals) and its purchase receipts.
-// Scan failures degrade to empty groups rather than a stuck loader.
+// this wallet's issuances with live totals (target is what the curve yields
+// if every remaining unit sells from the current position), its purchase
+// receipts, and lifecycle state for every offering either group touches —
+// one multicall over the deduped set. Scan failures degrade to empty groups
+// and read failures to records without live fields, never a stuck loader.
 export async function loadWalletRecords(
   wallet: Address,
 ): Promise<WalletRecords> {
@@ -313,11 +306,68 @@ export async function loadWalletRecords(
         isSameAddress(record.issuer, wallet) ||
         isSameAddress(record.treasury, wallet),
     );
-    const [pacts, purchases] = await Promise.all([
-      mine.length ? loadIssuanceTotals(mine).catch(() => mine) : [],
-      listPurchases({ wallet, offerings }).catch(() => []),
-    ]);
-    return { pacts, purchases };
+    const purchases: Array<Purchase & { record: OfferingRecord }> =
+      await listPurchases({ wallet, offerings }).catch(() => []);
+
+    const seen = new Set<string>();
+    const lifecycleRecords = [
+      ...mine,
+      ...purchases.map((purchase) => purchase.record),
+    ].filter((record) => {
+      const key = record.offering.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+
+    const call = (record: OfferingRecord, functionName: string) => ({
+      address: record.offering,
+      abi: OFFERING_ABI,
+      functionName,
+    });
+    const calls = [
+      ...mine.flatMap((record) =>
+        ["raised", "unitsSold", "remainingUnits"].map((fn) => call(record, fn)),
+      ),
+      ...lifecycleRecords.flatMap((record) =>
+        ["state", "minMet"].map((fn) => call(record, fn)),
+      ),
+    ];
+    const values = calls.length ? await readMany(calls).catch(() => null) : [];
+
+    const lifecycleByOffering = new Map<string, OfferingLifecycle>();
+    if (values) {
+      const base = mine.length * 3;
+      lifecycleRecords.forEach((record, i) => {
+        lifecycleByOffering.set(record.offering.toLowerCase(), {
+          state: Number(values[base + i * 2] ?? 0),
+          minMet: Boolean(values[base + i * 2 + 1]),
+        });
+      });
+    }
+    const lifecycleOf = (record: OfferingRecord) =>
+      lifecycleByOffering.get(record.offering.toLowerCase());
+
+    const pacts = mine.map((record, i) => {
+      if (!values) return record;
+      const raised = BigInt((values[i * 3] as bigint) ?? 0n);
+      const unitsSold = Number(values[i * 3 + 1] ?? 0);
+      const remainingUnits = Number(values[i * 3 + 2] ?? 0);
+      const curve = offeringStateCurve(record);
+      return {
+        ...record,
+        raised,
+        target: raised + costForUnits(curve, unitsSold, remainingUnits),
+        lifecycle: lifecycleOf(record),
+      };
+    });
+    return {
+      pacts,
+      purchases: purchases.map((purchase) => ({
+        ...purchase,
+        lifecycle: lifecycleOf(purchase.record),
+      })),
+    };
   } catch {
     return { pacts: [], purchases: [] };
   }
