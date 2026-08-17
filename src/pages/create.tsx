@@ -22,8 +22,10 @@ import {
   fmtTokens,
   parseMoney,
   usdcBaseUnitsToDollars,
+  errMsg,
 } from "../lib/format.ts";
-import { Button } from "../components/ui.tsx";
+import { Button, SignatureBlock } from "../components/ui.tsx";
+import { useErrorTip } from "../hooks/use-error-tip.ts";
 import { statusPath } from "../lib/routes.ts";
 import { showToast } from "../lib/ui/toast.ts";
 
@@ -398,47 +400,19 @@ function CreateApp() {
   const [busy, setBusy] = useState(false);
   const [forceLightChart, setForceLightChart] = useState(false);
   const [themeTick, setThemeTick] = useState(0);
-  const errTipRef = useRef<HTMLDivElement | null>(null);
 
   const wallet = useWallet();
   useEffect(() => {
     setFormError("");
   }, [wallet]);
 
+  useErrorTip(errors);
+
   useEffect(() => {
     // redraw the canvas chart when the system color scheme flips
     const scheme = window.matchMedia("(prefers-color-scheme: dark)");
     const onScheme = () => setThemeTick((t) => t + 1);
     scheme.addEventListener("change", onScheme);
-
-    // floating error tooltip — shows a field's message on hover while it's in an error state
-    const errTip = document.createElement("div");
-    errTip.className = "err-tip";
-    document.body.appendChild(errTip);
-    errTipRef.current = errTip;
-    const onOver = (e: MouseEvent) => {
-      const el = (e.target as HTMLElement | null)?.closest?.("[data-error]");
-      if (
-        el &&
-        (el.classList.contains("error") || el.classList.contains("bad"))
-      ) {
-        errTip.textContent = el.getAttribute("data-error");
-        const r = el.getBoundingClientRect();
-        errTip.style.left = r.left + r.width / 2 + "px";
-        errTip.style.top = r.top + "px";
-        errTip.classList.add("show");
-      }
-    };
-    // Hide unconditionally: the error may have cleared while hovering, in
-    // which case the element no longer matches [data-error]. A still-errored
-    // element re-shows via the mouseover that follows the same cursor move.
-    const onOut = () => errTip.classList.remove("show");
-    // Typing anywhere hides the tip (a change may fix the hovered field or
-    // the derived totals row without ever leaving it).
-    const onInput = () => errTip.classList.remove("show");
-    document.addEventListener("mouseover", onOver);
-    document.addEventListener("mouseout", onOut);
-    document.addEventListener("input", onInput);
 
     // print the chart in the light palette regardless of on-screen theme.
     // flushSync forces the re-render + layout-effect redraw to commit
@@ -449,21 +423,10 @@ function CreateApp() {
     window.addEventListener("afterprint", after);
     return () => {
       scheme.removeEventListener("change", onScheme);
-      document.removeEventListener("mouseover", onOver);
-      document.removeEventListener("mouseout", onOut);
-      document.removeEventListener("input", onInput);
       window.removeEventListener("beforeprint", before);
       window.removeEventListener("afterprint", after);
-      errTip.remove();
     };
   }, []);
-
-  // Blur-driven fixes (e.g. correcting the minimum clears the maximum's
-  // error) can invalidate a tooltip that's already showing — hide it
-  // whenever the error set changes.
-  useEffect(() => {
-    if (errTipRef.current) errTipRef.current.classList.remove("show");
-  }, [errors]);
 
   const d = deriveCurve(form, holders);
   const valid = formIsValid(form, holders, d) && !!signerName.trim();
@@ -586,12 +549,13 @@ function CreateApp() {
       seedOffering(deployment);
       window.location.href = statusPath(deployment.offering);
     } catch (err) {
-      setFormError("");
-      showToast(
-        isUserRejected(err)
-          ? "Request rejected."
-          : "Could not create issuance.",
-      );
+      console.error("Create issuance failed", err);
+      if (isUserRejected(err)) {
+        setFormError("");
+        showToast("Request rejected.");
+      } else {
+        setFormError(errMsg(err, "Could not create issuance."));
+      }
       setBusy(false);
     }
   }
@@ -940,36 +904,18 @@ function CreateApp() {
       </figure>
 
       {/* Signature */}
-      <div className="signature-block">
-        <div className="signature-preview" aria-hidden="true">
-          {signerName || "\u00a0"}
-        </div>
-        <label className="sr-only" htmlFor="signerName">
-          Name
-        </label>
-        <input
-          id="signerName"
-          className={
-            "blank signature-input" + (errors.signerName ? " error" : "")
-          }
-          data-error={errors.signerName || undefined}
-          type="text"
-          placeholder="Name"
-          autoComplete="name"
-          required
-          value={signerName}
-          onChange={(e) => setSigner(e.target.value)}
-          onBlur={() =>
-            setErrors((e) => ({
-              ...e,
-              signerName: signerName.trim() ? undefined : "Enter your name.",
-            }))
-          }
-        />
-        <div className="signature-project">
-          Principal, {form.projectName || "Untitled project"}
-        </div>
-      </div>
+      <SignatureBlock
+        id="signerName"
+        value={signerName}
+        error={errors.signerName}
+        onChange={setSigner}
+        onBlur={() =>
+          setErrors((e) => ({
+            ...e,
+            signerName: signerName.trim() ? undefined : "Enter your name.",
+          }))
+        }
+      />
 
       {/* CTA */}
       <div className="mt-8" id="ctaRow">

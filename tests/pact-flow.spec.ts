@@ -270,10 +270,13 @@ test("buyer purchases from the public tranche with real transactions", async ({
   await page.goto("/buy?offering=" + offering);
 
   await expect(
-    page.getByRole("heading", { name: "Public Round" }),
+    page.getByRole("heading", {
+      name: "Purchase Agreement for Community Tokens",
+    }),
   ).toBeVisible();
+  await expect(page.getByText("Public Round", { exact: true })).toBeVisible();
   await connectWallet(page, buyer);
-  const unitsInput = page.getByRole("spinbutton");
+  const unitsInput = page.locator('input[inputmode="numeric"]');
   await expect(page.getByText("(100 available)")).toBeVisible();
   await unitsInput.fill("101");
   await expect(page.getByText("Max 100")).toBeVisible();
@@ -381,7 +384,15 @@ test("private allocation link claims across two browser contexts", async ({
   const buyerPage = await buyerContext.newPage();
   await buyerPage.goto(link);
   await expect(
-    buyerPage.getByRole("heading", { name: "Private Round | Buyer One" }),
+    buyerPage.getByRole("heading", {
+      name: "Purchase Agreement for Community Tokens",
+    }),
+  ).toBeVisible();
+  await expect(
+    buyerPage.getByText("Private Round", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    buyerPage.getByText("Private allocation for Buyer One"),
   ).toBeVisible();
   await connectWallet(buyerPage, buyer);
   await expect(buyerPage.getByText("Allocation details")).toBeVisible();

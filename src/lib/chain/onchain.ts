@@ -654,6 +654,25 @@ async function payWithApproval({
   return { approveTxHash, buyTxHash, buyReceipt };
 }
 
+export async function quotePublicPurchase({
+  offeringAddress,
+  units,
+}: {
+  offeringAddress: Address;
+  units: number;
+}) {
+  if (!Number.isInteger(units) || units <= 0)
+    throw new Error("Enter at least one whole unit.");
+  const state = await getOfferingState({ offeringAddress });
+  const available = availablePublicUnits(state);
+  if (units > available)
+    throw new Error(`Only ${available} public units remain.`);
+  const curve = offeringStateCurve(state);
+  const cost = costForUnits(curve, state.unitsSold, units);
+  const maxCost = Math.ceil(cost * 1.01);
+  return { state, units, cost, maxCost };
+}
+
 export async function buyPublicOffering({
   buyer,
   offeringAddress,
@@ -666,20 +685,10 @@ export async function buyPublicOffering({
   buyerName?: string;
 }) {
   if (!buyer) throw new Error("Connected wallet is required.");
-  if (!Number.isInteger(units) || units <= 0)
-    throw new Error("Enter at least one whole unit.");
-
   await ensureBase();
   const normalizedBuyer = getAddress(buyer);
   const offering = getAddress(offeringAddress);
-  const state = await getOfferingState({ offeringAddress });
-  const available = availablePublicUnits(state);
-  if (units > available)
-    throw new Error(`Only ${available} public units remain.`);
-  const curve = offeringStateCurve(state);
-  const cost = costForUnits(curve, state.unitsSold, units);
-  const maxCost = Math.ceil(cost * 1.01);
-  const quote = { state, units, cost, maxCost };
+  const quote = await quotePublicPurchase({ offeringAddress, units });
   const { approveTxHash, buyTxHash, buyReceipt } = await payWithApproval({
     buyer: normalizedBuyer,
     offering,

@@ -50,8 +50,10 @@ import {
   Field,
   Notice,
   SectionTitle,
+  SignatureBlock,
   Sub,
 } from "../components/ui.tsx";
+import { useErrorTip } from "../hooks/use-error-tip.ts";
 import "./buy.css";
 
 const TOTAL_TOKENS = TOTAL_LIQUID_SPLIT_UNITS;
@@ -296,6 +298,7 @@ function BuyApp() {
   const [buyerName, setBuyerName] = useState("");
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [signerName, setSignerName] = useState("");
+  const [signerNameError, setSignerNameError] = useState("");
   const [busy, setBusy] = useState<"refund" | "pay" | null>(null);
   const [debugPreview, setDebugPreview] = useState(false);
   const recoveringRef = useRef(false);
@@ -353,6 +356,8 @@ function BuyApp() {
       queryKey: ["allocation-consumed", offeringAddress],
     });
   }, [unitsSoldTick]);
+
+  useErrorTip(signerNameError);
 
   // Self-heal: the receipt lives onchain, not in a local database. A wallet
   // with a deposit recovers its purchases from Bought events.
@@ -523,6 +528,7 @@ function BuyApp() {
         View transaction
       </a>
     ) : null;
+  const estimatedCostUsd = quoteUnits > 0 ? quoteCost : null;
 
   const failedRefundCopy = debugRefunded
     ? "This project failed to meet the minimum before the close date."
@@ -603,17 +609,20 @@ function BuyApp() {
     );
   }
 
-  const heading = voucherPayload
-    ? `${projectName || "PACT offering"} | ${voucherPayload.voucher.buyerName}`
-    : projectName || "PACT offering";
-
   return (
     <>
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold">{heading}</h1>
-        <p className="text-sm t-muted mt-1">
-          Review the offering details and terms before making your purchase.
+      <div className="mb-10 text-center">
+        <p className="text-2xl font-bold mb-2">
+          {projectName || "PACT offering"}
         </p>
+        <h1 className="text-2xl font-bold uppercase tracking-wide">
+          Purchase Agreement for Community Tokens
+        </h1>
+        {voucherPayload ? (
+          <p className="text-sm t-muted mt-2">
+            Private allocation for {voucherPayload.voucher.buyerName}
+          </p>
+        ) : null}
       </div>
 
       <SectionTitle>Offering details</SectionTitle>
@@ -673,17 +682,16 @@ function BuyApp() {
                 <span>
                   <input
                     className="blank w-28 text-left"
-                    type="number"
+                    type="text"
                     inputMode="numeric"
-                    min="1"
-                    max={publicRemaining}
-                    step="1"
+                    pattern="[0-9]*"
                     placeholder="0"
                     autoComplete="off"
                     value={units}
-                    onChange={(e) =>
-                      setUnits(e.target.value.replace(/[^0-9]/g, ""))
-                    }
+                    onChange={(e) => {
+                      if (/^\d*$/.test(e.target.value))
+                        setUnits(e.target.value);
+                    }}
                   />
                   {requestedPublicUnits > publicRemaining ? (
                     <span className="t-danger ml-2">
@@ -697,9 +705,13 @@ function BuyApp() {
                 </span>
               </Field>
               <Field label="Estimated cost">
-                <span>{quoteUnits > 0 ? fmtUsd(quoteCost, "cents") : "—"}</span>
+                <span>
+                  {estimatedCostUsd != null
+                    ? fmtUsd(estimatedCostUsd, "cents")
+                    : "—"}
+                </span>
                 <Sub>
-                  {quoteUnits > 0
+                  {estimatedCostUsd != null
                     ? `${fmtUsd(quotePricePer, "cents")} / unit`
                     : "— / unit"}
                 </Sub>
@@ -785,24 +797,19 @@ function BuyApp() {
               {fmtUsd(minUsd, "cents")} by {fmtDate(closeDate)}.
             </span>
           </label>
-          <div className="signature-block terms-signature">
-            <div className="signature-preview" aria-hidden="true">
-              {signerName || "\u00a0"}
-            </div>
-            <label className="sr-only" htmlFor="buyerSignatureName">
-              Name
-            </label>
-            <input
-              id="buyerSignatureName"
-              className="blank signature-input"
-              type="text"
-              placeholder="Name (required, private)"
-              autoComplete="name"
-              required
-              value={signerName}
-              onChange={(e) => setSignerName(e.target.value)}
-            />
-          </div>
+          <SignatureBlock
+            id="buyerSignatureName"
+            className="terms-signature"
+            value={signerName}
+            error={signerNameError || undefined}
+            onChange={(value) => {
+              setSignerName(value);
+              if (value.trim()) setSignerNameError("");
+            }}
+            onBlur={() =>
+              setSignerNameError(signerName.trim() ? "" : "Enter your name.")
+            }
+          />
         </section>
       ) : null}
 
