@@ -31,7 +31,6 @@ import {
 } from "../lib/routes.ts";
 import {
   availablePublicUnits,
-  quotePublicPurchase,
   getProjectName,
   isAllocationConsumed,
   buyPublicOffering,
@@ -51,8 +50,10 @@ import {
   Field,
   Notice,
   SectionTitle,
+  SignatureBlock,
   Sub,
 } from "../components/ui.tsx";
+import { useErrorTip } from "../hooks/use-error-tip.ts";
 import "./buy.css";
 
 const TOTAL_TOKENS = TOTAL_LIQUID_SPLIT_UNITS;
@@ -294,12 +295,6 @@ function BuyApp() {
     txHash: string | null;
   } | null>(null); // for the connected wallet
   const [units, setUnits] = useState("");
-  const [publicQuote, setPublicQuote] = useState<{
-    units: number;
-    costUsd: number;
-  } | null>(null);
-  const [publicQuoteLoading, setPublicQuoteLoading] = useState(false);
-  const publicQuoteSeq = useRef(0);
   const [buyerName, setBuyerName] = useState("");
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [signerName, setSignerName] = useState("");
@@ -362,40 +357,7 @@ function BuyApp() {
     });
   }, [unitsSoldTick]);
 
-  useEffect(() => {
-    if (voucherPayload || !offeringAddress || debugActive(debugState)) {
-      setPublicQuote(null);
-      setPublicQuoteLoading(false);
-      return;
-    }
-    const requested = Number(units) || 0;
-    if (!Number.isInteger(requested) || requested < 1) {
-      setPublicQuote(null);
-      setPublicQuoteLoading(false);
-      return;
-    }
-    const seq = ++publicQuoteSeq.current;
-    setPublicQuoteLoading(true);
-    const timer = window.setTimeout(async () => {
-      let quote: { units: number; costUsd: number } | null = null;
-      try {
-        const fresh = await quotePublicPurchase({
-          offeringAddress,
-          units: requested,
-        });
-        quote = {
-          units: requested,
-          costUsd: usdcBaseUnitsToDollars(fresh.cost),
-        };
-      } catch {
-        // Invalid or temporarily unavailable quotes render as an em dash.
-      }
-      if (seq !== publicQuoteSeq.current) return;
-      setPublicQuote(quote);
-      setPublicQuoteLoading(false);
-    }, 350);
-    return () => window.clearTimeout(timer);
-  }, [units, debugState, unitsSoldTick]);
+  useErrorTip(signerNameError);
 
   // Self-heal: the receipt lives onchain, not in a local database. A wallet
   // with a deposit recovers its purchases from Bought events.
@@ -566,21 +528,7 @@ function BuyApp() {
         View transaction
       </a>
     ) : null;
-  const publicUnitsValid =
-    Number.isInteger(requestedPublicUnits) &&
-    requestedPublicUnits >= 1 &&
-    requestedPublicUnits <= publicRemaining;
-  const estimatedCostUsd = debugActive(debugState)
-    ? quoteUnits > 0
-      ? quoteCost
-      : null
-    : publicQuote &&
-        publicUnitsValid &&
-        publicQuote.units === requestedPublicUnits
-      ? publicQuote.costUsd
-      : null;
-  const estimatedCostLoading =
-    publicUnitsValid && !debugActive(debugState) && publicQuoteLoading;
+  const estimatedCostUsd = quoteUnits > 0 ? quoteCost : null;
 
   const failedRefundCopy = debugRefunded
     ? "This project failed to meet the minimum before the close date."
@@ -756,15 +704,15 @@ function BuyApp() {
                   )}
                 </span>
               </Field>
-              <Field label="Estimated cost" loading={estimatedCostLoading}>
+              <Field label="Estimated cost">
                 <span>
                   {estimatedCostUsd != null
                     ? fmtUsd(estimatedCostUsd, "cents")
                     : "—"}
                 </span>
                 <Sub>
-                  {estimatedCostUsd != null && requestedPublicUnits > 0
-                    ? `${fmtUsd(estimatedCostUsd / requestedPublicUnits, "cents")} / unit`
+                  {estimatedCostUsd != null
+                    ? `${fmtUsd(quotePricePer, "cents")} / unit`
                     : "— / unit"}
                 </Sub>
               </Field>
@@ -849,39 +797,19 @@ function BuyApp() {
               {fmtUsd(minUsd, "cents")} by {fmtDate(closeDate)}.
             </span>
           </label>
-          <div className="signature-row terms-signature">
-            <div className="signature-inner">
-              <span className="signature-by">By:</span>
-              <div className="signature-block">
-                <div className="signature-preview" aria-hidden="true">
-                  {signerName || "\u00a0"}
-                </div>
-                <label className="sr-only" htmlFor="buyerSignatureName">
-                  Name
-                </label>
-                <input
-                  id="buyerSignatureName"
-                  className={`blank signature-input${signerNameError ? " error" : ""}`}
-                  data-error={signerNameError || undefined}
-                  aria-invalid={!!signerNameError}
-                  type="text"
-                  placeholder="Name (required, private)"
-                  autoComplete="name"
-                  required
-                  value={signerName}
-                  onChange={(e) => {
-                    setSignerName(e.target.value);
-                    if (e.target.value.trim()) setSignerNameError("");
-                  }}
-                  onBlur={() =>
-                    setSignerNameError(
-                      signerName.trim() ? "" : "Enter your name.",
-                    )
-                  }
-                />
-              </div>
-            </div>
-          </div>
+          <SignatureBlock
+            id="buyerSignatureName"
+            className="terms-signature"
+            value={signerName}
+            error={signerNameError || undefined}
+            onChange={(value) => {
+              setSignerName(value);
+              if (value.trim()) setSignerNameError("");
+            }}
+            onBlur={() =>
+              setSignerNameError(signerName.trim() ? "" : "Enter your name.")
+            }
+          />
         </section>
       ) : null}
 

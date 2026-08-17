@@ -149,6 +149,54 @@ export function TextButton({
   );
 }
 
+// Signature block shared by the agreement pages: a script-font preview of the
+// typed name above the actual input, wired to the same data-error tooltip as
+// the other agreement fields (pair with useErrorTip on the page).
+export function SignatureBlock({
+  id,
+  value,
+  error,
+  className,
+  onChange,
+  onBlur,
+}: {
+  id: string;
+  value: string;
+  error?: string | undefined;
+  className?: string | undefined;
+  onChange: (value: string) => void;
+  onBlur: () => void;
+}) {
+  return (
+    <div className={cx("signature-row", className)}>
+      <div className="signature-inner">
+        <span className="signature-by">By:</span>
+        <div className="signature-block">
+          <div className="signature-preview" aria-hidden="true">
+            {value || "\u00a0"}
+          </div>
+          <label className="sr-only" htmlFor={id}>
+            Name
+          </label>
+          <input
+            id={id}
+            className={cx("blank signature-input", error && "error")}
+            data-error={error || undefined}
+            aria-invalid={!!error}
+            type="text"
+            placeholder="Name (required, private)"
+            autoComplete="name"
+            required
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            onBlur={onBlur}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // Dotted notice box.
 export function Notice({
   className,
