@@ -189,27 +189,22 @@ interface OfferingAction {
   tooltip?: string;
   secondary?: boolean;
   warning?: boolean;
-  icon?: "copy";
 }
 
 function offeringActionsFor({
   onchainOffering,
   connectedWallet,
   closeDate,
-  canManage,
   refundBuyers,
   refundTotal,
   remainingUnits,
-  projectName,
 }: {
   onchainOffering: OfferingView | null;
   connectedWallet: string | null;
   closeDate: number;
-  canManage: boolean;
   refundBuyers: string[];
   refundTotal: number;
   remainingUnits: number;
-  projectName: string;
 }): OfferingAction[] {
   if (!onchainOffering || !connectedWallet) return [];
   if (onchainOffering.state === 2) return [];
@@ -223,10 +218,6 @@ function offeringActionsFor({
       : 0n,
   );
   const pastClose = Date.now() > closeDate;
-  const canTopUp =
-    canManage &&
-    onchainOffering.state === 0 &&
-    (!pastClose || onchainOffering.minMet);
   const actions: OfferingAction[] = [];
   if (onchainOffering.state === 0 || onchainOffering.minMet) {
     const withdrawDisabled = !onchainOffering.minMet || claimable <= 0;
@@ -242,16 +233,6 @@ function offeringActionsFor({
       note: "Transfer raised funds to your treasury",
       disabled: withdrawDisabled,
       tooltip: withdrawTooltip,
-    });
-  }
-  if (canTopUp) {
-    actions.push({
-      action: "top-up",
-      label: "Increase offering",
-      cta: shortAddr(onchainOffering.offeringAddress || offeringAddress),
-      note: `Send additional ${projectName || "offering"} units to the offering contract`,
-      secondary: true,
-      icon: "copy",
     });
   }
   if (onchainOffering.state === 0 && !onchainOffering.minMet && pastClose) {
@@ -312,7 +293,6 @@ function offeringActionsFor({
 function disabledContractReadActions(
   actions: OfferingAction[],
   tooltip: string,
-  projectName: string,
 ): OfferingAction[] {
   const disabled: OfferingAction[] = actions.length
     ? actions
@@ -324,14 +304,6 @@ function disabledContractReadActions(
           note: "Transfer raised funds to your treasury",
         },
         {
-          action: "top-up",
-          label: "Increase offering",
-          cta: shortAddr(offeringAddress),
-          note: `Send additional ${projectName || "offering"} units to the offering contract`,
-          secondary: true,
-          icon: "copy",
-        },
-        {
           action: "close",
           label: "Close round",
           cta: "Close round",
@@ -341,21 +313,6 @@ function disabledContractReadActions(
       ];
   return disabled.map((action) => ({ ...action, disabled: true, tooltip }));
 }
-
-const CopyIcon = () => (
-  <svg
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    aria-hidden="true"
-  >
-    <rect x="9" y="9" width="13" height="13" rx="2" />
-    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-  </svg>
-);
 
 function OfferingActions({
   actions,
@@ -394,14 +351,7 @@ function OfferingActions({
                     disabled={action.disabled || busy}
                     onClick={() => onAction(action.action)}
                   >
-                    {busy ? (
-                      "Confirming…"
-                    ) : (
-                      <>
-                        {action.cta}
-                        {action.icon === "copy" ? <CopyIcon /> : null}
-                      </>
-                    )}
+                    {busy ? "Confirming…" : action.cta}
                   </Button>
                   {action.tooltip ? (
                     <span className="action-tip">{action.tooltip}</span>
@@ -1096,26 +1046,24 @@ function deriveStatusView({
         onchainOffering,
         connectedWallet: wallet,
         closeDate,
-        canManage,
         refundBuyers,
         refundTotal,
         remainingUnits,
-        projectName: record.projectName,
       })
     : [];
   const actionItems = offeringLoading
-    ? disabledContractReadActions(
-        liveActionItems,
-        "Reading contract state",
-        record.projectName,
-      )
+    ? disabledContractReadActions(liveActionItems, "Reading contract state")
     : offeringReadFailed || debugReadFailed
       ? disabledContractReadActions(
           liveActionItems,
           "Cannot read contract state",
-          record.projectName,
         )
       : liveActionItems;
+  const canTopUp =
+    !!onchainOffering &&
+    canManage &&
+    onchainOffering.state === 0 &&
+    (!pastClose || onchainOffering.minMet);
 
   const segs =
     !offeringLoading && onchainOffering
@@ -1177,6 +1125,7 @@ function deriveStatusView({
     publicQuantityDisabledReason,
     publicOwner,
     showOwner,
+    canTopUp,
   };
 }
 
@@ -1287,10 +1236,6 @@ export function StatusApp() {
       return;
     }
     if (!record || !wallet) return;
-    if (action === "top-up") {
-      copyText(record.offering, "Offering address copied");
-      return;
-    }
     if (
       action === "close" &&
       !confirm(
@@ -1466,6 +1411,7 @@ export function StatusApp() {
     publicQuantityDisabledReason,
     publicOwner,
     showOwner,
+    canTopUp,
   } = deriveStatusView({
     record,
     offering,
@@ -1539,6 +1485,19 @@ export function StatusApp() {
             {fmtPct((remainingUnits / TOTAL_LIQUID_SPLIT_UNITS) * 100)}
           </span>
           <Sub>{fmtTokens(remainingUnits)} tokens</Sub>
+          {canTopUp ? (
+            <TextButton
+              tone="muted"
+              className="no-print"
+              onClick={() =>
+                alert(
+                  `Increase the offering by sending ${record.projectName || "offering"} units to the offering contract on Base: ${record.offering}`,
+                )
+              }
+            >
+              Increase offering
+            </TextButton>
+          ) : null}
         </Field>
         <Field label="Valuation" loading={offeringLoading}>
           <span>{fmtUsd(valNow)} post-money</span>
