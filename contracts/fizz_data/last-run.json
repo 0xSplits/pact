@@ -1,0 +1,412 @@
+{
+  "version": 1,
+  "createdAt": "2026-08-18T19:28:56.186Z",
+  "projectRoot": ".",
+  "suiteDir": "test/fizz",
+  "metaDir": "fizz_data",
+  "contracts": [
+    {
+      "name": "Offering",
+      "sourcePath": "src/Offering.sol",
+      "sourceHash": "sha256:9973f22c364ada2ddf2d4232451680aaadb3d7598db6f3fcbb012b05065df5ed",
+      "constructor": {
+        "inputs": [
+          {
+            "name": "raiseMin_",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "closeDate_",
+            "type": "uint64",
+            "internalType": "uint64"
+          },
+          {
+            "name": "priceStart_",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "priceSlope_",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "publicUnits_",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "treasury_",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "owner_",
+            "type": "address",
+            "internalType": "address"
+          }
+        ],
+        "stateMutability": "nonpayable"
+      },
+      "functions": [
+        {
+          "name": "acceptOwnership",
+          "inputs": [],
+          "stateMutability": "nonpayable",
+          "tier": "secondary",
+          "signature": "acceptOwnership()"
+        },
+        {
+          "name": "buyPrivate",
+          "inputs": [
+            {
+              "name": "voucher",
+              "type": "tuple",
+              "internalType": "Offering.Voucher"
+            },
+            {
+              "name": "ownerSig",
+              "type": "bytes",
+              "internalType": "bytes"
+            },
+            {
+              "name": "claimSig",
+              "type": "bytes",
+              "internalType": "bytes"
+            },
+            {
+              "name": "unitsWanted",
+              "type": "uint256",
+              "internalType": "uint256"
+            },
+            {
+              "name": "maxCost",
+              "type": "uint256",
+              "internalType": "uint256"
+            }
+          ],
+          "stateMutability": "nonpayable",
+          "tier": "primary",
+          "signature": "buyPrivate(Offering.Voucher,bytes,bytes,uint256,uint256)"
+        },
+        {
+          "name": "buyPublic",
+          "inputs": [
+            {
+              "name": "unitsWanted",
+              "type": "uint256",
+              "internalType": "uint256"
+            },
+            {
+              "name": "maxCost",
+              "type": "uint256",
+              "internalType": "uint256"
+            },
+            {
+              "name": "buyerName",
+              "type": "string",
+              "internalType": "string"
+            }
+          ],
+          "stateMutability": "nonpayable",
+          "tier": "primary",
+          "signature": "buyPublic(uint256,uint256,string)"
+        },
+        {
+          "name": "cancelAllocation",
+          "inputs": [
+            {
+              "name": "allocationId",
+              "type": "bytes32",
+              "internalType": "bytes32"
+            }
+          ],
+          "stateMutability": "nonpayable",
+          "tier": "secondary",
+          "signature": "cancelAllocation(bytes32)"
+        },
+        {
+          "name": "closeAndWithdraw",
+          "inputs": [],
+          "stateMutability": "nonpayable",
+          "tier": "secondary",
+          "signature": "closeAndWithdraw()"
+        },
+        {
+          "name": "initialize",
+          "inputs": [
+            {
+              "name": "pactToken_",
+              "type": "address",
+              "internalType": "address"
+            }
+          ],
+          "stateMutability": "nonpayable",
+          "tier": "primary",
+          "signature": "initialize(address)"
+        },
+        {
+          "name": "markFailed",
+          "inputs": [],
+          "stateMutability": "nonpayable",
+          "tier": "primary",
+          "signature": "markFailed()"
+        },
+        {
+          "name": "refund",
+          "inputs": [],
+          "stateMutability": "nonpayable",
+          "tier": "primary",
+          "signature": "refund()"
+        },
+        {
+          "name": "refundAll",
+          "inputs": [
+            {
+              "name": "buyers",
+              "type": "array",
+              "internalType": "address[]"
+            }
+          ],
+          "stateMutability": "nonpayable",
+          "tier": "secondary",
+          "signature": "refundAll(address[])"
+        },
+        {
+          "name": "rescue",
+          "inputs": [
+            {
+              "name": "token",
+              "type": "address",
+              "internalType": "address"
+            },
+            {
+              "name": "to",
+              "type": "address",
+              "internalType": "address"
+            }
+          ],
+          "stateMutability": "nonpayable",
+          "tier": "secondary",
+          "signature": "rescue(address,address)"
+        },
+        {
+          "name": "setPublicUnits",
+          "inputs": [
+            {
+              "name": "publicUnits_",
+              "type": "uint256",
+              "internalType": "uint256"
+            }
+          ],
+          "stateMutability": "nonpayable",
+          "tier": "secondary",
+          "signature": "setPublicUnits(uint256)"
+        },
+        {
+          "name": "setTreasury",
+          "inputs": [
+            {
+              "name": "treasury_",
+              "type": "address",
+              "internalType": "address"
+            }
+          ],
+          "stateMutability": "nonpayable",
+          "tier": "secondary",
+          "signature": "setTreasury(address)"
+        },
+        {
+          "name": "skimUsdc",
+          "inputs": [],
+          "stateMutability": "nonpayable",
+          "tier": "secondary",
+          "signature": "skimUsdc()"
+        },
+        {
+          "name": "sweepFailedUnits",
+          "inputs": [],
+          "stateMutability": "nonpayable",
+          "tier": "primary",
+          "signature": "sweepFailedUnits()"
+        },
+        {
+          "name": "transferOwnership",
+          "inputs": [
+            {
+              "name": "newOwner",
+              "type": "address",
+              "internalType": "address"
+            }
+          ],
+          "stateMutability": "nonpayable",
+          "tier": "secondary",
+          "signature": "transferOwnership(address)"
+        },
+        {
+          "name": "withdraw",
+          "inputs": [],
+          "stateMutability": "nonpayable",
+          "tier": "primary",
+          "signature": "withdraw()"
+        }
+      ]
+    },
+    {
+      "name": "PactToken",
+      "sourcePath": "src/PactToken.sol",
+      "sourceHash": "sha256:c2173ce00cfa39e2514cd3c906ba5a5ea15ee7a7957b8c90a80101df42bb72dc",
+      "constructor": {
+        "inputs": [
+          {
+            "name": "splitMain_",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "projectName_",
+            "type": "string",
+            "internalType": "string"
+          },
+          {
+            "name": "holderAccounts",
+            "type": "array",
+            "internalType": "address[]"
+          },
+          {
+            "name": "holderAllocations",
+            "type": "array",
+            "internalType": "uint32[]"
+          },
+          {
+            "name": "offering_",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "offeringUnits",
+            "type": "uint256",
+            "internalType": "uint256"
+          }
+        ],
+        "stateMutability": "nonpayable"
+      },
+      "functions": [
+        {
+          "name": "distributeFunds",
+          "inputs": [
+            {
+              "name": "token",
+              "type": "address",
+              "internalType": "address"
+            },
+            {
+              "name": "accounts",
+              "type": "array",
+              "internalType": "address[]"
+            },
+            {
+              "name": "distributorAddress",
+              "type": "address",
+              "internalType": "address"
+            }
+          ],
+          "stateMutability": "nonpayable",
+          "tier": "secondary",
+          "signature": "distributeFunds(address,address[],address)"
+        },
+        {
+          "name": "safeBatchTransferFrom",
+          "inputs": [
+            {
+              "name": "from",
+              "type": "address",
+              "internalType": "address"
+            },
+            {
+              "name": "to",
+              "type": "address",
+              "internalType": "address"
+            },
+            {
+              "name": "ids",
+              "type": "array",
+              "internalType": "uint256[]"
+            },
+            {
+              "name": "amounts",
+              "type": "array",
+              "internalType": "uint256[]"
+            },
+            {
+              "name": "data",
+              "type": "bytes",
+              "internalType": "bytes"
+            }
+          ],
+          "stateMutability": "nonpayable",
+          "tier": "secondary",
+          "signature": "safeBatchTransferFrom(address,address,uint256[],uint256[],bytes)"
+        },
+        {
+          "name": "safeTransferFrom",
+          "inputs": [
+            {
+              "name": "from",
+              "type": "address",
+              "internalType": "address"
+            },
+            {
+              "name": "to",
+              "type": "address",
+              "internalType": "address"
+            },
+            {
+              "name": "id",
+              "type": "uint256",
+              "internalType": "uint256"
+            },
+            {
+              "name": "amount",
+              "type": "uint256",
+              "internalType": "uint256"
+            },
+            {
+              "name": "data",
+              "type": "bytes",
+              "internalType": "bytes"
+            }
+          ],
+          "stateMutability": "nonpayable",
+          "tier": "primary",
+          "signature": "safeTransferFrom(address,address,uint256,uint256,bytes)"
+        },
+        {
+          "name": "setApprovalForAll",
+          "inputs": [
+            {
+              "name": "operator",
+              "type": "address",
+              "internalType": "address"
+            },
+            {
+              "name": "approved",
+              "type": "bool",
+              "internalType": "bool"
+            }
+          ],
+          "stateMutability": "nonpayable",
+          "tier": "secondary",
+          "signature": "setApprovalForAll(address,bool)"
+        }
+      ]
+    }
+  ],
+  "handlers": {
+    "Handlers.sol": "sha256:b964952574bff7063ff6530cf40dd603216910f78548dcb5ddf1ced3437a7b9c",
+    "OfferingHandler.sol": "sha256:d5ef6c360760feda46caae75760281154e2b4612617f958c7d956e0c6553d71c",
+    "PactTokenHandler.sol": "sha256:2aebc81508387bbfcd51a2af6c149fa19045f58bd16db6d7bc13826ceb58afa3"
+  },
+  "properties": []
+}
