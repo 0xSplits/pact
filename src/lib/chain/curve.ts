@@ -41,7 +41,6 @@ export interface Pact {
   }>;
   newMoney: { afterPct: number; tokens: number; delivery: string };
   publicUnits: number;
-  curveParams?: CurveParams | null;
 }
 
 // The subset of a Pact the curve derivation needs.
@@ -72,22 +71,6 @@ export function fractionAtRaise(band: ValuationBand, R: number): number {
   return Math.min((-vMin + Math.sqrt(vMin * vMin + 4 * a * R)) / (2 * a), F);
 }
 
-export function fractionAt(pact: Pact, R: number): number {
-  return fractionAtRaise(
-    {
-      vMin: pact.valuation.floor,
-      vMax: pact.valuation.ceiling,
-      cap: pact.valuation.effectiveCap,
-      F: pact.maxDilutionPct / 100,
-      rmax: pact.raise.max,
-    },
-    R,
-  );
-}
-
-export const tokensBetween = (pact: Pact, R0: number, R1: number) =>
-  (fractionAt(pact, R1) - fractionAt(pact, R0)) * pact.totalTokens;
-
 // Contract curve parameters derived from a valuation band. Returns null when
 // the band or offering size is invalid.
 export function deriveOfferingCurve(pact: PactCurveInputs): CurveParams | null {
@@ -110,14 +93,6 @@ export function deriveOfferingCurve(pact: PactCurveInputs): CurveParams | null {
     BigInt(offeringUnits);
   const priceSlope = ceiling > floor ? (slopeRaw > 1n ? slopeRaw : 1n) : 0n;
   return { priceStart, priceSlope };
-}
-
-// Curve parameters for an existing PACT: what the contract was deployed with,
-// falling back to re-deriving them from the stored valuation band.
-export function offeringCurveParams(pact: Pact): CurveParams | null {
-  if (pact.curveParams && pact.curveParams.priceStart > 0n)
-    return pact.curveParams;
-  return deriveOfferingCurve(pact);
 }
 
 // Total cost in USDC base units for `units` whole units starting after `sold`.
