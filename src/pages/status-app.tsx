@@ -1811,7 +1811,14 @@ export function StatusApp() {
           </SectionTitle>
           <DefList>
             <Field label="Status" align="center">
-              <StatusBadge status={statusInfo} />
+              <StatusBadge
+                status={statusInfo}
+                noteHref={
+                  closedEvent && closedEvent.txHash
+                    ? basescanTx(closedEvent.txHash)
+                    : undefined
+                }
+              />
             </Field>
             {phase === "closed" ? (
               <>
@@ -1824,7 +1831,7 @@ export function StatusApp() {
                     {fmtTokens(purchased)} units (
                     {fmtPct((purchased / TOTAL_LIQUID_SPLIT_UNITS) * 100)})
                   </span>
-                  {closedEvent ? (
+                  {closedEvent && closedEvent.unsoldUnits > 0 ? (
                     <Sub>
                       {fmtTokens(closedEvent.unsoldUnits)} unsold returned to
                       treasury
@@ -1837,13 +1844,6 @@ export function StatusApp() {
                     {fmtUsd(valNow / TOTAL_LIQUID_SPLIT_UNITS, "price")} / unit
                   </Sub>
                 </Field>
-                {closedEvent && closedEvent.txHash ? (
-                  <Field label="Close transaction" align="none">
-                    <AddressLink href={basescanTx(closedEvent.txHash)}>
-                      View transaction
-                    </AddressLink>
-                  </Field>
-                ) : null}
               </>
             ) : phase === "failed" ? (
               <>
