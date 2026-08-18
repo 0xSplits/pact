@@ -87,6 +87,7 @@ import {
   parseMoney,
   relDays,
   shortAddr,
+  splitsExplorerAccount,
   usdcBaseUnitsToDollars,
 } from "#lib/format.ts";
 import {
@@ -733,20 +734,16 @@ function AllocationsTable({
           })}
           <tr>
             <td>Public allocation</td>
-            <td className="num">&mdash;</td>
+            <td className="num">
+              {offeringOpen && publicUnitsAvailable > 0
+                ? `~${fmtUsd(publicOpenUsd)}`
+                : "—"}
+            </td>
             <td>
               {offeringOpen ? (
-                <>
-                  <span className="badge allocated">
-                    {fmtTokens(publicUnitsAvailable)} units open
-                  </span>
-                  {publicUnitsAvailable > 0 ? (
-                    <span className="t-muted">
-                      {" "}
-                      ≈ {fmtUsd(publicOpenUsd)} at current prices
-                    </span>
-                  ) : null}
-                </>
+                <span className="badge allocated">
+                  {fmtTokens(publicUnitsAvailable)} units open
+                </span>
               ) : (
                 <span className="badge revoked">Expired</span>
               )}
@@ -1050,16 +1047,20 @@ function CapTable({
           </tr>
           <tr className="footnote">
             <td colSpan={3}>
-              Verify this cap table by viewing the token contract at{" "}
               {record.pactToken ? (
-                <AddressLink
-                  className="value-link"
-                  address={record.pactToken}
-                />
+                <>
+                  Verify this cap table on the Splits explorer:{" "}
+                  <AddressLink
+                    className="value-link"
+                    address={record.pactToken}
+                    href={splitsExplorerAccount(record.pactToken)}
+                  />
+                </>
               ) : (
-                <span className="t-muted">Not deployed</span>
+                <>
+                  Token contract <span className="t-muted">not deployed</span>.
+                </>
               )}
-              .
             </td>
           </tr>
         </tfoot>
