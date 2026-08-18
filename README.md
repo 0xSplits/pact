@@ -95,6 +95,9 @@ npm run validate              # full pre-PR suite (Foundry + Playwright required
 
 forge test --root contracts   # Solidity: unit, fuzz, invariants
 npm test                      # colocated unit tests against fakes
+
+cd contracts && FOUNDRY_PROFILE=fuzz medusa fuzz --config medusa.json
+                              # stateful fuzzing campaign (see contracts/test/fizz/README.md)
 npm run typecheck             # tsc --noEmit
 npm run test:e2e              # anvil-backed Playwright browser flow
 ```

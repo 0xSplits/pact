@@ -14,6 +14,7 @@ PACT: raise small onchain rounds by selling a slice of a project's cap table —
 - `npm test` — colocated unit tests (`vitest run` over `src/**/*.test.ts`; run against fakes, never real RPC)
 - `forge test --root contracts` (or `npm run test:contracts`) — Solidity suite incl. fuzz + invariants (requires Foundry)
   - single test: `forge test --root contracts --match-test <name>`
+- `FOUNDRY_PROFILE=fuzz medusa fuzz --config medusa.json` (from `contracts/`) — stateful Medusa fuzz suite (`contracts/test/fizz/`, specs in `PROPERTIES.md`); see `contracts/test/fizz/README.md` and docs/testing.md
 - `npm run test:e2e` — Vite build then anvil-backed Playwright flow (`tests/pact-flow.spec.ts`, real local-chain transactions through a mocked EIP-1193 wallet; needs `forge build` artifacts)
 - `npm run build:contracts` — after Solidity changes: `forge build` + regenerate `src/generated/offering-contracts.ts` (checked in, so frontend builds don't need Foundry)
 - `npm run deploy:factory` — CREATE2 factory deploy to Base (rare; see docs/deployment.md)

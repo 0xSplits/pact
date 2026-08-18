@@ -35,6 +35,29 @@ withdrawals, close, refunds/sweeps, and metadata. It includes buy-path fuzz
 tests and an invariant suite (`Invariant.t.sol`: handler + accounting
 invariants, `runs = 1000`, `depth = 100`, `fail_on_revert`).
 
+## Stateful Fuzzing (Fizz)
+
+A Medusa/Echidna harness in `contracts/test/fizz/` drives `Offering`,
+`PactToken`, and `OfferingFactory` through multi-actor call sequences and
+asserts the properties specified in `PROPERTIES.md` (Spec IDs GL-nn/SP-nn,
+implemented in `Properties.sol`). From `contracts/`:
+
+```sh
+FOUNDRY_PROFILE=fuzz medusa fuzz --config medusa.json   # primary campaign
+echidna . --contract FuzzTester --config echidna.yaml   # second opinion
+forge test --root . --match-contract FoundryTester      # harness smoke test
+```
+
+The `fuzz` profile (`via_ir`, optimizer off) is required to compile the
+harness. The corpus persists in `contracts/fizz_data/corpus_medusa/`
+(gitignored); the coverage report lands at
+`fizz_data/corpus_medusa/coverage/coverage_report.html`, with per-contract
+targets in `fizz_data/coverage-targets.md`. To reproduce a failing property,
+copy the shrunk call sequence into `test_sequence()` in
+`test/fizz/FoundryTester.sol` and run it with `-vvv`. Structure and reading
+order: `contracts/test/fizz/README.md`; campaign results:
+`contracts/fizz_data/report.md`.
+
 ## Unit Tests
 
 ```sh

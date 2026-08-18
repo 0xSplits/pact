@@ -1,0 +1,17 @@
+# Foundry
+out/
+cache/
+broadcast/
+foundry.lock
+
+# forge-std is resolved from node_modules via remappings.txt, not lib/
+lib/
+
+# Fizz fuzzing — generated fuzzer output (the curated docs in fizz_data/ are checked in)
+fizz_data/corpus_medusa/
+fizz_data/corpus_echidna/
+fizz_data/crytic-export/
+fizz_data/logs_medusa/
+fizz_data/slither_results.json
+fizz_data/cost-estimate.md
+fizz_data/discovery/

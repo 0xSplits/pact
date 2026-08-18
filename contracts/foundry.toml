@@ -20,3 +20,11 @@ base = { key = "${ETHERSCAN_API_KEY}" }
 runs = 1000
 depth = 100
 fail_on_revert = true
+
+
+# >>> fizz fuzz profile
+[profile.fuzz]
+via_ir = true
+optimizer = false
+optimizer_runs = 0
+# <<< fizz fuzz profile
