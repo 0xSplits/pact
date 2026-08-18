@@ -205,18 +205,6 @@ export function StatusBadge({ status }: { status: StatusInfo }) {
   if (status.tone === "loading") return <Loading />;
   const icons = {
     secured: <CheckIcon />,
-    closed: (
-      <svg
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="3"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      >
-        <path d="M7 12h10" />
-      </svg>
-    ),
     failed: (
       <svg
         viewBox="0 0 24 24"

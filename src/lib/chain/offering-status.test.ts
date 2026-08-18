@@ -23,13 +23,13 @@ test("failed state wins regardless of dates", () => {
   assert.equal(status.tone, "failed");
 });
 
-test("closed state reports closed", () => {
+test("closed state reports completed/secured", () => {
   const status = offeringStatus(
     { state: 2, minMet: true, closeDate: past },
     now,
   );
-  assert.equal(status.label, "Closed");
-  assert.equal(status.tone, "closed");
+  assert.equal(status.label, "Completed");
+  assert.equal(status.tone, "secured");
 });
 
 test("active with minimum met is open/secured even past close", () => {

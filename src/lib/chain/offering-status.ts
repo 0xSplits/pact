@@ -20,8 +20,9 @@ export function offeringStatus(
       tone: "failed",
       note: "Minimum amount not met by close date",
     };
+  // closeAndWithdraw requires minMet, so closed always means a successful round.
   if (offering.state === 2)
-    return { label: "Closed", tone: "closed", note: "Round closed" };
+    return { label: "Completed", tone: "secured", note: "Round closed" };
   if (offering.minMet)
     return { label: "Open", tone: "secured", note: "Minimum reached" };
   if (nowMs > offering.closeDate * 1000)
