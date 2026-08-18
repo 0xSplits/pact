@@ -109,6 +109,7 @@ export default defineConfig(({ isPreview }) => ({
         create: page("create.html"),
         status: page("status.html"),
         buy: page("buy.html"),
+        ogPreview: page("og-preview.html"),
       },
     },
   },
