@@ -3,6 +3,7 @@ import "#pages/buy.css";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
+import { useAccount } from "wagmi";
 
 import {
   AddressLink,
@@ -19,7 +20,6 @@ import {
 import { useDebugMenu } from "#hooks/use-debug-menu.ts";
 import { useErrorTip } from "#hooks/use-error-tip.ts";
 import { useOfferingState } from "#hooks/use-offering-state.ts";
-import { useWallet } from "#hooks/use-wallet.ts";
 import { toUsdcBaseUnits } from "#lib/chain/chain.ts";
 import {
   costForUnits,
@@ -59,7 +59,6 @@ import { debugActive } from "#lib/ui/debug-menu.ts";
 import { showToast } from "#lib/ui/toast.ts";
 import { isSameAddress } from "#lib/validate.ts";
 
-const TOTAL_TOKENS = TOTAL_LIQUID_SPLIT_UNITS;
 const offeringAddress = currentOfferingAddress();
 const fragment = currentVoucherFragment();
 
@@ -170,11 +169,15 @@ function deriveBuyView({
     usdcBaseUnitsToDollars(offeringState.raiseMin),
     raisedTotal,
   );
-  const valuationStart = valuationForUnitIndex(curve, 0, TOTAL_TOKENS);
+  const valuationStart = valuationForUnitIndex(
+    curve,
+    0,
+    TOTAL_LIQUID_SPLIT_UNITS,
+  );
   const valuationEnd = valuationForUnitIndex(
     curve,
     offeringState.unitsSold + remainingUnits,
-    TOTAL_TOKENS,
+    TOTAL_LIQUID_SPLIT_UNITS,
   );
   const minUsd = usdcBaseUnitsToDollars(offeringState.raiseMin);
 
@@ -338,7 +341,7 @@ export function BuyApp() {
     { value: "closed", label: "Closed" },
   ]);
 
-  const wallet = useWallet();
+  const wallet = useAccount().address ?? null;
   const queryClient = useQueryClient();
   const { offering, refresh: refreshOffering } = useOfferingState({
     offeringAddress,
@@ -722,7 +725,9 @@ export function BuyApp() {
                 {fmtUsd(usdcBaseUnitsToDollars(budgetUsdc), "cents")}
               </Field>
               <Field label="Implied ownership">
-                <span>{fmtPct((quoteUnits / TOTAL_TOKENS) * 100)}</span>
+                <span>
+                  {fmtPct((quoteUnits / TOTAL_LIQUID_SPLIT_UNITS) * 100)}
+                </span>
                 <Sub>{fmtTokens(quoteUnits)} units</Sub>
               </Field>
               <Field label="Price per unit" align="none">
@@ -775,7 +780,7 @@ export function BuyApp() {
               <Field label="You receive">
                 <span>
                   {quoteUnits > 0
-                    ? `${fmtTokens(quoteUnits)} units · ${fmtPct((quoteUnits / TOTAL_TOKENS) * 100)} of the project`
+                    ? `${fmtTokens(quoteUnits)} units · ${fmtPct((quoteUnits / TOTAL_LIQUID_SPLIT_UNITS) * 100)} of the project`
                     : "—"}
                 </span>
                 <Sub>
@@ -831,7 +836,9 @@ export function BuyApp() {
               {fmtUsd(paidCostUsd, "cents")}
             </Field>
             <Field label="Ownership" align="none">
-              <span>{fmtPct((paidUnits / TOTAL_TOKENS) * 100)}</span>
+              <span>
+                {fmtPct((paidUnits / TOTAL_LIQUID_SPLIT_UNITS) * 100)}
+              </span>
               <span className="t-muted ml-2">{fmtTokens(paidUnits)} units</span>
             </Field>
             <Field label="Price per unit" align="none">

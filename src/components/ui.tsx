@@ -236,9 +236,7 @@ export function StatusBadge({ status }: { status: StatusInfo }) {
     ),
   };
   const tone =
-    (["secured", "closed", "failed", "funding"] as const).find(
-      (t) => t === status.tone,
-    ) || "funding";
+    status.tone in icons ? (status.tone as keyof typeof icons) : "funding";
   return (
     <>
       <span className="status-state">

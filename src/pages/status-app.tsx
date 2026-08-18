@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import type { Address, Hex } from "viem";
+import { useAccount } from "wagmi";
 
 import {
   AddressLink,
@@ -19,7 +20,6 @@ import {
 import { useDebugMenu } from "#hooks/use-debug-menu.ts";
 import { useOfferingState } from "#hooks/use-offering-state.ts";
 import type { OfferingSnapshot } from "#hooks/use-offering-state.ts";
-import { useWallet } from "#hooks/use-wallet.ts";
 import { toUsdcBaseUnits } from "#lib/chain/chain.ts";
 import { costForUnits, valuationForUnitIndex } from "#lib/chain/curve.ts";
 import { TOTAL_LIQUID_SPLIT_UNITS } from "#lib/chain/liquid-split.ts";
@@ -76,14 +76,12 @@ import {
   absoluteUrl,
   buyLinkPath,
   buyPath,
-  createPath,
+  CREATE_PATH,
   currentOfferingAddress,
 } from "#lib/routes.ts";
 import { debugActive } from "#lib/ui/debug-menu.ts";
 import { copyText, showToast } from "#lib/ui/toast.ts";
 import { isSameAddress } from "#lib/validate.ts";
-
-const TOTAL_TOKENS = TOTAL_LIQUID_SPLIT_UNITS;
 
 const offeringAddress = currentOfferingAddress();
 
@@ -897,7 +895,7 @@ function CapTable({
                   </td>
                   <td className="num">{fmtTokens(holder.balance)}</td>
                   <td className="num">
-                    {fmtPct((holder.balance / TOTAL_TOKENS) * 100)}
+                    {fmtPct((holder.balance / TOTAL_LIQUID_SPLIT_UNITS) * 100)}
                   </td>
                 </tr>
               );
@@ -909,7 +907,7 @@ function CapTable({
             <td>Total</td>
             <td className="num">{fmtTokens(totalTokens)}</td>
             <td className="num">
-              {fmtPct((totalTokens / TOTAL_TOKENS) * 100)}
+              {fmtPct((totalTokens / TOTAL_LIQUID_SPLIT_UNITS) * 100)}
             </td>
           </tr>
           <tr className="footnote">
@@ -1062,12 +1060,16 @@ function deriveStatusView({
     raisedTotal,
     0.000001,
   );
-  const valStart = valuationForUnitIndex(curve, 0, TOTAL_TOKENS);
-  const valNow = valuationForUnitIndex(curve, purchased, TOTAL_TOKENS);
+  const valStart = valuationForUnitIndex(curve, 0, TOTAL_LIQUID_SPLIT_UNITS);
+  const valNow = valuationForUnitIndex(
+    curve,
+    purchased,
+    TOTAL_LIQUID_SPLIT_UNITS,
+  );
   const valEnd = valuationForUnitIndex(
     curve,
     purchased + remainingUnits,
-    TOTAL_TOKENS,
+    TOTAL_LIQUID_SPLIT_UNITS,
   );
 
   const rows = allocationRows(bought, ledger);
@@ -1193,7 +1195,7 @@ export function StatusApp() {
     { value: "closed", label: "Closed" },
   ]);
 
-  const wallet = useWallet();
+  const wallet = useAccount().address ?? null;
   const queryClient = useQueryClient();
   const { offering, refresh: refreshOffering } = useOfferingState({
     offeringAddress,
@@ -1426,7 +1428,7 @@ export function StatusApp() {
         <h1 className="text-2xl font-bold">PACT not found</h1>
         <p className="t-muted mt-3">
           No issuance matches this link.{" "}
-          <a href={createPath()} className="linkbtn">
+          <a href={CREATE_PATH} className="linkbtn">
             Create one
           </a>
           .
@@ -1532,12 +1534,16 @@ export function StatusApp() {
           <Sub>{fmtUsd(claimable)} claimable</Sub>
         </Field>
         <Field label="Available" loading={offeringLoading}>
-          <span>{fmtPct((remainingUnits / TOTAL_TOKENS) * 100)}</span>
+          <span>
+            {fmtPct((remainingUnits / TOTAL_LIQUID_SPLIT_UNITS) * 100)}
+          </span>
           <Sub>{fmtTokens(remainingUnits)} tokens</Sub>
         </Field>
         <Field label="Valuation" loading={offeringLoading}>
           <span>{fmtUsd(valNow)} post-money</span>
-          <Sub>{fmtUsd(valNow / TOTAL_TOKENS, "price")} / token</Sub>
+          <Sub>
+            {fmtUsd(valNow / TOTAL_LIQUID_SPLIT_UNITS, "price")} / token
+          </Sub>
         </Field>
       </DefList>
 

@@ -42,16 +42,6 @@ export function chunkRanges(
   return ranges;
 }
 
-const memoryStorage = (): KVStorage => {
-  const map = new Map<string, string>();
-  return {
-    getItem: (k) => (map.has(k) ? map.get(k)! : null),
-    setItem: (k, v) => void map.set(k, v),
-  };
-};
-const defaultStorage = (): KVStorage =>
-  typeof localStorage !== "undefined" ? localStorage : memoryStorage();
-
 function readCache<T>(
   storage: KVStorage,
   key: string,
@@ -96,7 +86,7 @@ export async function cachedScan<T>({
   dedupeKey,
   getLogs = rpcGetLogs,
   latestBlock,
-  storage = defaultStorage(),
+  storage = localStorage,
 }: CachedScanOptions<T>): Promise<T[]> {
   const cache = readCache<T>(storage, key);
   const items = cache ? cache.items : [];
@@ -178,7 +168,7 @@ export function seedOffering(
   {
     factory = factoryDefault(),
     deployBlock = deployBlockDefault(),
-    storage = defaultStorage(),
+    storage = localStorage,
   }: { factory?: Address; deployBlock?: number; storage?: KVStorage } = {},
 ): void {
   const key = offeringsKey(factory);

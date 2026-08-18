@@ -29,10 +29,10 @@ buy.html
 src/
   pages/              one React app per page (+ its page-specific CSS)
   components/         shared React primitives (ui.tsx) and the wallet button
-  hooks/              React bridges (use-wallet, use-offering-state)
+  hooks/              React bridges (use-offering-state, use-debug-menu)
   lib/chain/          everything onchain: wagmi config, viem interaction,
                       event-scan listings + delta cache, vouchers, curve math
-  lib/ui/             framework-free widgets (chrome, toast, chart, debug menu)
+  lib/ui/             framework-free widgets (toast, chart, debug menu)
   lib/                small shared utils (routes, validate, format, settings)
   generated/          contract ABIs + factory pin exported from Foundry artifacts
   app.css             Tailwind entry + design tokens + component classes

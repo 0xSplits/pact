@@ -2,11 +2,12 @@ import "#pages/create.css";
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
+import { BaseError, UserRejectedRequestError } from "viem";
 import type { Address } from "viem";
+import { useAccount } from "wagmi";
 
 import { Button, SignatureBlock } from "#components/ui.tsx";
 import { useErrorTip } from "#hooks/use-error-tip.ts";
-import { useWallet } from "#hooks/use-wallet.ts";
 import {
   costForUnits,
   deriveOfferingCurve,
@@ -30,29 +31,12 @@ import type { CurveChartConfig } from "#lib/ui/chart.ts";
 import { showToast } from "#lib/ui/toast.ts";
 import { isAddress } from "#lib/validate.ts";
 
-const TOTAL_SHARES = TOTAL_LIQUID_SPLIT_UNITS; // 0.1% = 1 token
 const oneDecimal = (v: string | number) =>
   (Math.round((Number(v) || 0) * 10) / 10).toFixed(1);
 
-function isUserRejected(err: unknown): boolean {
-  let current = err;
-  for (let depth = 0; current && depth < 5; depth++) {
-    const value = current as {
-      code?: unknown;
-      name?: unknown;
-      message?: unknown;
-      cause?: unknown;
-    };
-    if (
-      value.code === 4001 ||
-      value.name === "UserRejectedRequestError" ||
-      /user rejected/i.test(String(value.message || ""))
-    )
-      return true;
-    current = value.cause;
-  }
-  return false;
-}
+const isUserRejected = (err: unknown): boolean =>
+  err instanceof BaseError &&
+  !!err.walk((e) => e instanceof UserRejectedRequestError);
 
 // One-decimal clamp for percentage inputs (dilution, holder rows).
 function clamp1(value: string, max = 100) {
@@ -167,11 +151,11 @@ function deriveCurve(form: CreateForm, holders: HolderRow[]) {
     const pct = +h.pct || 0;
     beforeSum += pct;
     const after = pct * keep;
-    const shares = (after / 100) * TOTAL_SHARES;
+    const shares = (after / 100) * TOTAL_LIQUID_SPLIT_UNITS;
     sharesSum += Math.round(shares);
     return { ...h, after, shares };
   });
-  const newShares = Math.round(dilution * TOTAL_SHARES);
+  const newShares = Math.round(dilution * TOTAL_LIQUID_SPLIT_UNITS);
   sharesSum += newShares;
   const afterSum = beforeSum * keep + dilution * 100;
 
@@ -195,7 +179,7 @@ function deriveCurve(form: CreateForm, holders: HolderRow[]) {
       cap,
       F: dilution,
       fMin,
-      totalTokens: TOTAL_SHARES,
+      totalTokens: TOTAL_LIQUID_SPLIT_UNITS,
     },
   };
 }
@@ -210,7 +194,7 @@ function integerCurveMaxUsd(form: CreateForm) {
   const spread = (+form.spread || 0) / 100;
   if (!(rmax > 0) || !(dilution > 0) || dilution >= 1) return null;
   const cap = rmax / dilution;
-  const offeringUnits = Math.round(dilution * TOTAL_SHARES);
+  const offeringUnits = Math.round(dilution * TOTAL_LIQUID_SPLIT_UNITS);
   const curve = deriveOfferingCurve({
     valuation: {
       floor: Math.round(cap * (1 - spread)),
@@ -315,21 +299,24 @@ function buildPact(
       ceiling: Math.round(cap * (1 + spread)),
       curve: "linear-in-tokens",
     },
-    totalTokens: TOTAL_SHARES,
+    totalTokens: TOTAL_LIQUID_SPLIT_UNITS,
     holders: holders.map((h) => ({
       address: h.name.trim(),
       beforePct: +h.pct || 0,
       afterPct: Math.round((+h.pct || 0) * keep * 10) / 10,
-      tokens: Math.round((((+h.pct || 0) * keep) / 100) * TOTAL_SHARES),
+      tokens: Math.round(
+        (((+h.pct || 0) * keep) / 100) * TOTAL_LIQUID_SPLIT_UNITS,
+      ),
       delivery: "direct",
     })),
     newMoney: {
       afterPct: +form.dilution,
-      tokens: Math.round(dilution * TOTAL_SHARES),
+      tokens: Math.round(dilution * TOTAL_LIQUID_SPLIT_UNITS),
       delivery: "bonding-curve",
     },
     publicUnits: Math.round(
-      Math.round(dilution * TOTAL_SHARES) * ((+form.publicPct || 0) / 100),
+      Math.round(dilution * TOTAL_LIQUID_SPLIT_UNITS) *
+        ((+form.publicPct || 0) / 100),
     ),
   };
 }
@@ -402,7 +389,7 @@ export function CreateApp() {
   const [forceLightChart, setForceLightChart] = useState(false);
   const [themeTick, setThemeTick] = useState(0);
 
-  const wallet = useWallet();
+  const wallet = useAccount().address ?? null;
   useEffect(() => {
     setFormError("");
   }, [wallet]);
@@ -571,7 +558,7 @@ export function CreateApp() {
   });
   const badBefore = Math.abs(d.beforeSum - 100) >= 0.05;
   const badAfter = Math.abs(d.afterSum - 100) >= 0.05;
-  const badShares = d.sharesSum !== TOTAL_SHARES;
+  const badShares = d.sharesSum !== TOTAL_LIQUID_SPLIT_UNITS;
 
   return (
     <>
@@ -837,7 +824,7 @@ export function CreateApp() {
               {...totalProps(
                 badShares,
                 "Units must total " +
-                  TOTAL_SHARES.toLocaleString("en-US") +
+                  TOTAL_LIQUID_SPLIT_UNITS.toLocaleString("en-US") +
                   ".",
               )}
               id="sharesTotal"

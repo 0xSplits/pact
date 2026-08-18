@@ -5,10 +5,7 @@ import { test } from "vitest";
 import {
   buyLinkPath,
   buyPath,
-  currentBuyPage,
-  currentCreatePage,
   currentOfferingAddress,
-  currentStatusPage,
   currentVoucherFragment,
   statusPath,
 } from "#lib/routes.ts";
@@ -40,13 +37,4 @@ test("garbage is rejected, not passed through", () => {
   assert.equal(currentOfferingAddress(""), null);
   assert.equal(currentVoucherFragment(""), null);
   assert.equal(currentVoucherFragment("#"), null);
-});
-
-test("app page detection", () => {
-  assert.equal(currentCreatePage("/create"), true);
-  assert.equal(currentCreatePage("/"), false);
-  assert.equal(currentStatusPage("/status"), true);
-  assert.equal(currentStatusPage("/buy"), false);
-  assert.equal(currentBuyPage("/buy"), true);
-  assert.equal(currentBuyPage("/status"), false);
 });
