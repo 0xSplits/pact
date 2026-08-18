@@ -13,10 +13,7 @@ function readArtifact(contractPath: string, name: string) {
       "utf8",
     ),
   );
-  return {
-    abi: artifact.abi as unknown[],
-    bytecode: artifact.bytecode.object as string,
-  };
+  return { abi: artifact.abi as unknown[] };
 }
 
 // The pinned deployment (address + scan lower bound) survives regeneration.
@@ -43,7 +40,6 @@ export const OFFERING_FACTORY_ADDRESS = '${existingConstant("OFFERING_FACTORY_AD
 // Lower bound for every OfferingCreated event scan.
 export const OFFERING_FACTORY_DEPLOY_BLOCK = ${Number(existingConstant("OFFERING_FACTORY_DEPLOY_BLOCK", "0")) || 0};
 export const OFFERING_FACTORY_ABI = ${JSON.stringify(factory.abi, null, 2)} as const;
-export const OFFERING_FACTORY_BYTECODE = '${factory.bytecode}';
 export const OFFERING_ABI = ${JSON.stringify(offering.abi, null, 2)} as const;
 export const PACT_TOKEN_ABI = ${JSON.stringify(pactToken.abi, null, 2)} as const;
 `,

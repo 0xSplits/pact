@@ -17,7 +17,8 @@ Installed dependencies (`package.json`): `viem`, `wagmi`, `react`,
 ### 1. `scripts/generate-voucher-fixture.ts:17` — hand-rolled 32-byte hex pad
 
 ```ts
-const key = (n: bigint): Hex => ("0x" + n.toString(16).padStart(64, "0")) as Hex;
+const key = (n: bigint): Hex =>
+  ("0x" + n.toString(16).padStart(64, "0")) as Hex;
 ```
 
 viem (already imported in this file) exports `numberToHex(n, { size: 32 })`
@@ -41,7 +42,9 @@ Local:
 export function isAddress(value: unknown): value is Address {
   return /^0x[a-fA-F0-9]{40}$/.test(String(value || "").trim());
 }
-export function isTxHash(value: unknown): value is Hex { /* 64-hex regex */ }
+export function isTxHash(value: unknown): value is Hex {
+  /* 64-hex regex */
+}
 ```
 
 viem exports `isAddress(address: string, options?)`

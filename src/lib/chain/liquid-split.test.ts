@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 
+import { getAddress } from "viem";
 import { test } from "vitest";
 
 import { toUsdcBaseUnits } from "#lib/chain/chain.ts";
@@ -49,6 +50,72 @@ test("rejects allocations that do not total one thousand units", () => {
       }),
     /total 1,000/,
   );
+});
+
+test("rejects invalid holder addresses", () => {
+  assert.throws(
+    () =>
+      buildOfferingFactoryInputs({
+        holders: [{ address: "nope", tokens: 800 }],
+        newMoney: { tokens: 200 },
+      }),
+    /invalid/i,
+  );
+});
+
+test("checksums holder accounts", () => {
+  const lower = "0x" + "ab".repeat(20);
+  const result = buildOfferingFactoryInputs({
+    holders: [{ address: lower, tokens: 800 }],
+    newMoney: { tokens: 200 },
+  });
+  assert.deepEqual(result.holderAccounts, [getAddress(lower)]);
+});
+
+test("rejects fractional and negative holder tokens", () => {
+  const build = (tokens: number) =>
+    buildOfferingFactoryInputs({
+      holders: [{ address: addr(1), tokens }],
+      newMoney: { tokens: 200 },
+    });
+  assert.throws(() => build(1.5), /whole token units/);
+  assert.throws(() => build(-5), /whole token units/);
+});
+
+test("skips zero-token holders", () => {
+  const result = buildOfferingFactoryInputs({
+    holders: [
+      { address: addr(1), tokens: 800 },
+      { address: addr(2), tokens: 0 },
+    ],
+    newMoney: { tokens: 200 },
+  });
+  assert.deepEqual(result.holderAccounts, [addr(1)]);
+  assert.deepEqual(result.holderAllocations, [800]);
+});
+
+test("rejects a missing pact and non-positive or fractional offering units", () => {
+  assert.throws(
+    () => buildOfferingFactoryInputs(null as never),
+    /PACT is required/,
+  );
+  const build = (tokens: number) =>
+    buildOfferingFactoryInputs({
+      holders: [{ address: addr(1), tokens: 800 }],
+      newMoney: { tokens },
+    });
+  assert.throws(() => build(0), /positive whole number/);
+  assert.throws(() => build(10.5), /positive whole number/);
+});
+
+// Guard-ordering quirk pinned as-is: with no holders the total check runs
+// first, so a partial offering reports the misleading "total 1,000" error;
+// the holder-count error only surfaces when the offering alone totals 1,000.
+test("zero holders trips the total check before the holder-count check", () => {
+  const build = (tokens: number) =>
+    buildOfferingFactoryInputs({ holders: [], newMoney: { tokens } });
+  assert.throws(() => build(200), /total 1,000/);
+  assert.throws(() => build(1000), /at least one holder/);
 });
 
 test("derives conservative USDC curve params", () => {

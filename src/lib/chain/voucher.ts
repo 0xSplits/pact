@@ -23,7 +23,7 @@ export interface Voucher {
 // A getItem/setItem pair; tests substitute an in-memory map for localStorage.
 export type KVStorage = Pick<Storage, "getItem" | "setItem">;
 
-export const VOUCHER_TYPES = {
+const VOUCHER_TYPES = {
   Voucher: [
     { name: "allocationId", type: "bytes32" },
     { name: "buyerName", type: "string" },
@@ -72,7 +72,7 @@ export function newAllocationKey(): {
 }
 
 // Mirrors Offering.claimDigest: keccak256(abi.encode(offering, allocationId, buyer)).
-export function claimDigest({
+function claimDigest({
   offering,
   allocationId,
   buyer,

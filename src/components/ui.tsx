@@ -10,7 +10,7 @@ import { basescanAddress, shortAddr } from "#lib/format.ts";
 const cx = (...parts: Array<string | false | null | undefined>) =>
   parts.filter(Boolean).join(" ");
 
-export const Loading = () => <span className="t-muted">Loading…</span>;
+const Loading = () => <span className="t-muted">Loading…</span>;
 
 // Check-mark glyph shared by the wallet menu, buy status dot, and status badge.
 export const CheckIcon = () => (
