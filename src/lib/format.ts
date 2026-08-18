@@ -88,6 +88,10 @@ export const basescanTx = (hash: string) =>
   "https://basescan.org/tx/" + encodeURIComponent(hash);
 export const basescanAddress = (address: string) =>
   "https://basescan.org/address/" + encodeURIComponent(address);
+export const splitsExplorerAccount = (address: string) =>
+  "https://explorer.splits.org/accounts/" +
+  encodeURIComponent(address) +
+  "/?chainId=8453";
 
 // Message for the user out of an unknown thrown value.
 export const errMsg = (err: unknown, fallback: string): string =>
