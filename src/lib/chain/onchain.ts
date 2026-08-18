@@ -678,55 +678,76 @@ async function payWithApproval({
 // +1% slippage headroom, ceil-divided so the buffer never rounds to zero.
 const withSlippage = (cost: bigint): bigint => (cost * 101n + 99n) / 100n;
 
-export async function quotePublicPurchase({
-  offeringAddress,
-  units,
-}: {
-  offeringAddress: Address;
-  units: number;
-}) {
-  if (!Number.isInteger(units) || units <= 0)
-    throw new Error("Enter at least one whole unit.");
-  const state = await getOfferingState({ offeringAddress });
-  const available = availablePublicUnits(state);
-  if (units > available)
-    throw new Error(`Only ${available} public units remain.`);
-  const curve = offeringStateCurve(state);
-  const cost = costForUnits(curve, state.unitsSold, units);
-  const maxCost = withSlippage(cost);
-  return { state, units, cost, maxCost };
+// Thrown before any transaction when the curve moved between the quote the
+// buyer saw and submit: money can only ever move on terms the buyer has
+// confirmed on screen. Carries the fresh quote so the page can re-render it.
+export class QuoteChangedError extends Error {
+  readonly units: number;
+  readonly cost: bigint;
+  constructor(units: number, cost: bigint) {
+    super("Prices moved since your quote.");
+    this.units = units;
+    this.cost = cost;
+  }
 }
 
+// The buyer's typed dollars are a hard budget: units are recomputed from
+// fresh chain state at submit and maxCost never exceeds the budget, so a
+// race degrades to fewer units, never to overspending.
 export async function buyPublicOffering({
   buyer,
   offeringAddress,
-  units,
+  budgetUsdc,
+  expected,
   buyerName = "",
 }: {
   buyer: Address;
   offeringAddress: Address;
-  units: number;
+  budgetUsdc: bigint;
+  expected?: { units: number; cost: bigint };
   buyerName?: string;
 }) {
   if (!buyer) throw new Error("Connected wallet is required.");
   await ensureBase();
   const normalizedBuyer = getAddress(buyer);
   const offering = getAddress(offeringAddress);
-  const quote = await quotePublicPurchase({ offeringAddress, units });
+  const state = await getOfferingState({ offeringAddress });
+  const curve = offeringStateCurve(state);
+  const units = unitsForBudget(
+    curve,
+    state.unitsSold,
+    availablePublicUnits(state),
+    budgetUsdc,
+  );
+  if (units <= 0)
+    throw new Error("The amount is below the current price of one unit.");
+  const cost = costForUnits(curve, state.unitsSold, units);
+  if (expected && (units !== expected.units || cost !== expected.cost))
+    throw new QuoteChangedError(units, cost);
+  const costWithSlippage = withSlippage(cost);
+  const maxCost = costWithSlippage < budgetUsdc ? costWithSlippage : budgetUsdc;
   const { approveTxHash, buyTxHash, buyReceipt } = await payWithApproval({
     buyer: normalizedBuyer,
     offering,
-    amount: quote.maxCost,
+    amount: maxCost,
     buyCall: {
       address: offering,
       abi: OFFERING_ABI,
       functionName: "buyPublic",
-      args: [BigInt(quote.units), quote.maxCost, buyerName],
+      args: [BigInt(units), maxCost, buyerName],
     },
   });
   assertNotReverted(buyReceipt, "Offering purchase reverted.");
   const purchase = purchaseFromReceipt(buyReceipt, offering, normalizedBuyer);
-  return { ...quote, ...(purchase || {}), approveTxHash, buyTxHash };
+  return {
+    state,
+    units,
+    cost,
+    maxCost,
+    ...(purchase || {}),
+    approveTxHash,
+    buyTxHash,
+  };
 }
 
 // Claims a private allocation: the buyer's wallet sends buyPrivate carrying
@@ -737,12 +758,14 @@ export async function buyPrivateOffering({
   voucher,
   ownerSig,
   linkPrivateKey,
+  expected,
 }: {
   buyer: Address;
   offeringAddress: Address;
   voucher: Voucher;
   ownerSig: Hex;
   linkPrivateKey: Hex;
+  expected?: { units: number; cost: bigint };
 }) {
   if (!buyer) throw new Error("Connected wallet is required.");
 
@@ -763,6 +786,10 @@ export async function buyPrivateOffering({
       "The allocation is too small to buy one whole unit at the current curve price.",
     );
   const cost = costForUnits(curve, state.unitsSold, units);
+  // Claims are one-shot, so a drifted quote must be re-confirmed, not
+  // silently absorbed.
+  if (expected && (units !== expected.units || cost !== expected.cost))
+    throw new QuoteChangedError(units, cost);
   // The voucher cap bounds slippage: price drift between invite and claim is
   // accepted, but never beyond the dollars the owner endorsed.
   const costWithSlippage = withSlippage(cost);

@@ -14,11 +14,13 @@ import {
   SectionTitle,
   SignatureBlock,
   Sub,
+  TextButton,
 } from "#components/ui.tsx";
 import { useDebugMenu } from "#hooks/use-debug-menu.ts";
 import { useErrorTip } from "#hooks/use-error-tip.ts";
 import { useOfferingState } from "#hooks/use-offering-state.ts";
 import { useWallet } from "#hooks/use-wallet.ts";
+import { toUsdcBaseUnits } from "#lib/chain/chain.ts";
 import {
   costForUnits,
   unitsForBudget,
@@ -33,6 +35,7 @@ import {
   getProjectName,
   isAllocationConsumed,
   offeringStateCurve,
+  QuoteChangedError,
   refundOffering,
 } from "#lib/chain/onchain.ts";
 import type { OfferingState } from "#lib/chain/onchain.ts";
@@ -45,7 +48,9 @@ import {
   fmtPct,
   fmtTokens,
   fmtUsd,
+  formatAmountInput,
   MS_PER_DAY,
+  parseMoney,
   relDays,
   usdcBaseUnitsToDollars,
 } from "#lib/format.ts";
@@ -133,14 +138,14 @@ function deriveBuyView({
   offeringState,
   receipt,
   wallet,
-  units,
+  amount,
   consumed,
   debugState,
 }: {
   offeringState: OfferingView;
   receipt: { units: number; cost: bigint; txHash: string | null } | null;
   wallet: string | null;
-  units: string;
+  amount: string;
   consumed: boolean | null;
   debugState: string;
 }) {
@@ -182,31 +187,45 @@ function deriveBuyView({
   );
   const pricePer = paidUnits > 0 ? paidCostUsd / paidUnits : 0;
 
-  // Quote for what the buyer is about to purchase.
+  // Quote for what the buyer is about to purchase. Both paths treat dollars
+  // as a budget: whole units within it, at their actual curve cost. A public
+  // budget that could afford a unit beyond the tranche is rejected, not
+  // clamped — the typed amount must be the amount charged (minus only the
+  // sub-unit remainder), so the form never shows a deal the input disagrees
+  // with.
   const budgetUsdc = voucherPayload
     ? BigInt(voucherPayload.voucher.amountCapUsdc)
-    : 0n;
-  const requestedPublicUnits = Number(units) || 0;
-  const publicUnitsValid =
-    Number.isInteger(requestedPublicUnits) &&
-    requestedPublicUnits >= 1 &&
-    requestedPublicUnits <= publicRemaining;
-  const quoteUnits = voucherPayload
-    ? budgetUsdc > 0n
+    : toUsdcBaseUnits(parseMoney(amount));
+  const overCapacity =
+    !voucherPayload &&
+    budgetUsdc >=
+      costForUnits(curve, offeringState.unitsSold, publicRemaining + 1);
+  const quoteUnits =
+    budgetUsdc > 0n && !overCapacity
       ? unitsForBudget(
           curve,
           offeringState.unitsSold,
-          remainingUnits,
+          voucherPayload ? remainingUnits : publicRemaining,
           budgetUsdc,
         )
-      : 0
-    : publicUnitsValid
-      ? requestedPublicUnits
       : 0;
-  const quoteCost = usdcBaseUnitsToDollars(
-    costForUnits(curve, offeringState.unitsSold, quoteUnits),
+  const quoteCostUsdc = costForUnits(
+    curve,
+    offeringState.unitsSold,
+    quoteUnits,
   );
+  const quoteCost = usdcBaseUnitsToDollars(quoteCostUsdc);
   const quotePricePer = quoteUnits > 0 ? quoteCost / quoteUnits : 0;
+  // Capacity ceiled to the cent in bigint, so typing the displayed maximum
+  // always affords every available unit.
+  const publicCapacityUsd =
+    Number(
+      (costForUnits(curve, offeringState.unitsSold, publicRemaining) + 9999n) /
+        10000n,
+    ) / 100;
+  const firstUnitCostUsd = usdcBaseUnitsToDollars(
+    costForUnits(curve, offeringState.unitsSold, 1),
+  );
 
   const claimedByOther = !!voucherPayload && !!consumed && !isPaid;
   const refundableDeposit =
@@ -235,10 +254,13 @@ function deriveBuyView({
     paidCostUsd,
     pricePer,
     budgetUsdc,
-    requestedPublicUnits,
+    overCapacity,
     quoteUnits,
     quoteCost,
+    quoteCostUsdc,
     quotePricePer,
+    publicCapacityUsd,
+    firstUnitCostUsd,
     claimedByOther,
     refundableDeposit,
     canStillPurchase,
@@ -293,7 +315,13 @@ export function BuyApp() {
     cost: bigint;
     txHash: string | null;
   } | null>(null); // for the connected wallet
-  const [units, setUnits] = useState("");
+  const [amount, setAmount] = useState("");
+  const [staleQuote, setStaleQuote] = useState<{
+    prevUnits: number;
+    prevCost: number;
+    units: number;
+    cost: number;
+  } | null>(null);
   const [buyerName, setBuyerName] = useState("");
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [signerName, setSignerName] = useState("");
@@ -431,6 +459,10 @@ export function BuyApp() {
       return;
     }
     setBusy("pay");
+    setStaleQuote(null);
+    // The quote the buyer confirmed on screen; submit aborts if fresh chain
+    // state no longer matches it.
+    const expected = { units: quoteUnits, cost: quoteCostUsdc };
     try {
       let purchase;
       if (voucherPayload) {
@@ -440,12 +472,14 @@ export function BuyApp() {
           voucher: voucherPayload.voucher,
           ownerSig: voucherPayload.ownerSig,
           linkPrivateKey: voucherPayload.linkPrivateKey,
+          expected,
         });
       } else {
         purchase = await buyPublicOffering({
           buyer: wallet,
           offeringAddress: offeringAddress!,
-          units: Number(units),
+          budgetUsdc,
+          expected,
           buyerName: buyerName.trim(),
         });
       }
@@ -456,7 +490,18 @@ export function BuyApp() {
       }));
       refreshOffering();
     } catch (err) {
-      showToast(errMsg(err, "Could not complete purchase."));
+      if (err instanceof QuoteChangedError) {
+        setStaleQuote({
+          prevUnits: quoteUnits,
+          prevCost: quoteCost,
+          units: err.units,
+          cost: usdcBaseUnitsToDollars(err.cost),
+        });
+        showToast("Prices moved — review the updated quote.");
+        refreshOffering();
+      } else {
+        showToast(errMsg(err, "Could not complete purchase."));
+      }
     }
     setBusy(null);
   }
@@ -499,10 +544,13 @@ export function BuyApp() {
     paidCostUsd,
     pricePer,
     budgetUsdc,
-    requestedPublicUnits,
+    overCapacity,
     quoteUnits,
     quoteCost,
+    quoteCostUsdc,
     quotePricePer,
+    publicCapacityUsd,
+    firstUnitCostUsd,
     claimedByOther,
     refundableDeposit,
     canStillPurchase,
@@ -510,7 +558,7 @@ export function BuyApp() {
     offeringState,
     receipt,
     wallet,
-    units,
+    amount,
     consumed,
     debugState,
   });
@@ -525,7 +573,6 @@ export function BuyApp() {
         View transaction
       </a>
     ) : null;
-  const estimatedCostUsd = quoteUnits > 0 ? quoteCost : null;
 
   const failedRefundCopy = debugRefunded
     ? "This project failed to meet the minimum before the close date."
@@ -586,23 +633,35 @@ export function BuyApp() {
         </Notice>
       );
     return (
-      <div className="flex justify-end mt-8">
-        <Button
-          className="px-6 py-3 text-base font-semibold"
-          data-act="pay"
-          disabled={
-            busy === "pay" ||
-            quoteUnits <= 0 ||
-            !termsAccepted ||
-            !signerName.trim()
-          }
-          onClick={handlePay}
-        >
-          {busy === "pay"
-            ? "Purchasing…"
-            : `Purchase ${projectName || "this offering"}`}
-        </Button>
-      </div>
+      <>
+        {staleQuote ? (
+          <Notice className="mt-8">
+            Prices moved since your quote:{" "}
+            {voucherPayload ? "your allocation now buys" : "now"}{" "}
+            {fmtTokens(staleQuote.units)} units for{" "}
+            {fmtUsd(staleQuote.cost, "cents")} (was{" "}
+            {fmtTokens(staleQuote.prevUnits)} units for{" "}
+            {fmtUsd(staleQuote.prevCost, "cents")}). Review and confirm again.
+          </Notice>
+        ) : null}
+        <div className="flex justify-end mt-8">
+          <Button
+            className="px-6 py-3 text-base font-semibold"
+            data-act="pay"
+            disabled={
+              busy === "pay" ||
+              quoteUnits <= 0 ||
+              !termsAccepted ||
+              !signerName.trim()
+            }
+            onClick={handlePay}
+          >
+            {busy === "pay"
+              ? "Purchasing…"
+              : `Purchase ${projectName || "this offering"}`}
+          </Button>
+        </div>
+      </>
     );
   }
 
@@ -675,47 +734,55 @@ export function BuyApp() {
           <>
             <SectionTitle>Your purchase</SectionTitle>
             <DefList className="mb-5">
-              <Field label="Units" align="none">
+              <Field label="Amount" align="none">
                 <span>
+                  $
                   <input
                     className="blank w-28 text-left"
                     type="text"
-                    inputMode="numeric"
-                    pattern="[0-9]*"
+                    inputMode="decimal"
                     placeholder="0"
                     autoComplete="off"
-                    value={units}
+                    value={amount}
                     onChange={(e) => {
-                      if (/^\d*$/.test(e.target.value))
-                        setUnits(e.target.value);
+                      setAmount(formatAmountInput(e.target.value));
+                      setStaleQuote(null);
                     }}
                   />
-                  {requestedPublicUnits > publicRemaining ? (
+                  <TextButton
+                    tone={overCapacity ? "danger" : "muted"}
+                    className="ml-2"
+                    onClick={() => {
+                      setAmount(
+                        formatAmountInput(publicCapacityUsd.toFixed(2)),
+                      );
+                      setStaleQuote(null);
+                    }}
+                  >
+                    {overCapacity
+                      ? `Max ${fmtUsd(publicCapacityUsd, "cents")} available`
+                      : `(up to ${fmtUsd(publicCapacityUsd, "cents")} available)`}
+                  </TextButton>
+                  {!overCapacity &&
+                  parseMoney(amount) > 0 &&
+                  quoteUnits <= 0 ? (
                     <span className="t-danger ml-2">
-                      Max {fmtTokens(publicRemaining)}
+                      Minimum {fmtUsd(firstUnitCostUsd, "cents")} for 1 unit
                     </span>
-                  ) : (
-                    <span className="t-muted ml-2">
-                      ({fmtTokens(publicRemaining)} available)
-                    </span>
-                  )}
+                  ) : null}
                 </span>
               </Field>
-              <Field label="Estimated cost">
+              <Field label="You receive">
                 <span>
-                  {estimatedCostUsd != null
-                    ? fmtUsd(estimatedCostUsd, "cents")
+                  {quoteUnits > 0
+                    ? `${fmtTokens(quoteUnits)} units · ${fmtPct((quoteUnits / TOTAL_TOKENS) * 100)} of the project`
                     : "—"}
                 </span>
                 <Sub>
-                  {estimatedCostUsd != null
-                    ? `${fmtUsd(quotePricePer, "cents")} / unit`
-                    : "— / unit"}
+                  {quoteUnits > 0
+                    ? `${fmtUsd(quoteCost, "cents")} charged · ${fmtUsd(quotePricePer, "cents")} / unit`
+                    : "— charged"}
                 </Sub>
-              </Field>
-              <Field label="Implied ownership">
-                <span>{fmtPct((quoteUnits / TOTAL_TOKENS) * 100)}</span>
-                <Sub>{fmtTokens(quoteUnits)} units</Sub>
               </Field>
               <Field label="Display name" align="none">
                 <input
