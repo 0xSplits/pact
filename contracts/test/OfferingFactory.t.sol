@@ -2,6 +2,7 @@
 pragma solidity ^0.8.24;
 
 import {BaseTest} from "./Base.t.sol";
+import {Offering} from "../src/Offering.sol";
 import {OfferingFactory} from "../src/OfferingFactory.sol";
 
 contract OfferingFactoryTest is BaseTest {
@@ -28,5 +29,47 @@ contract OfferingFactoryTest is BaseTest {
     function testFactoryRejectsPublicUnitsOverOffering() public {
         vm.expectRevert(OfferingFactory.InvalidConfig.selector);
         _create(100e6, 201);
+    }
+
+    function testFactoryPropagatesOfferingConstructorValidation() public {
+        address[] memory holders = new address[](1);
+        holders[0] = holder;
+        uint32[] memory allocations = new uint32[](1);
+        allocations[0] = 800;
+
+        // closeDate not in the future
+        vm.expectRevert(Offering.InvalidConfig.selector);
+        factory.createOffering(
+            "Test Project", 100e6, uint64(block.timestamp), 1e6, 1000, 100, treasury, holders, allocations, 200
+        );
+
+        // zero priceStart
+        vm.expectRevert(Offering.InvalidConfig.selector);
+        factory.createOffering(
+            "Test Project", 100e6, uint64(block.timestamp + 7 days), 0, 1000, 100, treasury, holders, allocations, 200
+        );
+    }
+
+    function testOfferingCreatedEventPayload() public {
+        // setUp already made the factory deploy two contracts, so its nonce is 3.
+        address predictedOffering = vm.computeCreateAddress(address(factory), 3);
+        address predictedToken = vm.computeCreateAddress(address(factory), 4);
+
+        vm.expectEmit(true, true, true, true, address(factory));
+        emit OfferingFactory.OfferingCreated(
+            address(this),
+            treasury,
+            predictedOffering,
+            predictedToken,
+            "Test Project",
+            100e6,
+            uint64(block.timestamp + 7 days),
+            1e6,
+            1000,
+            100
+        );
+        (address created, address createdToken) = _create(100e6, 100);
+        assertEq(created, predictedOffering, "offering address");
+        assertEq(createdToken, predictedToken, "token address");
     }
 }

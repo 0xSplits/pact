@@ -12,7 +12,13 @@ import {
   OFFERING_ABI,
   OFFERING_FACTORY_ABI,
 } from "#generated/offering-contracts.ts";
-import { e2eAccount, e2eFactory, RPC_URL, sendTx } from "#tests/e2e-setup.ts";
+import {
+  e2eAccount,
+  e2eFactory,
+  rpc,
+  RPC_URL,
+  sendTx,
+} from "#tests/e2e-setup.ts";
 
 test.describe.configure({ timeout: 60_000 });
 
@@ -106,9 +112,11 @@ async function connectWallet(
 async function seedOffering({
   projectName,
   publicUnits,
+  closeInSeconds = 7 * 86400,
 }: {
   projectName: string;
   publicUnits: number;
+  closeInSeconds?: number;
 }): Promise<Address> {
   const deployer = e2eAccount(0),
     holder = e2eAccount(3);
@@ -122,7 +130,7 @@ async function seedOffering({
       args: [
         projectName,
         100_000_000n, // $100 minimum
-        BigInt(Math.floor(Date.now() / 1000) + 7 * 86400),
+        BigInt(Math.floor(Date.now() / 1000) + closeInSeconds),
         1_000_000n, // $1 first unit
         1000n, // +$0.001 per unit sold
         BigInt(publicUnits),
@@ -433,6 +441,152 @@ test("private allocation link claims across two browser contexts", async ({
   await expect(fundedRow.getByText("Allocated")).toHaveCount(0);
   await issuerContext.close();
   await buyerContext.close();
+});
+
+test("issuer withdraws proceeds and closes the round once the minimum is met", async ({
+  browser,
+}) => {
+  const issuer = e2eAccount(0),
+    buyer = e2eAccount(1);
+  const offering = await seedOffering({
+    projectName: "Funded Round",
+    publicUnits: 100,
+  });
+  // All 100 public units cost $104.95, clearing the $100 minimum.
+  await sendTx({
+    from: buyer,
+    to: BASE_USDC,
+    data: encodeFunctionData({
+      abi: ERC20_APPROVE_ABI,
+      functionName: "approve",
+      args: [offering, 200_000_000n],
+    }),
+  });
+  await sendTx({
+    from: buyer,
+    to: offering,
+    data: encodeFunctionData({
+      abi: OFFERING_ABI,
+      functionName: "buyPublic",
+      args: [100n, 200_000_000n, ""],
+    }),
+  });
+
+  const context = await browser.newContext();
+  await installWallet(context, issuer);
+  const page = await context.newPage();
+  await page.goto("/status?offering=" + offering);
+  await connectWallet(page, issuer);
+
+  // Permissionless withdraw is offered once minMet; it drains the claimable
+  // balance, so afterwards the same button renders disabled.
+  const withdrawBtn = page.locator('button[data-offering-action="withdraw"]');
+  await expect(withdrawBtn).toBeEnabled();
+  await withdrawBtn.click();
+  await expect(page.getByText("Proceeds withdrawn to treasury")).toBeVisible({
+    timeout: 15_000,
+  });
+  await expect(withdrawBtn).toBeDisabled({ timeout: 15_000 });
+
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.locator('button[data-offering-action="close"]').click();
+  // "Round closed" also becomes the page's status label once the state
+  // refreshes, so the assertion pins the toast specifically.
+  await expect(page.locator("#toast")).toHaveText("Round closed", {
+    timeout: 15_000,
+  });
+  // Closed offerings expose no actions at all.
+  await expect(
+    page.locator('button[data-offering-action="close"]'),
+  ).toHaveCount(0, { timeout: 15_000 });
+  await context.close();
+});
+
+test("failed round refunds buyers and sweeps units back to treasury", async ({
+  browser,
+}) => {
+  const issuer = e2eAccount(0),
+    buyerA = e2eAccount(1),
+    buyerB = e2eAccount(2);
+  const offering = await seedOffering({
+    projectName: "Failed Round",
+    publicUnits: 100,
+    closeInSeconds: 25,
+  });
+  const buy = async (buyer: Address, units: bigint, cap: bigint) => {
+    await sendTx({
+      from: buyer,
+      to: BASE_USDC,
+      data: encodeFunctionData({
+        abi: ERC20_APPROVE_ABI,
+        functionName: "approve",
+        args: [offering, cap],
+      }),
+    });
+    await sendTx({
+      from: buyer,
+      to: offering,
+      data: encodeFunctionData({
+        abi: OFFERING_ABI,
+        functionName: "buyPublic",
+        args: [units, cap, ""],
+      }),
+    });
+  };
+  // $5.01 + $16.20 raised, far below the $100 minimum. Chain time then warps
+  // past the close date so markFailed is legal; page rendering keys off
+  // contract state, not the browser clock, so no wall-clock wait is needed.
+  await buy(buyerA, 5n, 6_000_000n);
+  await buy(buyerB, 16n, 17_000_000n);
+  await rpc("evm_increaseTime", [300]);
+  await rpc("evm_mine");
+  await sendTx({
+    from: issuer,
+    to: offering,
+    data: encodeFunctionData({
+      abi: OFFERING_ABI,
+      functionName: "markFailed",
+      args: [],
+    }),
+  });
+
+  // Buyer A self-serves a refund from the buy page.
+  const buyerContext = await browser.newContext();
+  await installWallet(buyerContext, buyerA);
+  const buyerPage = await buyerContext.newPage();
+  await buyerPage.goto("/buy?offering=" + offering);
+  await connectWallet(buyerPage, buyerA);
+  const refundBtn = buyerPage.locator('button[data-act="refund"]');
+  await expect(refundBtn).toContainText("Claim $5.01 refund");
+  await refundBtn.click();
+  await expect(refundBtn).toHaveCount(0, { timeout: 15_000 });
+
+  // The issuer refunds the remaining buyer, then reclaims every unit.
+  const issuerContext = await browser.newContext();
+  await installWallet(issuerContext, issuer);
+  const issuerPage = await issuerContext.newPage();
+  await issuerPage.goto("/status?offering=" + offering);
+  await connectWallet(issuerPage, issuer);
+  const refundAllBtn = issuerPage.locator(
+    'button[data-offering-action="refund-all"]',
+  );
+  await expect(refundAllBtn).toBeEnabled({ timeout: 15_000 });
+  await refundAllBtn.click();
+  await expect(issuerPage.getByText("Refunds sent")).toBeVisible({
+    timeout: 15_000,
+  });
+  const sweepBtn = issuerPage.locator(
+    'button[data-offering-action="sweep-failed"]',
+  );
+  await expect(sweepBtn).toBeEnabled({ timeout: 15_000 });
+  await sweepBtn.click();
+  await expect(issuerPage.getByText("Tokens returned to treasury")).toBeVisible(
+    { timeout: 15_000 },
+  );
+  // Every unit is back with the treasury, so there is nothing left to sweep.
+  await expect(sweepBtn).toHaveCount(0, { timeout: 15_000 });
+  await buyerContext.close();
+  await issuerContext.close();
 });
 
 test("wallet menu only offers detected wallets plus the Splits store link", async ({

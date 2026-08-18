@@ -66,3 +66,23 @@ contract MockERC1271Wallet {
         return approved[digest] ? bytes4(0x1626ba7e) : bytes4(0xffffffff);
     }
 }
+
+interface IOfferingBuy {
+    function buyPublic(uint256 unitsWanted, uint256 maxCost, string calldata buyerName) external returns (uint256);
+}
+
+/// @notice Buyer whose ERC-1155 receive hook re-enters the offering's buy,
+/// probing the nonReentrant guard from inside the unit-delivery callback.
+contract ReenterOnReceive {
+    address private target;
+
+    function attack(address offering, uint256 units) external {
+        target = offering;
+        IOfferingBuy(offering).buyPublic(units, type(uint256).max, "");
+    }
+
+    function onERC1155Received(address, address, uint256, uint256, bytes calldata) external returns (bytes4) {
+        IOfferingBuy(target).buyPublic(1, type(uint256).max, "");
+        return this.onERC1155Received.selector;
+    }
+}

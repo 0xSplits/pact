@@ -8,6 +8,7 @@ import {
   MS_PER_DAY,
   parseMoney,
   relDays,
+  usdcBaseUnitsToDollars,
 } from "#lib/format.ts";
 
 // Display rounds to cents by design; sub-cent dust from whole-unit curve
@@ -42,6 +43,15 @@ test("parseMoney strips separators and junk", () => {
   assert.equal(parseMoney("1,234.56"), 1234.56);
   assert.equal(parseMoney("$50"), 50);
   assert.equal(parseMoney("abc"), 0);
+});
+
+test("usdcBaseUnitsToDollars converts bigint, number, string, and empty values", () => {
+  assert.equal(usdcBaseUnitsToDollars(1500000n), 1.5);
+  assert.equal(usdcBaseUnitsToDollars(1500000), 1.5);
+  // Legacy localStorage caches hold decimal strings.
+  assert.equal(usdcBaseUnitsToDollars("1500000"), 1.5);
+  assert.equal(usdcBaseUnitsToDollars(null), 0);
+  assert.equal(usdcBaseUnitsToDollars(undefined), 0);
 });
 
 test("formatAmountInput formats as the user types", () => {
