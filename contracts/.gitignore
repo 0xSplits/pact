@@ -13,3 +13,5 @@ fizz_data/corpus_echidna/
 fizz_data/crytic-export/
 fizz_data/logs_medusa/
 fizz_data/slither_results.json
+fizz_data/cost-estimate.md
+fizz_data/discovery/

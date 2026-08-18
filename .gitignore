@@ -12,3 +12,6 @@ test-results/
 cache/
 out/
 broadcast/
+
+# regenerable /x-ray pre-audit reports
+x-ray/
