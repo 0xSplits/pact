@@ -284,13 +284,18 @@ test("buyer purchases from the public tranche with real transactions", async ({
   await amountInput.fill("0.50");
   await expect(page.getByText("Minimum $1.00 for 1 unit")).toBeVisible();
   await expect(page.locator('button[data-act="pay"]')).toBeDisabled();
-  // Beyond public capacity: clamped to the 100 available units.
+  // Beyond public capacity: rejected, and the max hint fills the input.
   await amountInput.fill("200");
-  await expect(page.getByText("100 units · $1.05 / unit")).toBeVisible();
+  await expect(page.locator('button[data-act="pay"]')).toBeDisabled();
+  await page.getByText("Max $104.95 available").click();
+  await expect(amountInput).toHaveValue("104.95");
+  await expect(
+    page.getByText("100 units · 10.0% of the project"),
+  ).toBeVisible();
   // $60 as a budget buys 58 whole units at their actual cost of $59.65.
   await amountInput.fill("60");
-  await expect(page.getByText("58 units · $1.03 / unit")).toBeVisible();
-  await expect(page.getByText("$59.65")).toBeVisible();
+  await expect(page.getByText("58 units · 5.8% of the project")).toBeVisible();
+  await expect(page.getByText("$59.65 charged · $1.03 / unit")).toBeVisible();
   await page.getByPlaceholder("Optional, public").fill("Alice");
   await expect(page.locator('button[data-act="pay"]')).toBeDisabled();
   await page.getByRole("checkbox").check();

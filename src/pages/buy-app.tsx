@@ -14,6 +14,7 @@ import {
   SectionTitle,
   SignatureBlock,
   Sub,
+  TextButton,
 } from "#components/ui.tsx";
 import { useDebugMenu } from "#hooks/use-debug-menu.ts";
 import { useErrorTip } from "#hooks/use-error-tip.ts";
@@ -187,12 +188,20 @@ function deriveBuyView({
   const pricePer = paidUnits > 0 ? paidCostUsd / paidUnits : 0;
 
   // Quote for what the buyer is about to purchase. Both paths treat dollars
-  // as a budget: whole units within it, at their actual curve cost.
+  // as a budget: whole units within it, at their actual curve cost. A public
+  // budget that could afford a unit beyond the tranche is rejected, not
+  // clamped — the typed amount must be the amount charged (minus only the
+  // sub-unit remainder), so the form never shows a deal the input disagrees
+  // with.
   const budgetUsdc = voucherPayload
     ? BigInt(voucherPayload.voucher.amountCapUsdc)
     : toUsdcBaseUnits(parseMoney(amount));
+  const overCapacity =
+    !voucherPayload &&
+    budgetUsdc >=
+      costForUnits(curve, offeringState.unitsSold, publicRemaining + 1);
   const quoteUnits =
-    budgetUsdc > 0n
+    budgetUsdc > 0n && !overCapacity
       ? unitsForBudget(
           curve,
           offeringState.unitsSold,
@@ -207,9 +216,13 @@ function deriveBuyView({
   );
   const quoteCost = usdcBaseUnitsToDollars(quoteCostUsdc);
   const quotePricePer = quoteUnits > 0 ? quoteCost / quoteUnits : 0;
-  const publicCapacityUsd = usdcBaseUnitsToDollars(
-    costForUnits(curve, offeringState.unitsSold, publicRemaining),
-  );
+  // Capacity ceiled to the cent in bigint, so typing the displayed maximum
+  // always affords every available unit.
+  const publicCapacityUsd =
+    Number(
+      (costForUnits(curve, offeringState.unitsSold, publicRemaining) + 9999n) /
+        10000n,
+    ) / 100;
   const firstUnitCostUsd = usdcBaseUnitsToDollars(
     costForUnits(curve, offeringState.unitsSold, 1),
   );
@@ -241,6 +254,7 @@ function deriveBuyView({
     paidCostUsd,
     pricePer,
     budgetUsdc,
+    overCapacity,
     quoteUnits,
     quoteCost,
     quoteCostUsdc,
@@ -530,6 +544,7 @@ export function BuyApp() {
     paidCostUsd,
     pricePer,
     budgetUsdc,
+    overCapacity,
     quoteUnits,
     quoteCost,
     quoteCostUsdc,
@@ -734,28 +749,40 @@ export function BuyApp() {
                       setStaleQuote(null);
                     }}
                   />
-                  {parseMoney(amount) > 0 && quoteUnits <= 0 ? (
+                  <TextButton
+                    tone={overCapacity ? "danger" : "muted"}
+                    className="ml-2"
+                    onClick={() => {
+                      setAmount(
+                        formatAmountInput(publicCapacityUsd.toFixed(2)),
+                      );
+                      setStaleQuote(null);
+                    }}
+                  >
+                    {overCapacity
+                      ? `Max ${fmtUsd(publicCapacityUsd, "cents")} available`
+                      : `(up to ${fmtUsd(publicCapacityUsd, "cents")} available)`}
+                  </TextButton>
+                  {!overCapacity &&
+                  parseMoney(amount) > 0 &&
+                  quoteUnits <= 0 ? (
                     <span className="t-danger ml-2">
                       Minimum {fmtUsd(firstUnitCostUsd, "cents")} for 1 unit
                     </span>
-                  ) : (
-                    <span className="t-muted ml-2">
-                      (up to {fmtUsd(publicCapacityUsd, "cents")} available)
-                    </span>
-                  )}
+                  ) : null}
                 </span>
               </Field>
-              <Field label="You’ll pay">
-                <span>{quoteUnits > 0 ? fmtUsd(quoteCost, "cents") : "—"}</span>
+              <Field label="You receive">
+                <span>
+                  {quoteUnits > 0
+                    ? `${fmtTokens(quoteUnits)} units · ${fmtPct((quoteUnits / TOTAL_TOKENS) * 100)} of the project`
+                    : "—"}
+                </span>
                 <Sub>
                   {quoteUnits > 0
-                    ? `${fmtTokens(quoteUnits)} units · ${fmtUsd(quotePricePer, "cents")} / unit`
-                    : "— units"}
+                    ? `${fmtUsd(quoteCost, "cents")} charged · ${fmtUsd(quotePricePer, "cents")} / unit`
+                    : "— charged"}
                 </Sub>
-              </Field>
-              <Field label="Implied ownership">
-                <span>{fmtPct((quoteUnits / TOTAL_TOKENS) * 100)}</span>
-                <Sub>{fmtTokens(quoteUnits)} units</Sub>
               </Field>
               <Field label="Display name" align="none">
                 <input
