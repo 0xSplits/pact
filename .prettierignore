@@ -5,3 +5,5 @@ src/generated/
 package-lock.json
 # local wayfinder tracker / scratch notes
 .scratch/
+# conductor workspace scratch dir (gitignored)
+.context/
