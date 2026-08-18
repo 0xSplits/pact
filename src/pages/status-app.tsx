@@ -621,6 +621,7 @@ function allocationRows(
 function AllocationsTable({
   rows,
   publicUnitsAvailable,
+  publicOpenUsd,
   publicBuyUrl,
   publicQuantityDisabledReason,
   offeringOpen,
@@ -633,6 +634,7 @@ function AllocationsTable({
 }: {
   rows: { funded: FundedRow[]; open: OpenRow[] };
   publicUnitsAvailable: number;
+  publicOpenUsd: number;
   publicBuyUrl: string;
   publicQuantityDisabledReason: string;
   offeringOpen: boolean;
@@ -707,9 +709,17 @@ function AllocationsTable({
             <td className="num">&mdash;</td>
             <td>
               {offeringOpen ? (
-                <span className="badge allocated">
-                  {fmtTokens(publicUnitsAvailable)} units open
-                </span>
+                <>
+                  <span className="badge allocated">
+                    {fmtTokens(publicUnitsAvailable)} units open
+                  </span>
+                  {publicUnitsAvailable > 0 ? (
+                    <span className="t-muted">
+                      {" "}
+                      ≈ {fmtUsd(publicOpenUsd)} at current prices
+                    </span>
+                  ) : null}
+                </>
               ) : (
                 <span className="badge revoked">Expired</span>
               )}
@@ -1117,6 +1127,15 @@ function deriveStatusView({
   const publicUnitsAvailable = onchainOffering
     ? availablePublicUnits(onchainOffering)
     : 0;
+  const publicOpenUsd = onchainOffering
+    ? usdcBaseUnitsToDollars(
+        costForUnits(
+          offeringStateCurve(onchainOffering),
+          onchainOffering.unitsSold,
+          publicUnitsAvailable,
+        ),
+      )
+    : 0;
   const publicQuantityDisabledReason = !onchainOffering
     ? "Reading contract state"
     : onchainOffering.state !== 0
@@ -1151,6 +1170,7 @@ function deriveStatusView({
     over,
     publicTreasury,
     publicUnitsAvailable,
+    publicOpenUsd,
     publicQuantityDisabledReason,
     publicOwner,
     showOwner,
@@ -1439,6 +1459,7 @@ export function StatusApp() {
     over,
     publicTreasury,
     publicUnitsAvailable,
+    publicOpenUsd,
     publicQuantityDisabledReason,
     publicOwner,
     showOwner,
@@ -1571,6 +1592,7 @@ export function StatusApp() {
           <AllocationsTable
             rows={rows}
             publicUnitsAvailable={publicUnitsAvailable}
+            publicOpenUsd={publicOpenUsd}
             publicBuyUrl={absoluteUrl(buyPath(record.offering))}
             publicQuantityDisabledReason={publicQuantityDisabledReason}
             offeringOpen={open}

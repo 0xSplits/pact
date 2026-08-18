@@ -277,12 +277,20 @@ test("buyer purchases from the public tranche with real transactions", async ({
   ).toBeVisible();
   await expect(page.getByText("Public Round", { exact: true })).toBeVisible();
   await connectWallet(page, buyer);
-  const unitsInput = page.locator('input[inputmode="numeric"]');
-  await expect(page.getByText("(100 available)")).toBeVisible();
-  await unitsInput.fill("101");
-  await expect(page.getByText("Max 100")).toBeVisible();
+  const amountInput = page.locator('input[inputmode="decimal"]');
+  // 100 public units on the seeded curve cost $104.95.
+  await expect(page.getByText("(up to $104.95 available)")).toBeVisible();
+  // Below the first unit's price: no quote, purchase stays disabled.
+  await amountInput.fill("0.50");
+  await expect(page.getByText("Minimum $1.00 for 1 unit")).toBeVisible();
   await expect(page.locator('button[data-act="pay"]')).toBeDisabled();
-  await unitsInput.fill("58");
+  // Beyond public capacity: clamped to the 100 available units.
+  await amountInput.fill("200");
+  await expect(page.getByText("100 units · $1.05 / unit")).toBeVisible();
+  // $60 as a budget buys 58 whole units at their actual cost of $59.65.
+  await amountInput.fill("60");
+  await expect(page.getByText("58 units · $1.03 / unit")).toBeVisible();
+  await expect(page.getByText("$59.65")).toBeVisible();
   await page.getByPlaceholder("Optional, public").fill("Alice");
   await expect(page.locator('button[data-act="pay"]')).toBeDisabled();
   await page.getByRole("checkbox").check();
