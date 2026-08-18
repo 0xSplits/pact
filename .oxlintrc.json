@@ -1,0 +1,26 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["react", "typescript", "oxc", "import"],
+  "ignorePatterns": ["contracts/", "src/generated/", "dist/"],
+  "rules": {
+    "react/rules-of-hooks": "error",
+    "react/only-export-components": ["warn", { "allowConstantExport": true }],
+    "import/no-default-export": "error",
+    "no-restricted-imports": ["error", { "patterns": ["./*", "../*"] }]
+  },
+  "overrides": [
+    {
+      "files": ["src/components/mount.tsx"],
+      "rules": { "react/only-export-components": "off" }
+    },
+    {
+      "files": [
+        "vite.config.ts",
+        "playwright.config.ts",
+        "tests/e2e-setup.ts",
+        "tests/e2e-teardown.ts"
+      ],
+      "rules": { "import/no-default-export": "off" }
+    }
+  ]
+}

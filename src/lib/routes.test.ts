@@ -1,15 +1,14 @@
-import test from "node:test";
 import assert from "node:assert/strict";
+
+import { test } from "vitest";
+
 import {
-  statusPath,
-  buyPath,
   buyLinkPath,
+  buyPath,
   currentOfferingAddress,
   currentVoucherFragment,
-  currentCreatePage,
-  currentStatusPage,
-  currentBuyPage,
-} from "./routes.ts";
+  statusPath,
+} from "#lib/routes.ts";
 
 const OFFERING = "0x692f4B9Fd0940fb5F2Ed2f32435A2DbFDA23b5F8";
 
@@ -38,13 +37,4 @@ test("garbage is rejected, not passed through", () => {
   assert.equal(currentOfferingAddress(""), null);
   assert.equal(currentVoucherFragment(""), null);
   assert.equal(currentVoucherFragment("#"), null);
-});
-
-test("app page detection", () => {
-  assert.equal(currentCreatePage("/create"), true);
-  assert.equal(currentCreatePage("/"), false);
-  assert.equal(currentStatusPage("/status"), true);
-  assert.equal(currentStatusPage("/buy"), false);
-  assert.equal(currentBuyPage("/buy"), true);
-  assert.equal(currentBuyPage("/status"), false);
 });

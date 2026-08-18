@@ -3,12 +3,14 @@
 // so vanilla pages and React pages render identically.
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 import type { Address } from "viem";
-import { basescanAddress, shortAddr } from "../lib/format.ts";
+
+import type { StatusInfo } from "#lib/chain/offering-status.ts";
+import { basescanAddress, shortAddr } from "#lib/format.ts";
 
 const cx = (...parts: Array<string | false | null | undefined>) =>
   parts.filter(Boolean).join(" ");
 
-export const Loading = () => <span className="t-muted">Loading…</span>;
+const Loading = () => <span className="t-muted">Loading…</span>;
 
 // Check-mark glyph shared by the wallet menu, buy status dot, and status badge.
 export const CheckIcon = () => (
@@ -146,6 +148,105 @@ export function TextButton({
     <button className={cx("act", tone, className)} type="button" {...props}>
       {children}
     </button>
+  );
+}
+
+// Signature block shared by the agreement pages: a script-font preview of the
+// typed name above the actual input, wired to the same data-error tooltip as
+// the other agreement fields (pair with useErrorTip on the page).
+export function SignatureBlock({
+  id,
+  value,
+  error,
+  className,
+  onChange,
+  onBlur,
+}: {
+  id: string;
+  value: string;
+  error?: string | undefined;
+  className?: string | undefined;
+  onChange: (value: string) => void;
+  onBlur: () => void;
+}) {
+  return (
+    <div className={cx("signature-row", className)}>
+      <div className="signature-inner">
+        <span className="signature-by">By:</span>
+        <div className="signature-block">
+          <div className="signature-preview" aria-hidden="true">
+            {value || "\u00a0"}
+          </div>
+          <label className="sr-only" htmlFor={id}>
+            Name
+          </label>
+          <input
+            id={id}
+            className={cx("blank signature-input", error && "error")}
+            data-error={error || undefined}
+            aria-invalid={!!error}
+            type="text"
+            placeholder="Name (required, private)"
+            autoComplete="name"
+            required
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            onBlur={onBlur}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Lifecycle dot + label shared by the status page and the home dashboard
+// tables (pass note: "" where there is no room for the sub-note).
+export function StatusBadge({ status }: { status: StatusInfo }) {
+  if (status.tone === "loading") return <Loading />;
+  const icons = {
+    secured: <CheckIcon />,
+    closed: (
+      <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="3"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M7 12h10" />
+      </svg>
+    ),
+    failed: (
+      <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="3"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M6 6l12 12M18 6 6 18" />
+      </svg>
+    ),
+    funding: (
+      <svg viewBox="0 0 24 24" fill="currentColor">
+        <circle cx="12" cy="12" r="3" />
+      </svg>
+    ),
+  };
+  const tone =
+    status.tone in icons ? (status.tone as keyof typeof icons) : "funding";
+  return (
+    <>
+      <span className="status-state">
+        <span className={`status-dot ${tone}`} aria-hidden="true">
+          {icons[tone]}
+        </span>
+        <span>{status.label}</span>
+      </span>
+      {status.note ? <Sub>{status.note}</Sub> : null}
+    </>
   );
 }
 

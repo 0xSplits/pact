@@ -1,11 +1,13 @@
-import test from "node:test";
 import assert from "node:assert/strict";
+
+import { test } from "vitest";
+
 import {
   OG_PAGES,
   OG_SITE_ORIGIN,
   ogOriginForDeployment,
   ogPageForPath,
-} from "./og.ts";
+} from "#lib/og.ts";
 
 test("Vercel previews use their deployment origin", () => {
   assert.equal(

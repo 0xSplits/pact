@@ -1,17 +1,19 @@
-import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+
+import { test } from "vitest";
+
 import {
-  newAllocationKey,
-  encodeVoucherFragment,
   decodeVoucherFragment,
+  encodeVoucherFragment,
   listAllocationLedger,
-  saveAllocationLedgerRow,
   markAllocationLedgerRowRevoked,
-} from "./voucher.ts";
-import { buildGoldenFixture } from "../../../scripts/generate-voucher-fixture.ts";
+  newAllocationKey,
+  saveAllocationLedgerRow,
+} from "#lib/chain/voucher.ts";
+import { buildGoldenFixture } from "#scripts/generate-voucher-fixture.ts";
 
 const fakeStorage = () => {
   const map = new Map<string, string>();
@@ -121,6 +123,30 @@ test("allocation ids are unique per link key", () => {
   assert.notEqual(a.linkPrivateKey, b.linkPrivateKey);
 });
 
+test("fragment decode rejects a non-object payload and a non-string name", () => {
+  // btoa("1") is valid base64 JSON, but the payload is a bare number.
+  assert.throws(() => decodeVoucherFragment(btoa("1")), /version/i);
+  const encode = (obj: unknown) =>
+    btoa(JSON.stringify(obj))
+      .replace(/\+/g, "-")
+      .replace(/\//g, "_")
+      .replace(/=+$/, "");
+  assert.throws(
+    () =>
+      decodeVoucherFragment(
+        encode({
+          v: 1,
+          a: "0x" + "11".repeat(32),
+          n: 42,
+          c: "1",
+          s: "0x" + "00".repeat(65),
+          k: "0x" + "22".repeat(32),
+        }),
+      ),
+    /Malformed link/,
+  );
+});
+
 test("golden vector matches the checked-in fixture byte for byte", async () => {
   const root = path.join(
     path.dirname(fileURLToPath(import.meta.url)),
@@ -170,4 +196,41 @@ test("allocation ledger add/list/revoke round-trips", () => {
   assert.deepEqual(listAllocationLedger(offering, storage), [
     { ...row, name: "Bobby", revokedAt: 7 },
   ]);
+});
+
+// Recovery trade-off pinned as-is: a corrupt ledger reads as empty, so the
+// next save rewrites it with only the new row — prior rows (and their share
+// links) are silently lost.
+test("saving over a corrupt ledger drops the prior rows", () => {
+  const storage = fakeStorage();
+  const offering = ("0x" + "99".repeat(20)) as `0x${string}`;
+  storage.setItem("pact:allocations:" + offering, "{not json");
+  const row = {
+    allocationId: ("0x" + "11".repeat(32)) as `0x${string}`,
+    name: "Bob",
+    amountCapUsd: 50,
+    link: "https://x/#f",
+    createdAt: 1,
+  };
+  saveAllocationLedgerRow(offering, row, storage);
+  assert.deepEqual(listAllocationLedger(offering, storage), [row]);
+});
+
+test("listAllocationLedger returns empty for a non-array cache", () => {
+  const storage = fakeStorage();
+  const offering = ("0x" + "99".repeat(20)) as `0x${string}`;
+  storage.setItem("pact:allocations:" + offering, "{}");
+  assert.deepEqual(listAllocationLedger(offering, storage), []);
+});
+
+test("revoking on an empty ledger leaves it empty", () => {
+  const storage = fakeStorage();
+  const offering = ("0x" + "99".repeat(20)) as `0x${string}`;
+  markAllocationLedgerRowRevoked(
+    offering,
+    ("0x" + "11".repeat(32)) as `0x${string}`,
+    7,
+    storage,
+  );
+  assert.deepEqual(listAllocationLedger(offering, storage), []);
 });

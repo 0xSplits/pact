@@ -1,6 +1,6 @@
 // Localhost-only debug menu for previewing offering states on the buy and
 // status pages. Builds its own DOM so page shells stay minimal.
-export const isLocalhost = () =>
+const isLocalhost = () =>
   ["localhost", "127.0.0.1"].includes(location.hostname);
 
 // True while a synthetic debug state is selected (never in production).

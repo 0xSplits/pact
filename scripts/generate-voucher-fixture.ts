@@ -8,13 +8,13 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { getContractAddress, keccak256 } from "viem";
-import type { Hex } from "viem";
-import { privateKeyToAccount } from "viem/accounts";
-import { voucherTypedData, signClaim } from "../src/lib/chain/voucher.ts";
 
-const key = (n: bigint): Hex =>
-  ("0x" + n.toString(16).padStart(64, "0")) as Hex;
+import { getContractAddress, keccak256, numberToHex } from "viem";
+import { privateKeyToAccount } from "viem/accounts";
+
+import { signClaim, voucherTypedData } from "#lib/chain/voucher.ts";
+
+const key = (n: bigint) => numberToHex(n, { size: 32 });
 
 export async function buildGoldenFixture() {
   const ownerKey = key(1n);

@@ -11,7 +11,7 @@ PACT: raise small onchain rounds by selling a slice of a project's cap table —
 - `npm run dev` — Vite dev server (http://localhost:5173)
 - `npm run build` — static production build into `dist/` (what Vercel serves)
 - `npm run typecheck` — `tsc --noEmit` (strict TS everywhere, plain `.ts`/`.tsx`)
-- `npm test` — colocated unit tests (`node --test src/**/*.test.ts`; run against fakes, never real RPC)
+- `npm test` — colocated unit tests (`vitest run` over `src/**/*.test.ts`; run against fakes, never real RPC)
 - `forge test --root contracts` (or `npm run test:contracts`) — Solidity suite incl. fuzz + invariants (requires Foundry)
   - single test: `forge test --root contracts --match-test <name>`
 - `npm run test:e2e` — Vite build then anvil-backed Playwright flow (`tests/pact-flow.spec.ts`, real local-chain transactions through a mocked EIP-1193 wallet; needs `forge build` artifacts)

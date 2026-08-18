@@ -4,10 +4,13 @@
 // read and receipt poll at a local anvil instead of public Base RPC.
 // `VITE_ALCHEMY_API_KEY` is the build-time Alchemy key (domain-restrict it,
 // it ships in the bundle); absent both, the rate-limited public RPC keeps
-// zero-setup dev working. Optional-chained because node:test runs this file
-// where import.meta.env doesn't exist. wagmi.ts turns this resolution into
+// zero-setup dev working. Optional-chained so the module also loads outside
+// Vite (bare node, test runners) where import.meta.env may not exist.
+// wagmi.ts turns this resolution into
 // the app transport: override wins outright, otherwise Alchemy with the
 // chain's public RPC as fallback.
+import { parseUnits } from "viem";
+
 export const BASE_CHAIN_ID = 8453;
 
 // Reads an e2e/manual override set on globalThis before any module loads
@@ -26,10 +29,13 @@ export const ALCHEMY_RPC_URL: string | undefined = ALCHEMY_API_KEY
 
 export const BASE_USDC_ADDRESS =
   "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913" as const;
-export const USDC_SCALE = 1000000;
+export const USDC_DECIMALS = 6;
 
-export function toUsdcBaseUnits(dollars: number | string): number {
+// Dollar input → USDC base units, exactly. `toFixed` first: it rounds away
+// float noise (0.29*1e6 is 289999.99…) and never emits scientific notation,
+// so parseUnits sees a plain decimal string and the math stays in bigint.
+export function toUsdcBaseUnits(dollars: number | string): bigint {
   const n = Number(dollars);
-  if (!Number.isFinite(n) || n < 0) return 0;
-  return Math.floor(n * USDC_SCALE);
+  if (!Number.isFinite(n) || n < 0) return 0n;
+  return parseUnits(n.toFixed(USDC_DECIMALS), USDC_DECIMALS);
 }

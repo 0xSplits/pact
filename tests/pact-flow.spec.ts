@@ -3,15 +3,22 @@
 // to anvil's unlocked accounts — anvil signs and sends everything, including
 // the EIP-712 voucher signatures, so the private-claim scenario exercises the
 // real Solidity verifier (second coverage of the golden-vector boundary).
-import { test, expect } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import type { BrowserContext, Page } from "@playwright/test";
 import { encodeFunctionData, getAddress } from "viem";
 import type { Address } from "viem";
+
 import {
   OFFERING_ABI,
   OFFERING_FACTORY_ABI,
-} from "../src/generated/offering-contracts.ts";
-import { RPC_URL, e2eAccount, e2eFactory, sendTx } from "./e2e-setup.ts";
+} from "#generated/offering-contracts.ts";
+import {
+  e2eAccount,
+  e2eFactory,
+  rpc,
+  RPC_URL,
+  sendTx,
+} from "#tests/e2e-setup.ts";
 
 test.describe.configure({ timeout: 60_000 });
 
@@ -105,9 +112,11 @@ async function connectWallet(
 async function seedOffering({
   projectName,
   publicUnits,
+  closeInSeconds = 7 * 86400,
 }: {
   projectName: string;
   publicUnits: number;
+  closeInSeconds?: number;
 }): Promise<Address> {
   const deployer = e2eAccount(0),
     holder = e2eAccount(3);
@@ -121,7 +130,7 @@ async function seedOffering({
       args: [
         projectName,
         100_000_000n, // $100 minimum
-        BigInt(Math.floor(Date.now() / 1000) + 7 * 86400),
+        BigInt(Math.floor(Date.now() / 1000) + closeInSeconds),
         1_000_000n, // $1 first unit
         1000n, // +$0.001 per unit sold
         BigInt(publicUnits),
@@ -270,15 +279,31 @@ test("buyer purchases from the public tranche with real transactions", async ({
   await page.goto("/buy?offering=" + offering);
 
   await expect(
-    page.getByRole("heading", { name: "Public Round" }),
+    page.getByRole("heading", {
+      name: "Purchase Agreement for Community Tokens",
+    }),
   ).toBeVisible();
+  await expect(page.getByText("Public Round", { exact: true })).toBeVisible();
   await connectWallet(page, buyer);
-  const unitsInput = page.getByRole("spinbutton");
-  await expect(page.getByText("(100 available)")).toBeVisible();
-  await unitsInput.fill("101");
-  await expect(page.getByText("Max 100")).toBeVisible();
+  const amountInput = page.locator('input[inputmode="decimal"]');
+  // 100 public units on the seeded curve cost $104.95.
+  await expect(page.getByText("(up to $104.95 available)")).toBeVisible();
+  // Below the first unit's price: no quote, purchase stays disabled.
+  await amountInput.fill("0.50");
+  await expect(page.getByText("Minimum $1.00 for 1 unit")).toBeVisible();
   await expect(page.locator('button[data-act="pay"]')).toBeDisabled();
-  await unitsInput.fill("58");
+  // Beyond public capacity: rejected, and the max hint fills the input.
+  await amountInput.fill("200");
+  await expect(page.locator('button[data-act="pay"]')).toBeDisabled();
+  await page.getByText("Max $104.95 available").click();
+  await expect(amountInput).toHaveValue("104.95");
+  await expect(
+    page.getByText("100 units · 10.0% of the project"),
+  ).toBeVisible();
+  // $60 as a budget buys 58 whole units at their actual cost of $59.65.
+  await amountInput.fill("60");
+  await expect(page.getByText("58 units · 5.8% of the project")).toBeVisible();
+  await expect(page.getByText("$59.65 charged · $1.03 / unit")).toBeVisible();
   await page.getByPlaceholder("Optional, public").fill("Alice");
   await expect(page.locator('button[data-act="pay"]')).toBeDisabled();
   await page.getByRole("checkbox").check();
@@ -381,7 +406,15 @@ test("private allocation link claims across two browser contexts", async ({
   const buyerPage = await buyerContext.newPage();
   await buyerPage.goto(link);
   await expect(
-    buyerPage.getByRole("heading", { name: "Private Round | Buyer One" }),
+    buyerPage.getByRole("heading", {
+      name: "Purchase Agreement for Community Tokens",
+    }),
+  ).toBeVisible();
+  await expect(
+    buyerPage.getByText("Private Round", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    buyerPage.getByText("Private allocation for Buyer One"),
   ).toBeVisible();
   await connectWallet(buyerPage, buyer);
   await expect(buyerPage.getByText("Allocation details")).toBeVisible();
@@ -408,6 +441,152 @@ test("private allocation link claims across two browser contexts", async ({
   await expect(fundedRow.getByText("Allocated")).toHaveCount(0);
   await issuerContext.close();
   await buyerContext.close();
+});
+
+test("issuer withdraws proceeds and closes the round once the minimum is met", async ({
+  browser,
+}) => {
+  const issuer = e2eAccount(0),
+    buyer = e2eAccount(1);
+  const offering = await seedOffering({
+    projectName: "Funded Round",
+    publicUnits: 100,
+  });
+  // All 100 public units cost $104.95, clearing the $100 minimum.
+  await sendTx({
+    from: buyer,
+    to: BASE_USDC,
+    data: encodeFunctionData({
+      abi: ERC20_APPROVE_ABI,
+      functionName: "approve",
+      args: [offering, 200_000_000n],
+    }),
+  });
+  await sendTx({
+    from: buyer,
+    to: offering,
+    data: encodeFunctionData({
+      abi: OFFERING_ABI,
+      functionName: "buyPublic",
+      args: [100n, 200_000_000n, ""],
+    }),
+  });
+
+  const context = await browser.newContext();
+  await installWallet(context, issuer);
+  const page = await context.newPage();
+  await page.goto("/status?offering=" + offering);
+  await connectWallet(page, issuer);
+
+  // Permissionless withdraw is offered once minMet; it drains the claimable
+  // balance, so afterwards the same button renders disabled.
+  const withdrawBtn = page.locator('button[data-offering-action="withdraw"]');
+  await expect(withdrawBtn).toBeEnabled();
+  await withdrawBtn.click();
+  await expect(page.getByText("Proceeds withdrawn to treasury")).toBeVisible({
+    timeout: 15_000,
+  });
+  await expect(withdrawBtn).toBeDisabled({ timeout: 15_000 });
+
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.locator('button[data-offering-action="close"]').click();
+  // "Round closed" also becomes the page's status label once the state
+  // refreshes, so the assertion pins the toast specifically.
+  await expect(page.locator("#toast")).toHaveText("Round closed", {
+    timeout: 15_000,
+  });
+  // Closed offerings expose no actions at all.
+  await expect(
+    page.locator('button[data-offering-action="close"]'),
+  ).toHaveCount(0, { timeout: 15_000 });
+  await context.close();
+});
+
+test("failed round refunds buyers and sweeps units back to treasury", async ({
+  browser,
+}) => {
+  const issuer = e2eAccount(0),
+    buyerA = e2eAccount(1),
+    buyerB = e2eAccount(2);
+  const offering = await seedOffering({
+    projectName: "Failed Round",
+    publicUnits: 100,
+    closeInSeconds: 25,
+  });
+  const buy = async (buyer: Address, units: bigint, cap: bigint) => {
+    await sendTx({
+      from: buyer,
+      to: BASE_USDC,
+      data: encodeFunctionData({
+        abi: ERC20_APPROVE_ABI,
+        functionName: "approve",
+        args: [offering, cap],
+      }),
+    });
+    await sendTx({
+      from: buyer,
+      to: offering,
+      data: encodeFunctionData({
+        abi: OFFERING_ABI,
+        functionName: "buyPublic",
+        args: [units, cap, ""],
+      }),
+    });
+  };
+  // $5.01 + $16.20 raised, far below the $100 minimum. Chain time then warps
+  // past the close date so markFailed is legal; page rendering keys off
+  // contract state, not the browser clock, so no wall-clock wait is needed.
+  await buy(buyerA, 5n, 6_000_000n);
+  await buy(buyerB, 16n, 17_000_000n);
+  await rpc("evm_increaseTime", [300]);
+  await rpc("evm_mine");
+  await sendTx({
+    from: issuer,
+    to: offering,
+    data: encodeFunctionData({
+      abi: OFFERING_ABI,
+      functionName: "markFailed",
+      args: [],
+    }),
+  });
+
+  // Buyer A self-serves a refund from the buy page.
+  const buyerContext = await browser.newContext();
+  await installWallet(buyerContext, buyerA);
+  const buyerPage = await buyerContext.newPage();
+  await buyerPage.goto("/buy?offering=" + offering);
+  await connectWallet(buyerPage, buyerA);
+  const refundBtn = buyerPage.locator('button[data-act="refund"]');
+  await expect(refundBtn).toContainText("Claim $5.01 refund");
+  await refundBtn.click();
+  await expect(refundBtn).toHaveCount(0, { timeout: 15_000 });
+
+  // The issuer refunds the remaining buyer, then reclaims every unit.
+  const issuerContext = await browser.newContext();
+  await installWallet(issuerContext, issuer);
+  const issuerPage = await issuerContext.newPage();
+  await issuerPage.goto("/status?offering=" + offering);
+  await connectWallet(issuerPage, issuer);
+  const refundAllBtn = issuerPage.locator(
+    'button[data-offering-action="refund-all"]',
+  );
+  await expect(refundAllBtn).toBeEnabled({ timeout: 15_000 });
+  await refundAllBtn.click();
+  await expect(issuerPage.getByText("Refunds sent")).toBeVisible({
+    timeout: 15_000,
+  });
+  const sweepBtn = issuerPage.locator(
+    'button[data-offering-action="sweep-failed"]',
+  );
+  await expect(sweepBtn).toBeEnabled({ timeout: 15_000 });
+  await sweepBtn.click();
+  await expect(issuerPage.getByText("Tokens returned to treasury")).toBeVisible(
+    { timeout: 15_000 },
+  );
+  // Every unit is back with the treasury, so there is nothing left to sweep.
+  await expect(sweepBtn).toHaveCount(0, { timeout: 15_000 });
+  await buyerContext.close();
+  await issuerContext.close();
 });
 
 test("wallet menu only offers detected wallets plus the Splits store link", async ({

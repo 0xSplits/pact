@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+
 import { OG_PAGES } from "../src/lib/og.ts";
 
 test("each page exposes its title and shared Open Graph metadata", async ({
