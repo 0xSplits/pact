@@ -4,7 +4,7 @@ import { defineConfig } from "vite";
 import type { Connect, Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
-import { OG_SITE_ORIGIN, ogPageForPath } from "./src/lib/og.ts";
+import { ogOriginForDeployment, ogPageForPath } from "./src/lib/og.ts";
 
 const page = (name: string) => fileURLToPath(new URL(name, import.meta.url));
 const localCertificate = page(".tmp/localhost.pem");
@@ -50,12 +50,17 @@ const openGraphMetadata: Plugin = {
   transformIndexHtml: {
     order: "pre",
     handler(html, context) {
+      const siteOrigin = ogOriginForDeployment({
+        vercelEnvironment:
+          process.env.VERCEL_ENV || process.env.VITE_VERCEL_ENV,
+        vercelUrl: process.env.VERCEL_URL || process.env.VITE_VERCEL_URL,
+      });
       const pageConfig = ogPageForPath(
-        new URL(context.path, OG_SITE_ORIGIN).pathname,
+        new URL(context.path, siteOrigin).pathname,
       );
       if (!pageConfig) return [];
-      const image = new URL(pageConfig.image, OG_SITE_ORIGIN).href;
-      const url = new URL(pageConfig.path, OG_SITE_ORIGIN).href;
+      const image = new URL(pageConfig.image, siteOrigin).href;
+      const url = new URL(pageConfig.path, siteOrigin).href;
       const property = (name: string, content: string) => ({
         tag: "meta",
         attrs: { property: name, content },

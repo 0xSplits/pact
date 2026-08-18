@@ -1,5 +1,16 @@
 export const OG_SITE_ORIGIN = "https://pact.splits.org";
 
+export function ogOriginForDeployment({
+  vercelEnvironment,
+  vercelUrl,
+}: {
+  vercelEnvironment?: string | undefined;
+  vercelUrl?: string | undefined;
+}): string {
+  if (vercelEnvironment !== "preview" || !vercelUrl) return OG_SITE_ORIGIN;
+  return `https://${vercelUrl.replace(/^https?:\/\//, "")}`;
+}
+
 export interface OgPage {
   path: string;
   label: string;

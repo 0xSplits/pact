@@ -1,6 +1,29 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { OG_PAGES, ogPageForPath } from "./og.ts";
+import {
+  OG_PAGES,
+  OG_SITE_ORIGIN,
+  ogOriginForDeployment,
+  ogPageForPath,
+} from "./og.ts";
+
+test("Vercel previews use their deployment origin", () => {
+  assert.equal(
+    ogOriginForDeployment({
+      vercelEnvironment: "preview",
+      vercelUrl: "pact-feature.vercel.app",
+    }),
+    "https://pact-feature.vercel.app",
+  );
+  assert.equal(
+    ogOriginForDeployment({
+      vercelEnvironment: "production",
+      vercelUrl: "pact-generated.vercel.app",
+    }),
+    OG_SITE_ORIGIN,
+  );
+  assert.equal(ogOriginForDeployment({}), OG_SITE_ORIGIN);
+});
 
 test("every OG page has a unique route and shares the document image", () => {
   assert.equal(
