@@ -1,6 +1,6 @@
 // Input shape checks shared across the browser modules. Non-strict on
-// purpose: EIP-55 checksum mistakes are accepted here (see
-// docs/research/library-replacements.md for the strictness trade-off).
+// purpose: mixed-case input with a wrong EIP-55 checksum is accepted, matching
+// the regex this replaced; strict rejection would be a UX-visible change.
 import { isAddress as viemIsAddress } from "viem";
 import type { Address } from "viem";
 
