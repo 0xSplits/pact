@@ -19,15 +19,5 @@ export function copyText(text: string, message: string = "Copied"): void {
   navigator.clipboard
     .writeText(text)
     .then(() => showToast(message))
-    .catch(() => {
-      const ta = document.createElement("textarea");
-      ta.value = text;
-      document.body.appendChild(ta);
-      ta.select();
-      try {
-        document.execCommand("copy");
-        showToast(message);
-      } catch {}
-      ta.remove();
-    });
+    .catch(() => showToast("Copy failed"));
 }

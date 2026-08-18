@@ -1,8 +1,6 @@
 // Builds the OfferingFactory holder inputs from a PACT's cap table.
-// Framework-free so the node test runner can exercise it directly.
+import { getAddress } from "viem";
 import type { Address } from "viem";
-
-import { isAddress } from "#lib/validate.ts";
 
 // Splits' default Liquid Split is exactly 1,000 units, where each unit is 0.1%.
 export const TOTAL_LIQUID_SPLIT_UNITS = 1000;
@@ -19,26 +17,13 @@ interface PactHolderInputs {
   newMoney: { tokens: number };
 }
 
-function checksumOrLower(
-  address: string,
-  getAddress?: (address: string) => string,
-): Address {
-  const trimmed = String(address || "").trim();
-  if (!isAddress(trimmed)) throw new Error("Invalid address: " + trimmed);
-  // Lowercasing (or a test fake's getAddress) widens the template-literal
-  // type back to string; the guard above makes the assertion sound.
-  return (getAddress ? getAddress(trimmed) : trimmed.toLowerCase()) as Address;
-}
-
 // Returns { holderAccounts, holderAllocations, offeringUnits } for
 // OfferingFactory.createOffering. The factory mints ERC-1155 balances
 // directly, so duplicate holders are merged before the call.
 export function buildOfferingFactoryInputs(
   pact: PactHolderInputs,
-  options: { getAddress?: (address: string) => string } = {},
 ): OfferingFactoryInputs {
   if (!pact || typeof pact !== "object") throw new Error("PACT is required.");
-  const getAddress = options.getAddress;
 
   const offeringUnits = Number(pact.newMoney && pact.newMoney.tokens);
   if (!Number.isInteger(offeringUnits) || offeringUnits <= 0) {
@@ -47,7 +32,7 @@ export function buildOfferingFactoryInputs(
 
   const merged = new Map<string, { address: Address; units: number }>();
   (pact.holders || []).forEach((holder) => {
-    const normalized = checksumOrLower(holder.address, getAddress);
+    const normalized = getAddress(holder.address);
     const units = Number(holder.tokens);
     if (!Number.isInteger(units) || units < 0) {
       throw new Error("Liquid Split allocations must be whole token units.");

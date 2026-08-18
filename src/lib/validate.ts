@@ -1,8 +1,13 @@
-// Input shape checks shared across the browser modules.
+// Input shape checks shared across the browser modules. Non-strict on
+// purpose: mixed-case input with a wrong EIP-55 checksum is accepted, matching
+// the regex this replaced; strict rejection would be a UX-visible change.
+import { isAddress as viemIsAddress } from "viem";
 import type { Address } from "viem";
 
 export function isAddress(value: unknown): value is Address {
-  return /^0x[a-fA-F0-9]{40}$/.test(String(value || "").trim());
+  return (
+    typeof value === "string" && viemIsAddress(value.trim(), { strict: false })
+  );
 }
 
 // Case-insensitive address equality; false when either side is missing.

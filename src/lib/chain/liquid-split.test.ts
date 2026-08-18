@@ -59,26 +59,17 @@ test("rejects invalid holder addresses", () => {
         holders: [{ address: "nope", tokens: 800 }],
         newMoney: { tokens: 200 },
       }),
-    /Invalid address/,
+    /invalid/i,
   );
 });
 
-test("checksums holder accounts through a provided getAddress", () => {
+test("checksums holder accounts", () => {
   const lower = "0x" + "ab".repeat(20);
-  const result = buildOfferingFactoryInputs(
-    {
-      holders: [{ address: lower, tokens: 800 }],
-      newMoney: { tokens: 200 },
-    },
-    { getAddress },
-  );
-  assert.deepEqual(result.holderAccounts, [getAddress(lower)]);
-  // Without the option, addresses are lowercased instead.
-  const plain = buildOfferingFactoryInputs({
-    holders: [{ address: lower.toUpperCase().replace("X", "x"), tokens: 800 }],
+  const result = buildOfferingFactoryInputs({
+    holders: [{ address: lower, tokens: 800 }],
     newMoney: { tokens: 200 },
   });
-  assert.deepEqual(plain.holderAccounts, [lower]);
+  assert.deepEqual(result.holderAccounts, [getAddress(lower)]);
 });
 
 test("rejects fractional and negative holder tokens", () => {
