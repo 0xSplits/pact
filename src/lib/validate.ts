@@ -1,12 +1,17 @@
-// Input shape checks shared across the browser modules.
+// Input shape checks shared across the browser modules. Non-strict on
+// purpose: EIP-55 checksum mistakes are accepted here (see
+// docs/research/library-replacements.md for the strictness trade-off).
+import { isHash, isAddress as viemIsAddress } from "viem";
 import type { Address, Hex } from "viem";
 
 export function isAddress(value: unknown): value is Address {
-  return /^0x[a-fA-F0-9]{40}$/.test(String(value || "").trim());
+  return (
+    typeof value === "string" && viemIsAddress(value.trim(), { strict: false })
+  );
 }
 
 export function isTxHash(value: unknown): value is Hex {
-  return /^0x[a-fA-F0-9]{64}$/.test(String(value || "").trim());
+  return typeof value === "string" && isHash(value.trim());
 }
 
 // Case-insensitive address equality; false when either side is missing.
