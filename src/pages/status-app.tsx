@@ -70,6 +70,7 @@ import {
   parseMoney,
   relDays,
   shortAddr,
+  splitsExplorerAccount,
   usdcBaseUnitsToDollars,
 } from "#lib/format.ts";
 import {
@@ -912,16 +913,22 @@ function CapTable({
           </tr>
           <tr className="footnote">
             <td colSpan={3}>
-              Verify this cap table by viewing the token contract at{" "}
               {record.pactToken ? (
-                <AddressLink
-                  className="value-link"
-                  address={record.pactToken}
-                />
+                <>
+                  Verify this cap table on the{" "}
+                  <AddressLink
+                    className="value-link"
+                    href={splitsExplorerAccount(record.pactToken)}
+                  >
+                    Splits explorer
+                  </AddressLink>
+                  .
+                </>
               ) : (
-                <span className="t-muted">Not deployed</span>
+                <>
+                  Token contract <span className="t-muted">not deployed</span>.
+                </>
               )}
-              .
             </td>
           </tr>
         </tfoot>
