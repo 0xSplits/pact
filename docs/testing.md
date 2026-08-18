@@ -38,7 +38,7 @@ invariants, `runs = 1000`, `depth = 100`, `fail_on_revert`).
 ## Unit Tests
 
 ```sh
-npm test          # node --test src/**/*.test.ts
+npm test          # vitest run over src/**/*.test.ts
 npm run typecheck # tsc --noEmit
 ```
 
