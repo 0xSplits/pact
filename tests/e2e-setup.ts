@@ -110,9 +110,9 @@ export default async function globalSetup(_config: FullConfig) {
   await Promise.race([ready, anvilExit]);
 
   const accounts: Address[] = await rpc("eth_accounts");
-  const [deployer, buyerA, buyerB] = accounts;
-  if (!deployer || !buyerA || !buyerB)
-    throw new Error("anvil returned fewer than 3 accounts");
+  const [deployer, buyerA, buyerB, , buyerC] = accounts;
+  if (!deployer || !buyerA || !buyerB || !buyerC)
+    throw new Error("anvil returned fewer than 5 accounts");
 
   const usdc = artifact("Mocks.sol/MockUSDC.json");
   await rpc("anvil_setCode", [BASE_USDC, usdc.deployedBytecode.object]);
@@ -158,7 +158,7 @@ export default async function globalSetup(_config: FullConfig) {
       outputs: [],
     },
   ] as const;
-  for (const buyer of [buyerA, buyerB]) {
+  for (const buyer of [buyerA, buyerB, buyerC]) {
     await sendTx({
       from: deployer,
       to: BASE_USDC,

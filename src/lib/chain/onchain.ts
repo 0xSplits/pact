@@ -90,8 +90,11 @@ export const getLogs: GetLogsFn = async ({
     : client().getLogs({ ...range, events });
 };
 
+// cacheTime 0: scans run right after a transaction lands (query
+// invalidation), and viem's cached block number can predate that block —
+// a scan would then stop one block short of the event it was rerun for.
 export async function getLatestBlockNumber(): Promise<number> {
-  return Number(await client().getBlockNumber());
+  return Number(await client().getBlockNumber({ cacheTime: 0 }));
 }
 
 // The receipt slice the app consumes — satisfied by both viem transaction
@@ -142,6 +145,67 @@ export interface Purchase {
   blockNumber: number | null;
   txHash: string | null;
   logIndex: number;
+}
+
+// A terminal-lifecycle log on one offering — how the raise ended, refund
+// progress, and escrow sweeps — decoded from the events the final-state view
+// scans. USDC amounts are decimal strings for the same JSON-cache reason as
+// above.
+export type LifecycleEvent = {
+  txHash: string | null;
+  blockNumber: number | null;
+  logIndex: number;
+} & (
+  | { type: "failed" }
+  | { type: "closed"; usdcAmount: string; unsoldUnits: number }
+  | { type: "refund-paid"; buyer: Address; amount: string }
+  | { type: "refund-skipped"; buyer: Address }
+  | { type: "swept"; units: number }
+);
+
+// Maps a viem-decoded lifecycle log (Failed/Closed/RefundPaid/RefundSkipped/
+// FailedUnitsSwept) to the JSON-safe shape above; null for other events.
+export function lifecycleEventFromLog(log: {
+  eventName: string;
+  args: Record<string, unknown>;
+  blockNumber?: bigint | number | string | null;
+  transactionHash?: Hex | null;
+  logIndex?: bigint | number | string | null;
+}): LifecycleEvent | null {
+  const base = {
+    txHash: log.transactionHash || null,
+    blockNumber: log.blockNumber != null ? Number(log.blockNumber) : null,
+    logIndex: log.logIndex != null ? Number(log.logIndex) : 0,
+  };
+  const { args } = log;
+  switch (log.eventName) {
+    case "Failed":
+      return { ...base, type: "failed" };
+    case "Closed":
+      return {
+        ...base,
+        type: "closed",
+        usdcAmount: BigInt(args.usdcAmount as bigint).toString(),
+        unsoldUnits: Number(args.unsoldUnits),
+      };
+    case "RefundPaid":
+      return {
+        ...base,
+        type: "refund-paid",
+        buyer: getAddress(args.buyer as Address),
+        amount: BigInt(args.amount as bigint).toString(),
+      };
+    case "RefundSkipped":
+      return {
+        ...base,
+        type: "refund-skipped",
+        buyer: getAddress(args.buyer as Address),
+      };
+    case "FailedUnitsSwept":
+      return { ...base, type: "swept", units: Number(args.units) };
+    default:
+      return null;
+  }
 }
 
 // Full offering snapshot from one batched read. This shape is the canonical

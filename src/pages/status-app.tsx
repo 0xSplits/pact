@@ -6,6 +6,7 @@ import type { ReactNode } from "react";
 import type { Address, Hex } from "viem";
 import { useAccount } from "wagmi";
 
+import { CurveChart } from "#components/curve-chart.tsx";
 import {
   AddressLink,
   Button,
@@ -21,14 +22,28 @@ import { useDebugMenu } from "#hooks/use-debug-menu.ts";
 import { useOfferingState } from "#hooks/use-offering-state.ts";
 import type { OfferingSnapshot } from "#hooks/use-offering-state.ts";
 import { toUsdcBaseUnits } from "#lib/chain/chain.ts";
-import { costForUnits, valuationForUnitIndex } from "#lib/chain/curve.ts";
+import {
+  costForUnits,
+  fractionAtRaise,
+  valuationForUnitIndex,
+} from "#lib/chain/curve.ts";
 import { TOTAL_LIQUID_SPLIT_UNITS } from "#lib/chain/liquid-split.ts";
-import { offeringStatus } from "#lib/chain/offering-status.ts";
-import type { StatusInfo } from "#lib/chain/offering-status.ts";
+import {
+  offeredUnitsTotal,
+  offeringPhase,
+  offeringStatus,
+  refundStatuses,
+} from "#lib/chain/offering-status.ts";
+import type {
+  OfferingPhase,
+  RefundStatus,
+  StatusInfo,
+} from "#lib/chain/offering-status.ts";
 import {
   findOffering,
   getPactTokenHolders,
   listBought,
+  listLifecycle,
   listOfferings,
 } from "#lib/chain/offerings.ts";
 import {
@@ -39,12 +54,14 @@ import {
   markOfferingFailed,
   offeringStateCurve,
   refundAllOffering,
+  refundOffering,
   setPublicUnits,
   signVoucher,
   sweepFailedUnits,
   withdrawOffering,
 } from "#lib/chain/onchain.ts";
 import type {
+  LifecycleEvent,
   OfferingRecord,
   OfferingState,
   Purchase,
@@ -153,6 +170,18 @@ function debugOfferingSnapshot(
       state: 0,
     };
   }
+  if (debugState === "lapsed") {
+    return {
+      ...base,
+      unitsSold: quarterUnits,
+      remainingUnits: offerTokens - quarterUnits,
+      raised: raiseMin / 2n,
+      withdrawn: 0n,
+      closeDate: Math.floor((Date.now() - MS_PER_DAY) / 1000),
+      minMet: false,
+      state: 0,
+    };
+  }
   if (debugState === "failed") {
     return {
       ...base,
@@ -256,9 +285,9 @@ function offeringActionsFor({
   if (onchainOffering.state === 0 && !onchainOffering.minMet && pastClose) {
     actions.push({
       action: "mark-failed",
-      label: "Mark failed",
+      label: "Finalize offering",
       cta: "Mark failed",
-      note: "Enable refunds",
+      note: "Record the missed minimum and unlock refunds",
     });
   }
   if (onchainOffering.state === 1) {
@@ -816,6 +845,113 @@ function AllocationsTable({
   );
 }
 
+// The purchases-only historical record shown once an offering ends: no
+// allocation controls, plus per-buyer refund state after failure. The refund
+// button appears on the connected buyer's own rows — one refund() claims
+// their full deposit.
+function PurchasesTable({
+  funded,
+  phase,
+  refundMap,
+  wallet,
+  busyAction,
+  onClaimRefund,
+}: {
+  funded: FundedRow[];
+  phase: OfferingPhase;
+  refundMap: Map<string, RefundStatus>;
+  wallet: string | null;
+  busyAction: string | null;
+  onClaimRefund: () => void;
+}) {
+  if (!funded.length) return null;
+  return (
+    <>
+      <SectionTitle className="mt-10">Purchases</SectionTitle>
+      <table className="exhibit alloc-table">
+        <thead>
+          <tr>
+            <th>Buyer</th>
+            <th className="num">Amount</th>
+            <th>Status</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {funded.map((row) => {
+            const cost = usdcBaseUnitsToDollars(row.cost);
+            const refund =
+              phase === "failed"
+                ? refundMap.get(row.buyer.toLowerCase())
+                : undefined;
+            const canClaim =
+              refund &&
+              refund !== "refunded" &&
+              wallet &&
+              isSameAddress(wallet, row.buyer);
+            return (
+              <tr key={row.key}>
+                <td>
+                  {row.name}
+                  {row.isPublic ? (
+                    <span className="t-muted"> · public</span>
+                  ) : null}
+                </td>
+                <td className="num">{fmtUsd(cost)}</td>
+                <td>
+                  <span className="tokencell">
+                    {fmtTokens(row.units)} tokens
+                    <span className="tip2">
+                      {row.units > 0 ? fmtUsd(cost / row.units, "cents") : "—"}{" "}
+                      / token
+                    </span>
+                  </span>
+                  {refund === "refunded" ? (
+                    <>
+                      {" "}
+                      <span className="badge allocated">Refunded</span>
+                    </>
+                  ) : refund === "skipped" ? (
+                    <>
+                      {" "}
+                      <span className="badge revoked">Refund skipped</span>
+                    </>
+                  ) : refund === "pending" ? (
+                    <span className="t-muted"> · refund pending</span>
+                  ) : null}
+                </td>
+                <td className="num whitespace-nowrap">
+                  <span className="alloc-actions">
+                    {canClaim ? (
+                      <TextButton
+                        data-act="refund"
+                        disabled={busyAction === "refund"}
+                        onClick={onClaimRefund}
+                      >
+                        {busyAction === "refund"
+                          ? "Refunding…"
+                          : "Claim refund"}
+                      </TextButton>
+                    ) : null}
+                    {row.txHash ? (
+                      <AddressLink
+                        className="act muted"
+                        href={basescanTx(row.txHash)}
+                      >
+                        View txn
+                      </AddressLink>
+                    ) : null}
+                  </span>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </>
+  );
+}
+
 interface CapTableState {
   status: "loading" | "loaded" | "error";
   holders?: Array<{ address: Address; balance: number }> | undefined;
@@ -827,11 +963,13 @@ function CapTable({
   capTable,
   buyerNames,
   canManage,
+  title = "Cap table",
 }: {
   record: OfferingRecord;
   capTable: CapTableState | null;
   buyerNames: Map<string, string>;
   canManage: boolean;
+  title?: string;
 }) {
   const holders = (
     capTable && capTable.holders && capTable.holders.length
@@ -855,7 +993,7 @@ function CapTable({
 
   return (
     <>
-      <SectionTitle className="mt-10">Cap table</SectionTitle>
+      <SectionTitle className="mt-10">{title}</SectionTitle>
       {capTable && capTable.status === "error" ? (
         <p className="text-sm t-muted mb-2">{capTable.error}</p>
       ) : null}
@@ -971,6 +1109,7 @@ function deriveStatusView({
   wallet,
   bought,
   ledger,
+  lifecycle,
 }: {
   record: OfferingRecord;
   offering: OfferingSnapshot;
@@ -978,6 +1117,7 @@ function deriveStatusView({
   wallet: string | null;
   bought: Purchase[];
   ledger: AllocationLedgerRow[];
+  lifecycle: LifecycleEvent[];
 }) {
   const loadedOffering =
     offering && offering.status === "loaded" ? offering : null;
@@ -1072,12 +1212,26 @@ function deriveStatusView({
     TOTAL_LIQUID_SPLIT_UNITS,
   );
 
+  const phase: OfferingPhase = onchainOffering
+    ? offeringPhase({
+        state: onchainOffering.state,
+        minMet: onchainOffering.minMet,
+        closeDate: onchainOffering.closeDate || record.closeDate,
+      })
+    : "live";
+  const ended = phase !== "live";
+
   const rows = allocationRows(bought, ledger);
+  const refundMap = refundStatuses(bought, lifecycle);
   const refundBuyers = Array.from(
     new Set(bought.map((p) => p.buyer.toLowerCase())),
-  );
+  ).filter((buyer) => refundMap.get(buyer) !== "refunded");
+  // After failure `raised` is exactly the un-refunded deposits (each refund
+  // decrements it), so it is the authoritative remaining-refund total.
   const refundTotal = usdcBaseUnitsToDollars(
-    bought.reduce((sum, p) => sum + BigInt(p.cost), 0n),
+    onchainOffering && onchainOffering.state === 1
+      ? onchainOffering.raised
+      : bought.reduce((sum, p) => sum + BigInt(p.cost), 0n),
   );
   // The ledger rows come from localStorage, so coerce before summing.
   const allocatedTotal = rows.open.reduce(
@@ -1148,7 +1302,83 @@ function deriveStatusView({
   const publicOwner = onchainOffering && onchainOffering.owner;
   const showOwner = publicOwner && !isSameAddress(publicOwner, publicTreasury);
 
+  // Final-state derivations: the deal terms as agreed at creation and the
+  // outcome, all reconstructed from chain state + lifecycle events.
+  const offeredUnits = onchainOffering
+    ? offeredUnitsTotal(onchainOffering, bought, lifecycle)
+    : 0;
+  const valCeiling = valuationForUnitIndex(
+    curve,
+    offeredUnits,
+    TOTAL_LIQUID_SPLIT_UNITS,
+  );
+  const raiseMaxUsd = usdcBaseUnitsToDollars(
+    costForUnits(curve, 0, offeredUnits),
+  );
+  const dilutionPct = (offeredUnits / TOTAL_LIQUID_SPLIT_UNITS) * 100;
+  const closedEvent = lifecycle.find(
+    (event): event is Extract<LifecycleEvent, { type: "closed" }> =>
+      event.type === "closed",
+  );
+  const buyerCount = new Set(bought.map((p) => p.buyer.toLowerCase())).size;
+  const refundedCount = Array.from(refundMap.values()).filter(
+    (status) => status === "refunded",
+  ).length;
+  const refundedUsd = usdcBaseUnitsToDollars(
+    lifecycle.reduce(
+      (sum, event) =>
+        event.type === "refund-paid" ? sum + BigInt(event.amount) : sum,
+      0n,
+    ),
+  );
+  const fullF = offeredUnits / TOTAL_LIQUID_SPLIT_UNITS;
+  const finalCurveState =
+    phase === "closed" && offeredUnits > 0
+      ? {
+          vMin: valStart,
+          vMax: valCeiling,
+          cap: (valStart + valCeiling) / 2,
+          F: fullF,
+          totalTokens: TOTAL_LIQUID_SPLIT_UNITS,
+          fMin: fractionAtRaise(
+            {
+              vMin: valStart,
+              vMax: valCeiling,
+              cap: (valStart + valCeiling) / 2,
+              F: fullF,
+              rmax: raiseMaxUsd,
+            },
+            minUsd,
+          ),
+          fillF: purchased / TOTAL_LIQUID_SPLIT_UNITS,
+          fillLabel: "Final",
+          defaultF: purchased / TOTAL_LIQUID_SPLIT_UNITS,
+          showThreshold: true,
+        }
+      : null;
+  // markFailed is permissionless onchain, so limbo shows it to any connected
+  // wallet — buyers are never hostage to an absent issuer.
+  const publicActionItems =
+    phase === "limbo" && !canManage
+      ? actionItems.filter((action) => action.action === "mark-failed")
+      : [];
+
   return {
+    phase,
+    ended,
+    offeredUnits,
+    valCeiling,
+    raiseMaxUsd,
+    dilutionPct,
+    closedEvent,
+    buyerCount,
+    refundedCount,
+    refundedUsd,
+    refundMap,
+    finalCurveState,
+    publicActionItems,
+    purchased,
+    refundTotal,
     onchainOffering,
     offeringLoading,
     canManage,
@@ -1191,6 +1421,7 @@ export function StatusApp() {
     { value: "funding", label: "Open — below minimum" },
     { value: "secured", label: "Open — minimum reached" },
     { value: "withdrawn", label: "Withdrawn" },
+    { value: "lapsed", label: "Ended — awaiting finalization" },
     { value: "failed", label: "Failed" },
     { value: "closed", label: "Closed" },
   ]);
@@ -1253,11 +1484,36 @@ export function StatusApp() {
           : undefined,
       };
 
+  // Lifecycle events only matter once the raise has ended, so the scan waits
+  // for a snapshot that says so instead of running on every status view.
+  const liveSnapshot =
+    offering && offering.status === "loaded" ? offering : null;
+  const lifecycleQuery = useQuery({
+    queryKey: ["lifecycle", record?.offering ?? null],
+    enabled:
+      !!record &&
+      !!liveSnapshot &&
+      offeringPhase(liveSnapshot) !== "live" &&
+      !debugActive(debugState),
+    queryFn: () =>
+      listLifecycle({
+        offering: record!.offering,
+        deployBlock: record!.blockNumber || undefined,
+      }),
+    // Delta scans are cheap, and polling keeps refund progress moving for
+    // viewers who aren't the one sending the transactions.
+    refetchInterval: 15_000,
+  });
+  const lifecycle = lifecycleQuery.data ?? [];
+
   const refreshRecordDetails = useCallback(
     (current: OfferingRecord) => {
       queryClient.invalidateQueries({ queryKey: ["bought", current.offering] });
       queryClient.invalidateQueries({
         queryKey: ["cap-table", current.offering],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["lifecycle", current.offering],
       });
     },
     [queryClient],
@@ -1265,6 +1521,19 @@ export function StatusApp() {
 
   useEffect(() => {
     if (record) setLedger(listAllocationLedger(record.offering));
+  }, [record]);
+
+  // Crossing the close date has no chain event to react to — a raise that
+  // lapses below minimum flips to the ended view purely on the clock — so
+  // schedule one re-render at the boundary. setTimeout can't span more than
+  // ~24 days; beyond that a reload is inevitable anyway.
+  const [, setCloseTick] = useState(0);
+  useEffect(() => {
+    if (!record) return;
+    const delay = record.closeDate * 1000 + 1000 - Date.now();
+    if (delay <= 0 || delay > 2 ** 31 - 1) return;
+    const id = setTimeout(() => setCloseTick((tick) => tick + 1), delay);
+    return () => clearTimeout(id);
   }, [record]);
 
   // The cap table and purchase list shift whenever units sell.
@@ -1325,7 +1594,10 @@ export function StatusApp() {
         await markOfferingFailed(base);
         showToast("Offering marked failed");
       } else if (action === "refund-all") {
-        const buyers = Array.from(new Set(bought.map((p) => p.buyer)));
+        const statuses = refundStatuses(bought, lifecycle);
+        const buyers = Array.from(new Set(bought.map((p) => p.buyer))).filter(
+          (buyer) => statuses.get(buyer.toLowerCase()) !== "refunded",
+        );
         await refundAllOffering({ ...base, buyers });
         showToast("Refunds sent");
       } else if (action === "sweep-failed") {
@@ -1350,6 +1622,26 @@ export function StatusApp() {
       refreshRecordDetails(record);
     } catch (err) {
       showToast(errMsg(err, "Transaction failed"));
+    }
+    setBusyAction(null);
+  }
+
+  // The connected buyer's own refund after failure — one refund() claims
+  // their full deposit and returns their units.
+  async function handleClaimRefund() {
+    if (debugActive(debugState)) {
+      showToast("Debug preview only");
+      return;
+    }
+    if (!record || !wallet) return;
+    setBusyAction("refund");
+    try {
+      await refundOffering({ offeringAddress: record.offering, from: wallet });
+      showToast("Refund claimed");
+      await refreshOffering();
+      refreshRecordDetails(record);
+    } catch (err) {
+      showToast(errMsg(err, "Could not complete refund."));
     }
     setBusyAction(null);
   }
@@ -1465,6 +1757,21 @@ export function StatusApp() {
     publicQuantityDisabledReason,
     publicOwner,
     showOwner,
+    phase,
+    ended,
+    offeredUnits,
+    valCeiling,
+    raiseMaxUsd,
+    dilutionPct,
+    closedEvent,
+    buyerCount,
+    refundedCount,
+    refundedUsd,
+    refundMap,
+    finalCurveState,
+    publicActionItems,
+    purchased,
+    refundTotal,
   } = deriveStatusView({
     record,
     offering,
@@ -1472,6 +1779,7 @@ export function StatusApp() {
     wallet,
     bought,
     ledger,
+    lifecycle,
   });
 
   return (
@@ -1484,7 +1792,7 @@ export function StatusApp() {
           <p className="text-sm t-muted mt-1">
             <AddressLink address={record.offering} />
           </p>
-          {!canManage ? (
+          {!canManage && !ended ? (
             <Notice className="no-print mt-4 text-sm t-muted">
               Connect with the treasury or creator wallet to manage the
               offering.
@@ -1493,61 +1801,194 @@ export function StatusApp() {
         </div>
       </div>
 
-      <SectionTitle className="mt-8">Offering details</SectionTitle>
-      <DefList>
-        <Field label="Target amount" loading={offeringLoading}>
-          <span>Up to {fmtUsd(progressMax)}</span>
-          <Sub>{fmtUsd(minUsd, "cents")} minimum</Sub>
-        </Field>
-        <Field label="Valuation range" loading={offeringLoading}>
-          <span>
-            {fmtUsd(valStart)}–{fmtUsd(valEnd)} post-money
-          </span>
-        </Field>
-        <Field label="Close date">
-          <span>{fmtDate(closeDate)}</span>
-          {relDays(closeDate, { pastDates: false }) ? (
-            <Sub>{relDays(closeDate, { pastDates: false })}</Sub>
+      {ended ? (
+        <>
+          <SectionTitle className="mt-8">Deal terms</SectionTitle>
+          <DefList>
+            <Field label="Raise target" loading={offeringLoading}>
+              <span>
+                {fmtUsd(minUsd)}–{fmtUsd(raiseMaxUsd)}
+              </span>
+              <Sub>minimum–maximum</Sub>
+            </Field>
+            <Field label="Valuation band" loading={offeringLoading}>
+              <span>
+                {fmtUsd(valStart)}–{fmtUsd(valCeiling)} post-money
+              </span>
+            </Field>
+            <Field label="Dilution" loading={offeringLoading}>
+              <span>{fmtPct(dilutionPct)}</span>
+              <Sub>{fmtTokens(offeredUnits)} tokens offered</Sub>
+            </Field>
+            <Field label="Close date">
+              <span>{fmtDate(closeDate)}</span>
+            </Field>
+            <Field label="Treasury" align="none">
+              {publicTreasury ? (
+                <AddressLink address={publicTreasury} />
+              ) : (
+                <span className="t-muted">Not set</span>
+              )}
+            </Field>
+            {publicOwner && showOwner ? (
+              <Field label="Owner" align="none">
+                <AddressLink address={publicOwner} />
+              </Field>
+            ) : null}
+          </DefList>
+
+          <SectionTitle className="mt-10">
+            {phase === "failed" ? "Refunds" : "Raise result"}
+          </SectionTitle>
+          <DefList>
+            <Field label="Status" align="center">
+              <StatusBadge status={statusInfo} />
+            </Field>
+            {phase === "closed" ? (
+              <>
+                <Field label="Raised" loading={offeringLoading}>
+                  <span>{fmtUsd(raisedTotal)}</span>
+                  <Sub>withdrawn to treasury</Sub>
+                </Field>
+                <Field label="Tokens sold" loading={offeringLoading}>
+                  <span>
+                    {fmtTokens(purchased)} tokens (
+                    {fmtPct((purchased / TOTAL_LIQUID_SPLIT_UNITS) * 100)})
+                  </span>
+                  {closedEvent ? (
+                    <Sub>
+                      {fmtTokens(closedEvent.unsoldUnits)} unsold returned to
+                      treasury
+                    </Sub>
+                  ) : null}
+                </Field>
+                <Field label="Final valuation" loading={offeringLoading}>
+                  <span>{fmtUsd(valNow)} post-money</span>
+                  <Sub>
+                    {fmtUsd(valNow / TOTAL_LIQUID_SPLIT_UNITS, "price")} / token
+                  </Sub>
+                </Field>
+                {closedEvent && closedEvent.txHash ? (
+                  <Field label="Close transaction" align="none">
+                    <AddressLink href={basescanTx(closedEvent.txHash)}>
+                      View transaction
+                    </AddressLink>
+                  </Field>
+                ) : null}
+              </>
+            ) : phase === "failed" ? (
+              <>
+                <Field label="Refunds remaining" loading={offeringLoading}>
+                  <span>{fmtUsd(refundTotal)}</span>
+                  <Sub>
+                    {refundedCount} of {buyerCount} buyers refunded
+                  </Sub>
+                </Field>
+                <Field label="Refunded" loading={offeringLoading}>
+                  <span>{fmtUsd(refundedUsd)}</span>
+                </Field>
+              </>
+            ) : (
+              <Field label="Raised" loading={offeringLoading}>
+                <span>{fmtUsd(raisedTotal)}</span>
+                <Sub>below the {fmtUsd(minUsd)} minimum</Sub>
+              </Field>
+            )}
+          </DefList>
+
+          {phase === "limbo" ? (
+            <Notice className="mt-4 text-sm t-muted">
+              The close date passed without reaching the minimum. Anyone can
+              finalize the offering onchain to unlock buyer refunds
+              {wallet ? "" : " — connect a wallet to finalize"}.
+            </Notice>
           ) : null}
-        </Field>
-        <Field label="Treasury" align="none">
-          {publicTreasury ? (
-            <AddressLink address={publicTreasury} />
-          ) : (
-            <span className="t-muted">Not set</span>
-          )}
-        </Field>
-        {publicOwner && showOwner ? (
-          <Field label="Owner" align="none">
-            <AddressLink address={publicOwner} />
-          </Field>
-        ) : null}
-      </DefList>
 
-      <SectionTitle className="mt-10">Offering state</SectionTitle>
-      <DefList>
-        <Field label="Status" align="center">
-          <StatusBadge status={statusInfo} />
-        </Field>
-        <Field label="Raised" loading={offeringLoading}>
-          <span>{fmtUsd(raisedTotal)}</span>
-          <Sub>{fmtUsd(claimable)} claimable</Sub>
-        </Field>
-        <Field label="Available" loading={offeringLoading}>
-          <span>
-            {fmtPct((remainingUnits / TOTAL_LIQUID_SPLIT_UNITS) * 100)}
-          </span>
-          <Sub>{fmtTokens(remainingUnits)} tokens</Sub>
-        </Field>
-        <Field label="Valuation" loading={offeringLoading}>
-          <span>{fmtUsd(valNow)} post-money</span>
-          <Sub>
-            {fmtUsd(valNow / TOTAL_LIQUID_SPLIT_UNITS, "price")} / token
-          </Sub>
-        </Field>
-      </DefList>
+          {finalCurveState ? (
+            <figure className="mt-8 mb-2 max-w-[620px] mx-auto">
+              <div className="fig-frame">
+                <CurveChart curveState={finalCurveState} />
+              </div>
+              <figcaption className="text-sm leading-5 t-muted mt-2 italic">
+                Where the raise settled on the bonding curve. Hover to explore
+                effective price.
+              </figcaption>
+            </figure>
+          ) : null}
 
-      {canManage ? (
+          <OfferingActions
+            actions={canManage ? actionItems : publicActionItems}
+            busyAction={busyAction}
+            onAction={handleOfferingAction}
+          />
+          <PurchasesTable
+            funded={rows.funded}
+            phase={phase}
+            refundMap={refundMap}
+            wallet={wallet}
+            busyAction={busyAction}
+            onClaimRefund={handleClaimRefund}
+          />
+        </>
+      ) : (
+        <>
+          <SectionTitle className="mt-8">Offering details</SectionTitle>
+          <DefList>
+            <Field label="Target amount" loading={offeringLoading}>
+              <span>Up to {fmtUsd(progressMax)}</span>
+              <Sub>{fmtUsd(minUsd, "cents")} minimum</Sub>
+            </Field>
+            <Field label="Valuation range" loading={offeringLoading}>
+              <span>
+                {fmtUsd(valStart)}–{fmtUsd(valEnd)} post-money
+              </span>
+            </Field>
+            <Field label="Close date">
+              <span>{fmtDate(closeDate)}</span>
+              {relDays(closeDate, { pastDates: false }) ? (
+                <Sub>{relDays(closeDate, { pastDates: false })}</Sub>
+              ) : null}
+            </Field>
+            <Field label="Treasury" align="none">
+              {publicTreasury ? (
+                <AddressLink address={publicTreasury} />
+              ) : (
+                <span className="t-muted">Not set</span>
+              )}
+            </Field>
+            {publicOwner && showOwner ? (
+              <Field label="Owner" align="none">
+                <AddressLink address={publicOwner} />
+              </Field>
+            ) : null}
+          </DefList>
+
+          <SectionTitle className="mt-10">Offering state</SectionTitle>
+          <DefList>
+            <Field label="Status" align="center">
+              <StatusBadge status={statusInfo} />
+            </Field>
+            <Field label="Raised" loading={offeringLoading}>
+              <span>{fmtUsd(raisedTotal)}</span>
+              <Sub>{fmtUsd(claimable)} claimable</Sub>
+            </Field>
+            <Field label="Available" loading={offeringLoading}>
+              <span>
+                {fmtPct((remainingUnits / TOTAL_LIQUID_SPLIT_UNITS) * 100)}
+              </span>
+              <Sub>{fmtTokens(remainingUnits)} tokens</Sub>
+            </Field>
+            <Field label="Valuation" loading={offeringLoading}>
+              <span>{fmtUsd(valNow)} post-money</span>
+              <Sub>
+                {fmtUsd(valNow / TOTAL_LIQUID_SPLIT_UNITS, "price")} / token
+              </Sub>
+            </Field>
+          </DefList>
+        </>
+      )}
+
+      {!ended && canManage ? (
         <>
           <ProgressTrack
             segs={segs}
@@ -1619,6 +2060,7 @@ export function StatusApp() {
         capTable={capTable}
         buyerNames={buyerNames}
         canManage={canManage}
+        title={phase === "closed" ? "Final cap table" : "Cap table"}
       />
     </>
   );

@@ -7,6 +7,7 @@ import {
   chunkRanges,
   findOffering,
   listBought,
+  listLifecycle,
   listOfferings,
   listPurchases,
   SCAN_CHUNK_BLOCKS,
@@ -238,6 +239,87 @@ test("listBought counts a log delivered twice only once", async () => {
   assert.equal(purchases.length, 1, "deduped by txHash:logIndex");
   assert.equal(purchases[0]?.units, 5);
   assert.equal(purchases[0]?.cost, "123");
+});
+
+test("listLifecycle decodes the terminal events and skips foreign logs", async () => {
+  const offering = ("0x" + "aa".repeat(20)) as `0x${string}`;
+  const tx = ("0x" + "cc".repeat(32)) as `0x${string}`;
+  const buyer = ("0x" + "dd".repeat(20)) as `0x${string}`;
+  const getLogs = fakeGetLogs({
+    100: [
+      {
+        eventName: "Failed",
+        args: {},
+        blockNumber: 101n,
+        transactionHash: tx,
+        logIndex: 0,
+      },
+      {
+        eventName: "RefundPaid",
+        args: { buyer, amount: 5_010_000n },
+        blockNumber: 102n,
+        transactionHash: tx,
+        logIndex: 1,
+      },
+      {
+        eventName: "RefundSkipped",
+        args: { buyer },
+        blockNumber: 102n,
+        transactionHash: tx,
+        logIndex: 2,
+      },
+      {
+        eventName: "FailedUnitsSwept",
+        args: { treasury: buyer, units: 184n },
+        blockNumber: 103n,
+        transactionHash: tx,
+        logIndex: 3,
+      },
+      {
+        eventName: "Closed",
+        args: { treasury: buyer, usdcAmount: 7n, unsoldUnits: 80n },
+        blockNumber: 104n,
+        transactionHash: tx,
+        logIndex: 4,
+      },
+      // A topic collision from another contract's event: decoded shape the
+      // mapper doesn't recognize is dropped, never guessed at.
+      {
+        eventName: "Transfer",
+        args: {},
+        blockNumber: 104n,
+        transactionHash: tx,
+        logIndex: 5,
+      },
+    ],
+  });
+  const events = await listLifecycle({
+    offering,
+    deployBlock: 100,
+    getLogs,
+    storage: fakeStorage(),
+    latestBlock: 150,
+  });
+  assert.deepEqual(
+    events.map((event) => event.type),
+    ["failed", "refund-paid", "refund-skipped", "swept", "closed"],
+  );
+  assert.deepEqual(events[1], {
+    type: "refund-paid",
+    buyer: "0xDDdDddDdDdddDDddDDddDDDDdDdDDdDDdDDDDDDd",
+    amount: "5010000",
+    txHash: tx,
+    blockNumber: 102,
+    logIndex: 1,
+  });
+  assert.deepEqual(events[4], {
+    type: "closed",
+    usdcAmount: "7",
+    unsoldUnits: 80,
+    txHash: tx,
+    blockNumber: 104,
+    logIndex: 4,
+  });
 });
 
 const offeringRecord = (offering: `0x${string}`): OfferingRecord => ({

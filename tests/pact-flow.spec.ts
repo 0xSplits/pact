@@ -499,6 +499,24 @@ test("issuer withdraws proceeds and closes the round once the minimum is met", a
   await expect(
     page.locator('button[data-offering-action="close"]'),
   ).toHaveCount(0, { timeout: 15_000 });
+
+  // The page now renders the final-state view: the deal terms as agreed,
+  // the raise outcome (100 of 200 offered units sold, rest returned), the
+  // settle chart, and the final cap table — with the live-raise controls gone.
+  await expect(page.getByRole("heading", { name: "Deal terms" })).toBeVisible({
+    timeout: 15_000,
+  });
+  await expect(
+    page.getByRole("heading", { name: "Raise result" }),
+  ).toBeVisible();
+  await expect(page.getByText("100 unsold returned to treasury")).toBeVisible({
+    timeout: 15_000,
+  });
+  await expect(page.locator("#chart")).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Final cap table" }),
+  ).toBeVisible();
+  await expect(page.locator('button[data-act="open-add"]')).toHaveCount(0);
   await context.close();
 });
 
@@ -507,11 +525,12 @@ test("failed round refunds buyers and sweeps units back to treasury", async ({
 }) => {
   const issuer = e2eAccount(0),
     buyerA = e2eAccount(1),
-    buyerB = e2eAccount(2);
+    buyerB = e2eAccount(2),
+    buyerC = e2eAccount(4);
   const offering = await seedOffering({
     projectName: "Failed Round",
     publicUnits: 100,
-    closeInSeconds: 25,
+    closeInSeconds: 15,
   });
   const buy = async (buyer: Address, units: bigint, cap: bigint) => {
     await sendTx({
@@ -533,48 +552,82 @@ test("failed round refunds buyers and sweeps units back to treasury", async ({
       }),
     });
   };
-  // $5.01 + $16.20 raised, far below the $100 minimum. Chain time then warps
-  // past the close date so markFailed is legal; page rendering keys off
-  // contract state, not the browser clock, so no wall-clock wait is needed.
+  // $5.01 + $16.20 + $3.07 raised, far below the $100 minimum. Chain time
+  // then warps past the close date; page rendering keys off contract state,
+  // not the browser clock, so no wall-clock wait is needed.
   await buy(buyerA, 5n, 6_000_000n);
   await buy(buyerB, 16n, 17_000_000n);
+  await buy(buyerC, 3n, 4_000_000n);
   await rpc("evm_increaseTime", [300]);
   await rpc("evm_mine");
-  await sendTx({
-    from: issuer,
-    to: offering,
-    data: encodeFunctionData({
-      abi: OFFERING_ABI,
-      functionName: "markFailed",
-      args: [],
-    }),
-  });
 
-  // Buyer A self-serves a refund from the buy page.
+  // The lapsed raise reads as failed pending finalization, and markFailed is
+  // permissionless — buyer A finalizes it from the status page. Limbo keys
+  // off the browser clock, so this waits for the wall clock to pass the
+  // 15-second close date and the next state poll to re-render.
   const buyerContext = await browser.newContext();
   await installWallet(buyerContext, buyerA);
   const buyerPage = await buyerContext.newPage();
-  await buyerPage.goto("/buy?offering=" + offering);
+  await buyerPage.goto("/status?offering=" + offering);
   await connectWallet(buyerPage, buyerA);
+  await expect(buyerPage.getByText("Anyone can finalize")).toBeVisible({
+    timeout: 45_000,
+  });
+  const finalizeBtn = buyerPage.locator(
+    'button[data-offering-action="mark-failed"]',
+  );
+  await expect(finalizeBtn).toBeEnabled({ timeout: 15_000 });
+  await finalizeBtn.click();
+  await expect(buyerPage.getByText("Offering marked failed")).toBeVisible({
+    timeout: 15_000,
+  });
+
+  // Buyer A self-serves a refund from the buy page; the status page then
+  // shows their row refunded.
+  await buyerPage.goto("/buy?offering=" + offering);
   const refundBtn = buyerPage.locator('button[data-act="refund"]');
   await expect(refundBtn).toContainText("Claim $5.01 refund");
   await refundBtn.click();
   await expect(refundBtn).toHaveCount(0, { timeout: 15_000 });
+  await buyerContext.close();
 
-  // The issuer refunds the remaining buyer, then reclaims every unit.
+  // Buyer B claims inline from the status page's purchases table.
+  const buyerBContext = await browser.newContext();
+  await installWallet(buyerBContext, buyerB);
+  const buyerBPage = await buyerBContext.newPage();
+  await buyerBPage.goto("/status?offering=" + offering);
+  await connectWallet(buyerBPage, buyerB);
+  const claimBtn = buyerBPage.locator('button[data-act="refund"]');
+  await expect(claimBtn).toBeVisible({ timeout: 15_000 });
+  await claimBtn.click();
+  await expect(buyerBPage.getByText("Refund claimed")).toBeVisible({
+    timeout: 15_000,
+  });
+  await expect(claimBtn).toHaveCount(0, { timeout: 15_000 });
+  await buyerBContext.close();
+
+  // The issuer sees per-buyer refund state and an accurate remaining total
+  // (only buyer C is left), refunds them, then reclaims every unit.
   const issuerContext = await browser.newContext();
   await installWallet(issuerContext, issuer);
   const issuerPage = await issuerContext.newPage();
   await issuerPage.goto("/status?offering=" + offering);
   await connectWallet(issuerPage, issuer);
+  await expect(
+    issuerPage.locator(".badge", { hasText: "Refunded" }),
+  ).toHaveCount(2, { timeout: 15_000 });
   const refundAllBtn = issuerPage.locator(
     'button[data-offering-action="refund-all"]',
   );
   await expect(refundAllBtn).toBeEnabled({ timeout: 15_000 });
+  await expect(refundAllBtn).toContainText("Refund $3.07");
   await refundAllBtn.click();
   await expect(issuerPage.getByText("Refunds sent")).toBeVisible({
     timeout: 15_000,
   });
+  await expect(
+    issuerPage.locator(".badge", { hasText: "Refunded" }),
+  ).toHaveCount(3, { timeout: 15_000 });
   const sweepBtn = issuerPage.locator(
     'button[data-offering-action="sweep-failed"]',
   );
@@ -585,7 +638,6 @@ test("failed round refunds buyers and sweeps units back to treasury", async ({
   );
   // Every unit is back with the treasury, so there is nothing left to sweep.
   await expect(sweepBtn).toHaveCount(0, { timeout: 15_000 });
-  await buyerContext.close();
   await issuerContext.close();
 });
 
