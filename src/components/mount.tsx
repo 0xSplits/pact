@@ -10,9 +10,18 @@ import { WagmiProvider } from "wagmi";
 
 import { WalletButton } from "#components/wallet.tsx";
 import { wagmiConfig } from "#lib/chain/wagmi.ts";
-import { injectChrome } from "#lib/ui/chrome.ts";
 
 const queryClient = new QueryClient();
+
+// Shared page chrome: the fixed wallet control in the top-right corner,
+// injected here so the HTML shells stay minimal.
+function injectChrome() {
+  const controls = document.createElement("div");
+  controls.className = "top-controls";
+  controls.innerHTML =
+    '<span id="walletMount" style="display:contents"></span>';
+  document.body.prepend(controls);
+}
 
 // Without a boundary a render throw unmounts the whole tree, leaving a blank
 // page with the failure visible only in the console.

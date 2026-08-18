@@ -12,11 +12,8 @@ import { loadWalletRecords } from "#lib/chain/offerings.ts";
 import { shortAddr } from "#lib/format.ts";
 import {
   buyPath,
-  createPath,
-  currentBuyPage,
-  currentCreatePage,
+  CREATE_PATH,
   currentOfferingAddress,
-  currentStatusPage,
   statusPath,
 } from "#lib/routes.ts";
 import { showToast } from "#lib/ui/toast.ts";
@@ -82,8 +79,8 @@ function WalletRecordGroups() {
   const purchases = data ? data.purchases : null;
 
   const activeOffering = String(currentOfferingAddress() || "").toLowerCase();
-  const viewingIssuance = currentStatusPage();
-  const viewingPurchase = currentBuyPage();
+  const viewingIssuance = location.pathname === "/status";
+  const viewingPurchase = location.pathname === "/buy";
   return (
     <>
       <div className="wallet-menu-group">
@@ -104,8 +101,8 @@ function WalletRecordGroups() {
               />
             </a>
           ))}
-        {!currentCreatePage() && (
-          <a href={createPath()} className="wallet-menu-action">
+        {location.pathname !== CREATE_PATH && (
+          <a href={CREATE_PATH} className="wallet-menu-action">
             + New issuance
           </a>
         )}

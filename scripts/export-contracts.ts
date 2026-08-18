@@ -18,12 +18,8 @@ function readArtifact(contractPath: string, name: string) {
 
 // The pinned deployment (address + scan lower bound) survives regeneration.
 function existingConstant(name: string, fallback: string): string {
-  // Fall back to the pre-TypeScript filename so the pin survives the .js → .ts move.
-  const source = [outputPath, outputPath.replace(/\.ts$/, ".js")].find((p) =>
-    fs.existsSync(p),
-  );
-  if (!source) return fallback;
-  const text = fs.readFileSync(source, "utf8");
+  if (!fs.existsSync(outputPath)) return fallback;
+  const text = fs.readFileSync(outputPath, "utf8");
   const match = text.match(new RegExp(name + " = '?([^';\\n]*)'?"));
   return match?.[1] ?? fallback;
 }

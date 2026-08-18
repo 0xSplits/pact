@@ -2,14 +2,14 @@ import "#pages/home.css";
 
 import { useQuery } from "@tanstack/react-query";
 import type { ReactNode } from "react";
+import { useAccount } from "wagmi";
 
 import { StatusBadge } from "#components/ui.tsx";
-import { useWallet } from "#hooks/use-wallet.ts";
 import { offeringStatus } from "#lib/chain/offering-status.ts";
 import { loadWalletRecords } from "#lib/chain/offerings.ts";
 import type { OfferingLifecycle, WalletRecords } from "#lib/chain/offerings.ts";
 import { fmtTokens, fmtUsd, usdcBaseUnitsToDollars } from "#lib/format.ts";
-import { buyPath, createPath, statusPath } from "#lib/routes.ts";
+import { buyPath, CREATE_PATH, statusPath } from "#lib/routes.ts";
 
 const PAPER = "paper px-10 py-12 sm:px-14 sm:py-16";
 
@@ -71,7 +71,7 @@ function Explainer() {
         <div className="flex justify-end">
           <a
             className="cta inline-flex items-center justify-center px-6 py-3 text-base font-semibold"
-            href={createPath()}
+            href={CREATE_PATH}
           >
             Create PACT
           </a>
@@ -128,7 +128,7 @@ function Dashboard({ records }: { records: WalletRecords }) {
         </div>
         <a
           className="cta inline-flex items-center justify-center px-4 py-2 text-sm font-semibold whitespace-nowrap"
-          href={createPath()}
+          href={CREATE_PATH}
         >
           Create PACT
         </a>
@@ -213,7 +213,7 @@ function Dashboard({ records }: { records: WalletRecords }) {
 }
 
 export function HomeApp() {
-  const wallet = useWallet();
+  const wallet = useAccount().address ?? null;
   const { data: records, isPending } = useQuery({
     queryKey: ["home-records", wallet ? wallet.toLowerCase() : null],
     enabled: !!wallet,
