@@ -704,20 +704,16 @@ function AllocationsTable({
           })}
           <tr>
             <td>Public allocation</td>
-            <td className="num">&mdash;</td>
+            <td className="num">
+              {offeringOpen && publicUnitsAvailable > 0
+                ? `~${fmtUsd(publicOpenUsd)}`
+                : "—"}
+            </td>
             <td>
               {offeringOpen ? (
-                <>
-                  <span className="badge allocated">
-                    {fmtTokens(publicUnitsAvailable)} units open
-                  </span>
-                  {publicUnitsAvailable > 0 ? (
-                    <span className="t-muted">
-                      {" "}
-                      ≈ {fmtUsd(publicOpenUsd)} at current prices
-                    </span>
-                  ) : null}
-                </>
+                <span className="badge allocated">
+                  {fmtTokens(publicUnitsAvailable)} units open
+                </span>
               ) : (
                 <span className="badge revoked">Expired</span>
               )}
