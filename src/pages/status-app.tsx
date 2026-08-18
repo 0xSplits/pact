@@ -915,14 +915,12 @@ function CapTable({
             <td colSpan={3}>
               {record.pactToken ? (
                 <>
-                  Verify this cap table on the{" "}
+                  Splits explorer:{" "}
                   <AddressLink
                     className="value-link"
+                    address={record.pactToken}
                     href={splitsExplorerAccount(record.pactToken)}
-                  >
-                    Splits explorer
-                  </AddressLink>
-                  .
+                  />
                 </>
               ) : (
                 <>
