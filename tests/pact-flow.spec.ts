@@ -211,7 +211,7 @@ test("issuer creates a PACT through the UI and lands on its status page", async 
 
   // Live contract state: 20% dilution of 1000 units, none public by default.
   await expect(
-    page.getByRole("definition").filter({ hasText: "200 tokens" }),
+    page.getByRole("definition").filter({ hasText: "200 units" }),
   ).toBeVisible();
   const publicRow = page.locator("tr", { hasText: "Public allocation" });
   await expect(publicRow.getByText("0 units open")).toBeVisible();
@@ -571,6 +571,7 @@ test("failed round refunds buyers and sweeps units back to treasury", async ({
     'button[data-offering-action="refund-all"]',
   );
   await expect(refundAllBtn).toBeEnabled({ timeout: 15_000 });
+  issuerPage.once("dialog", (dialog) => dialog.accept());
   await refundAllBtn.click();
   await expect(issuerPage.getByText("Refunds sent")).toBeVisible({
     timeout: 15_000,
@@ -579,10 +580,11 @@ test("failed round refunds buyers and sweeps units back to treasury", async ({
     'button[data-offering-action="sweep-failed"]',
   );
   await expect(sweepBtn).toBeEnabled({ timeout: 15_000 });
+  issuerPage.once("dialog", (dialog) => dialog.accept());
   await sweepBtn.click();
-  await expect(issuerPage.getByText("Tokens returned to treasury")).toBeVisible(
-    { timeout: 15_000 },
-  );
+  await expect(issuerPage.getByText("Units returned to treasury")).toBeVisible({
+    timeout: 15_000,
+  });
   // Every unit is back with the treasury, so there is nothing left to sweep.
   await expect(sweepBtn).toHaveCount(0, { timeout: 15_000 });
   await buyerContext.close();

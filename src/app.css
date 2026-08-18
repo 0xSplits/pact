@@ -504,9 +504,6 @@ body {
 .status-dot.secured {
   background: var(--ok);
 }
-.status-dot.closed {
-  background: var(--ink);
-}
 .status-dot.failed {
   background: var(--danger);
 }
