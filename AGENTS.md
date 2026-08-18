@@ -27,6 +27,13 @@ Playwright spec change. If existing coverage is genuinely sufficient, explain
 why in the PR template's `E2E impact override` field. This is an auditable
 exception, not a way to skip running E2E.
 
+## Solidity changes
+
+Contract changes should also hold up under the stateful fuzz suite
+(`contracts/test/fizz/`, specs in `PROPERTIES.md`) — run
+`FOUNDRY_PROFILE=fuzz medusa fuzz --config medusa.json` from `contracts/`;
+see docs/testing.md.
+
 ## Publishing changes
 
 Stage only files that belong to the change. Inspect staged and unstaged diffs
