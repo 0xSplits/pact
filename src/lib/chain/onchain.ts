@@ -13,6 +13,7 @@ import type {
   Abi,
   AbiEvent,
   Address,
+  ContractFunctionArgs,
   ContractFunctionName,
   Hex,
   Log,
@@ -68,26 +69,41 @@ export type GetLogsFn = (args: {
   toBlock: number;
 }) => Promise<any[]>;
 
-export const getLogs: GetLogsFn = async ({ fromBlock, toBlock, ...filter }) =>
-  client().getLogs({
-    ...filter,
+// viem types `event`/`events` as mutually exclusive, so spreading a filter
+// holding both optionals breaks the union — branch instead.
+export const getLogs: GetLogsFn = async ({
+  fromBlock,
+  toBlock,
+  address,
+  event,
+  events,
+  args,
+}) => {
+  const range = {
+    address,
     fromBlock: BigInt(fromBlock),
     toBlock: BigInt(toBlock),
     strict: true,
-  } as any);
+  } as const;
+  return event
+    ? client().getLogs({ ...range, event, args })
+    : client().getLogs({ ...range, events });
+};
 
 export async function getLatestBlockNumber(): Promise<number> {
   return Number(await client().getBlockNumber());
 }
 
 // The receipt slice the app consumes — satisfied by both viem transaction
-// receipts and EIP-5792 batch receipts (whose logs still carry raw hex
-// quantities; Number() parses those too).
+// receipts and EIP-5792 batch receipts (WalletCallReceipt), whose logs carry
+// only address/data/topics. parseEventLogs declares `(Log | RpcLog)[]` input
+// but reads just those three fields to decode, so its call sites cast to
+// bridge the over-strict declaration.
 interface ReceiptLike {
   status: "success" | "reverted";
   blockNumber: bigint;
   transactionHash: Hex;
-  logs: unknown[];
+  logs: { address: Hex; data: Hex; topics: Hex[] }[];
 }
 
 function assertNotReverted(receipt: { status: string }, message: string): void {
@@ -276,7 +292,7 @@ export async function createOffering({
   const treasury = getAddress(pact.proceedsAddress);
   const closeDate =
     Math.floor(Date.now() / 1000) + Number(pact.minimum.deadlineDays) * 86400;
-  const inputs = buildOfferingFactoryInputs(pact, { getAddress });
+  const inputs = buildOfferingFactoryInputs(pact);
   const publicUnits = Math.min(
     Number(pact.publicUnits) || 0,
     inputs.offeringUnits,
@@ -484,14 +500,23 @@ export interface OfferingTxOptions {
   offeringAddress: Address;
 }
 
-async function sendOfferingFunction({
+async function sendOfferingFunction<
+  functionName extends ContractFunctionName<
+    typeof OFFERING_ABI,
+    "nonpayable" | "payable"
+  >,
+>({
   from,
   offeringAddress,
   functionName,
-  args = [],
+  args,
 }: OfferingTxOptions & {
-  functionName: string;
-  args?: readonly unknown[];
+  functionName: functionName;
+  args?: ContractFunctionArgs<
+    typeof OFFERING_ABI,
+    "nonpayable" | "payable",
+    functionName
+  >;
 }) {
   if (!from) throw new Error("Connected wallet is required.");
   const offering = getAddress(offeringAddress);
@@ -499,9 +524,12 @@ async function sendOfferingFunction({
   const txHash = await writeContract(wagmiConfig, {
     account: getAddress(from),
     address: offering,
+    // wagmi computes its parameter union over concrete function names and
+    // can't distribute it over a generic one, so the call widens here; the
+    // wrapper signature above still pins the name and args per function.
     abi: OFFERING_ABI as Abi,
-    functionName,
-    args,
+    functionName: functionName as string,
+    args: args as readonly unknown[] | undefined,
     chainId: BASE_CHAIN_ID,
   });
   const receipt = await waitForTransactionReceipt(wagmiConfig, {
@@ -640,8 +668,7 @@ async function payWithApproval({
       throwOnFailure: true,
     });
     // The batch lands as one transaction when atomic; the last receipt carries it.
-    const buyReceipt = receipts?.[receipts.length - 1] as
-      ReceiptLike | undefined;
+    const buyReceipt: ReceiptLike | undefined = receipts?.[receipts.length - 1];
     if (!buyReceipt) throw new Error("Wallet did not return a batch receipt.");
     return {
       approveTxHash: null,
