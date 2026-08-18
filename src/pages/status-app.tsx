@@ -9,6 +9,7 @@ import { useAccount } from "wagmi";
 import {
   AddressLink,
   Button,
+  CheckIcon,
   DefList,
   Field,
   Notice,
@@ -58,6 +59,7 @@ import {
 } from "#lib/chain/voucher.ts";
 import type { AllocationLedgerRow } from "#lib/chain/voucher.ts";
 import {
+  basescanAddress,
   basescanTx,
   errMsg,
   fmtDate,
@@ -70,6 +72,7 @@ import {
   parseMoney,
   relDays,
   shortAddr,
+  splitsExplorerAccount,
   usdcBaseUnitsToDollars,
 } from "#lib/format.ts";
 import {
@@ -181,34 +184,25 @@ function debugOfferingSnapshot(
 
 interface OfferingAction {
   action: string;
-  label: string;
   cta: string;
-  note: string;
   disabled?: boolean;
   tooltip?: string;
   secondary?: boolean;
   warning?: boolean;
-  icon?: "copy";
 }
 
 function offeringActionsFor({
   onchainOffering,
   connectedWallet,
   closeDate,
-  canManage,
   refundBuyers,
-  refundTotal,
   remainingUnits,
-  projectName,
 }: {
   onchainOffering: OfferingView | null;
   connectedWallet: string | null;
   closeDate: number;
-  canManage: boolean;
   refundBuyers: string[];
-  refundTotal: number;
   remainingUnits: number;
-  projectName: string;
 }): OfferingAction[] {
   if (!onchainOffering || !connectedWallet) return [];
   if (onchainOffering.state === 2) return [];
@@ -222,10 +216,6 @@ function offeringActionsFor({
       : 0n,
   );
   const pastClose = Date.now() > closeDate;
-  const canTopUp =
-    canManage &&
-    onchainOffering.state === 0 &&
-    (!pastClose || onchainOffering.minMet);
   const actions: OfferingAction[] = [];
   if (onchainOffering.state === 0 || onchainOffering.minMet) {
     const withdrawDisabled = !onchainOffering.minMet || claimable <= 0;
@@ -236,29 +226,15 @@ function offeringActionsFor({
         : "";
     actions.push({
       action: "withdraw",
-      label: "Withdraw proceeds",
       cta: `Withdraw ${fmtUsd(claimable)}`,
-      note: "Transfer raised funds to your treasury",
       disabled: withdrawDisabled,
       tooltip: withdrawTooltip,
-    });
-  }
-  if (canTopUp) {
-    actions.push({
-      action: "top-up",
-      label: "Increase offering",
-      cta: shortAddr(onchainOffering.offeringAddress || offeringAddress),
-      note: `Send additional ${projectName || "offering"} units to the offering contract`,
-      secondary: true,
-      icon: "copy",
     });
   }
   if (onchainOffering.state === 0 && !onchainOffering.minMet && pastClose) {
     actions.push({
       action: "mark-failed",
-      label: "Mark failed",
       cta: "Mark failed",
-      note: "Enable refunds",
     });
   }
   if (onchainOffering.state === 1) {
@@ -268,22 +244,16 @@ function offeringActionsFor({
       : refundBuyers.length === 0
         ? "No buyer wallets available to refund"
         : "";
-    const buyerLabel =
-      refundBuyers.length === 1 ? "1 buyer" : `${refundBuyers.length} buyers`;
     actions.push({
       action: "refund-all",
-      label: "Refund buyers",
-      cta: `Refund ${fmtUsd(refundTotal)}`,
-      note: `Return deposits to all ${buyerLabel}`,
+      cta: "Refund buyers",
       disabled: refundDisabled,
       tooltip: refundTooltip,
     });
     if (remainingUnits > 0) {
       actions.push({
         action: "sweep-failed",
-        label: "Reclaim tokens",
-        cta: `Sweep ${fmtTokens(remainingUnits)} tokens`,
-        note: "Return unsold and refunded tokens to treasury",
+        cta: "Claim unsold units",
         secondary: true,
       });
     }
@@ -297,9 +267,7 @@ function offeringActionsFor({
         : "";
     actions.push({
       action: "close",
-      label: "Close round",
       cta: "Close round",
-      note: "Withdraw funds and return unsold tokens to treasury",
       warning: true,
       disabled: closeDisabled,
       tooltip: closeTooltip,
@@ -308,55 +276,40 @@ function offeringActionsFor({
   return actions;
 }
 
-function disabledContractReadActions(
-  actions: OfferingAction[],
-  tooltip: string,
-  projectName: string,
-): OfferingAction[] {
-  const disabled: OfferingAction[] = actions.length
-    ? actions
-    : [
-        {
-          action: "withdraw",
-          label: "Withdraw proceeds",
-          cta: "Withdraw",
-          note: "Transfer raised funds to your treasury",
-        },
-        {
-          action: "top-up",
-          label: "Increase offering",
-          cta: shortAddr(offeringAddress),
-          note: `Send additional ${projectName || "offering"} units to the offering contract`,
-          secondary: true,
-          icon: "copy",
-        },
-        {
-          action: "close",
-          label: "Close round",
-          cta: "Close round",
-          note: "Withdraw funds and return unsold tokens to treasury",
-          warning: true,
-        },
-      ];
-  return disabled.map((action) => ({ ...action, disabled: true, tooltip }));
+function ActionButton({
+  action,
+  busy,
+  onClick,
+}: {
+  action: OfferingAction;
+  busy: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <span className="action-tip-wrap">
+      <Button
+        variant={
+          action.warning
+            ? "warning"
+            : action.secondary
+              ? "secondary"
+              : "primary"
+        }
+        className="px-4 text-sm font-semibold"
+        data-offering-action={action.action}
+        disabled={action.disabled || busy}
+        onClick={onClick}
+      >
+        {busy ? "Confirming…" : action.cta}
+      </Button>
+      {action.tooltip ? (
+        <span className="action-tip">{action.tooltip}</span>
+      ) : null}
+    </span>
+  );
 }
 
-const CopyIcon = () => (
-  <svg
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    aria-hidden="true"
-  >
-    <rect x="9" y="9" width="13" height="13" rx="2" />
-    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-  </svg>
-);
-
-function OfferingActions({
+function OfferingHeaderActions({
   actions,
   busyAction,
   onAction,
@@ -366,51 +319,21 @@ function OfferingActions({
   onAction: (action: string) => void;
 }) {
   if (!actions.length) return null;
+  // Primary CTAs render on the right; secondary/warning actions on the left.
+  const ordered = [
+    ...actions.filter((a) => a.warning || a.secondary),
+    ...actions.filter((a) => !a.warning && !a.secondary),
+  ];
   return (
-    <div className="offering-actions no-print">
-      <SectionTitle className="mt-10">Offering actions</SectionTitle>
-      <div className="offering-action-group">
-        {actions.map((action) => {
-          const busy = busyAction === action.action;
-          return (
-            <div className="offering-action-row" key={action.action}>
-              <div className="offering-action-copy">
-                <div className="offering-action-label">{action.label}</div>
-                <div className="t-muted text-sm">{action.note}</div>
-              </div>
-              <div className="offering-action-controls">
-                <span className="action-tip-wrap">
-                  <Button
-                    variant={
-                      action.warning
-                        ? "warning"
-                        : action.secondary
-                          ? "secondary"
-                          : "primary"
-                    }
-                    className="px-4 text-sm font-semibold"
-                    data-offering-action={action.action}
-                    disabled={action.disabled || busy}
-                    onClick={() => onAction(action.action)}
-                  >
-                    {busy ? (
-                      "Confirming…"
-                    ) : (
-                      <>
-                        {action.cta}
-                        {action.icon === "copy" ? <CopyIcon /> : null}
-                      </>
-                    )}
-                  </Button>
-                  {action.tooltip ? (
-                    <span className="action-tip">{action.tooltip}</span>
-                  ) : null}
-                </span>
-              </div>
-            </div>
-          );
-        })}
-      </div>
+    <div className="offering-header-actions no-print">
+      {ordered.map((action) => (
+        <ActionButton
+          key={action.action}
+          action={action}
+          busy={busyAction === action.action}
+          onClick={() => onAction(action.action)}
+        />
+      ))}
     </div>
   );
 }
@@ -661,22 +584,20 @@ function AllocationsTable({
             const cost = usdcBaseUnitsToDollars(row.cost);
             return (
               <tr key={row.key}>
-                <td>
-                  {row.name}
-                  {row.isPublic ? (
-                    <span className="t-muted"> · public</span>
-                  ) : null}
-                </td>
+                <td>{row.name}</td>
                 <td className="num">{fmtUsd(cost)}</td>
                 <td>
                   Purchased{" "}
                   <span className="tokencell">
-                    {fmtTokens(row.units)} tokens
+                    {fmtTokens(row.units)} units
                     <span className="tip2">
                       {row.units > 0 ? fmtUsd(cost / row.units, "cents") : "—"}{" "}
-                      / token
+                      / unit
                     </span>
                   </span>
+                  {row.isPublic ? (
+                    <span className="t-muted"> (public sale)</span>
+                  ) : null}
                 </td>
                 <td className="num whitespace-nowrap">
                   <span className="alloc-actions">
@@ -704,20 +625,16 @@ function AllocationsTable({
           })}
           <tr>
             <td>Public allocation</td>
-            <td className="num">&mdash;</td>
+            <td className="num">
+              {offeringOpen && publicUnitsAvailable > 0
+                ? `~${fmtUsd(publicOpenUsd)}`
+                : "—"}
+            </td>
             <td>
               {offeringOpen ? (
-                <>
-                  <span className="badge allocated">
-                    {fmtTokens(publicUnitsAvailable)} units open
-                  </span>
-                  {publicUnitsAvailable > 0 ? (
-                    <span className="t-muted">
-                      {" "}
-                      ≈ {fmtUsd(publicOpenUsd)} at current prices
-                    </span>
-                  ) : null}
-                </>
+                <span className="badge allocated">
+                  {fmtTokens(publicUnitsAvailable)} units open
+                </span>
               ) : (
                 <span className="badge revoked">Expired</span>
               )}
@@ -783,6 +700,7 @@ function AllocationsTable({
                     <TextButton
                       tone="danger"
                       data-act="revoke"
+                      disabled={!offeringOpen}
                       onClick={() => onRevoke(row)}
                     >
                       Revoke
@@ -790,6 +708,7 @@ function AllocationsTable({
                     <TextButton
                       tone="muted"
                       data-act="copy"
+                      disabled={!offeringOpen}
                       onClick={() => copyText(row.link)}
                     >
                       Copy link
@@ -863,7 +782,7 @@ function CapTable({
         <thead>
           <tr>
             <th>Holder</th>
-            <th className="num">Tokens</th>
+            <th className="num">Units</th>
             <th className="num">Ownership</th>
           </tr>
         </thead>
@@ -912,16 +831,20 @@ function CapTable({
           </tr>
           <tr className="footnote">
             <td colSpan={3}>
-              Verify this cap table by viewing the token contract at{" "}
               {record.pactToken ? (
-                <AddressLink
-                  className="value-link"
-                  address={record.pactToken}
-                />
+                <>
+                  Verify this cap table on the Splits explorer:{" "}
+                  <AddressLink
+                    className="value-link"
+                    address={record.pactToken}
+                    href={splitsExplorerAccount(record.pactToken)}
+                  />
+                </>
               ) : (
-                <span className="t-muted">Not deployed</span>
+                <>
+                  Token contract <span className="t-muted">not deployed</span>.
+                </>
               )}
-              .
             </td>
           </tr>
         </tfoot>
@@ -1076,9 +999,6 @@ function deriveStatusView({
   const refundBuyers = Array.from(
     new Set(bought.map((p) => p.buyer.toLowerCase())),
   );
-  const refundTotal = usdcBaseUnitsToDollars(
-    bought.reduce((sum, p) => sum + BigInt(p.cost), 0n),
-  );
   // The ledger rows come from localStorage, so coerce before summing.
   const allocatedTotal = rows.open.reduce(
     (sum, row) => sum + Number(row.amountUsd || 0),
@@ -1090,31 +1010,21 @@ function deriveStatusView({
       .map((p) => [p.buyer.toLowerCase(), p.buyerName]),
   );
 
-  const liveActionItems = onchainOffering
-    ? offeringActionsFor({
-        onchainOffering,
-        connectedWallet: wallet,
-        closeDate,
-        canManage,
-        refundBuyers,
-        refundTotal,
-        remainingUnits,
-        projectName: record.projectName,
-      })
-    : [];
-  const actionItems = offeringLoading
-    ? disabledContractReadActions(
-        liveActionItems,
-        "Reading contract state",
-        record.projectName,
-      )
-    : offeringReadFailed || debugReadFailed
-      ? disabledContractReadActions(
-          liveActionItems,
-          "Cannot read contract state",
-          record.projectName,
-        )
-      : liveActionItems;
+  const actionItems =
+    offeringLoading || offeringReadFailed || debugReadFailed || !onchainOffering
+      ? []
+      : offeringActionsFor({
+          onchainOffering,
+          connectedWallet: wallet,
+          closeDate,
+          refundBuyers,
+          remainingUnits,
+        });
+  const canTopUp =
+    !!onchainOffering &&
+    canManage &&
+    onchainOffering.state === 0 &&
+    (!pastClose || onchainOffering.minMet);
 
   const segs =
     !offeringLoading && onchainOffering
@@ -1176,6 +1086,8 @@ function deriveStatusView({
     publicQuantityDisabledReason,
     publicOwner,
     showOwner,
+    canTopUp,
+    readFailed: !!(offeringReadFailed || debugReadFailed),
   };
 }
 
@@ -1281,19 +1193,23 @@ export function StatusApp() {
   }, [soldUnits, record, refreshRecordDetails]);
 
   async function handleOfferingAction(action: string) {
-    if (debugActive(debugState)) {
-      showToast("Debug preview only");
-      return;
-    }
     if (!record || !wallet) return;
-    if (action === "top-up") {
-      copyText(record.offering, "Offering address copied");
-      return;
-    }
     if (
       action === "close" &&
       !confirm(
-        "Close this round? This withdraws funds, returns unsold tokens to treasury, and cannot be undone.",
+        "This withdraws funds, returns unsold units to treasury, and cannot be undone.",
+      )
+    )
+      return;
+    if (
+      action === "refund-all" &&
+      !confirm("This returns each buyer's USDC deposit. Cannot be undone.")
+    )
+      return;
+    if (
+      action === "sweep-failed" &&
+      !confirm(
+        "This transfers all unsold offering units back to your treasury.",
       )
     )
       return;
@@ -1311,6 +1227,10 @@ export function StatusApp() {
       );
       if (!(openUnits >= 0)) return;
       openUnitsInput = openUnits;
+    }
+    if (debugActive(debugState)) {
+      showToast("Debug preview only");
+      return;
     }
     setBusyAction(action);
     try {
@@ -1330,7 +1250,7 @@ export function StatusApp() {
         showToast("Refunds sent");
       } else if (action === "sweep-failed") {
         await sweepFailedUnits(base);
-        showToast("Tokens returned to treasury");
+        showToast("Units returned to treasury");
       } else if (action === "set-public-units") {
         const fresh = await getOfferingState({
           offeringAddress: record.offering,
@@ -1465,6 +1385,8 @@ export function StatusApp() {
     publicQuantityDisabledReason,
     publicOwner,
     showOwner,
+    canTopUp,
+    readFailed,
   } = deriveStatusView({
     record,
     offering,
@@ -1474,10 +1396,12 @@ export function StatusApp() {
     ledger,
   });
 
+  const headerActions = canManage ? actionItems : [];
+
   return (
     <>
       <div className="mb-2 flex items-start justify-between gap-4">
-        <div className="w-full">
+        <div className="min-w-0">
           <h1 className="text-2xl font-bold">
             {record.projectName || "PACT offering"}
           </h1>
@@ -1491,6 +1415,47 @@ export function StatusApp() {
             </Notice>
           ) : null}
         </div>
+        {readFailed ? (
+          <button
+            type="button"
+            className="offering-header-outcome no-print"
+            onClick={() => location.reload()}
+          >
+            <span className="status-dot failed" aria-hidden="true">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="3"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M6 6l12 12M18 6 6 18" />
+              </svg>
+            </span>
+            <span>Read failed — retry</span>
+          </button>
+        ) : canManage &&
+          !headerActions.length &&
+          onchainOffering?.state === 2 ? (
+          <a
+            className="offering-header-outcome no-print"
+            href={`${basescanAddress(record.offering)}#tokentxns`}
+            target="_blank"
+            rel="noreferrer"
+          >
+            <span className="status-dot secured" aria-hidden="true">
+              <CheckIcon />
+            </span>
+            <span>{fmtUsd(raisedTotal)} raised</span>
+          </a>
+        ) : (
+          <OfferingHeaderActions
+            actions={headerActions}
+            busyAction={busyAction}
+            onAction={handleOfferingAction}
+          />
+        )}
       </div>
 
       <SectionTitle className="mt-8">Offering details</SectionTitle>
@@ -1537,13 +1502,24 @@ export function StatusApp() {
           <span>
             {fmtPct((remainingUnits / TOTAL_LIQUID_SPLIT_UNITS) * 100)}
           </span>
-          <Sub>{fmtTokens(remainingUnits)} tokens</Sub>
+          <Sub>{fmtTokens(remainingUnits)} units</Sub>
+          {canTopUp ? (
+            <TextButton
+              tone="muted"
+              className="no-print"
+              onClick={() =>
+                alert(
+                  `Increase the offering by sending ${record.projectName || "offering"} units to the offering contract on Base: ${record.offering}`,
+                )
+              }
+            >
+              Increase offering
+            </TextButton>
+          ) : null}
         </Field>
         <Field label="Valuation" loading={offeringLoading}>
           <span>{fmtUsd(valNow)} post-money</span>
-          <Sub>
-            {fmtUsd(valNow / TOTAL_LIQUID_SPLIT_UNITS, "price")} / token
-          </Sub>
+          <Sub>{fmtUsd(valNow / TOTAL_LIQUID_SPLIT_UNITS, "price")} / unit</Sub>
         </Field>
       </DefList>
 
@@ -1589,11 +1565,6 @@ export function StatusApp() {
               )
             }
             maxLabel={offeringLoading ? "" : fmtUsd(progressMax)}
-          />
-          <OfferingActions
-            actions={actionItems}
-            busyAction={busyAction}
-            onAction={handleOfferingAction}
           />
           <AllocationsTable
             rows={rows}
