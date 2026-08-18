@@ -17,12 +17,17 @@ import { globalOverride } from "#lib/chain/chain.ts";
 import { costForUnits } from "#lib/chain/curve.ts";
 import {
   getLatestBlockNumber,
+  lifecycleEventFromLog,
   offeringRecordFromLog,
   offeringStateCurve,
   purchaseFromLog,
   getLogs as rpcGetLogs,
 } from "#lib/chain/onchain.ts";
-import type { OfferingRecord, Purchase } from "#lib/chain/onchain.ts";
+import type {
+  LifecycleEvent,
+  OfferingRecord,
+  Purchase,
+} from "#lib/chain/onchain.ts";
 import type { KVStorage } from "#lib/chain/voucher.ts";
 import { wagmiConfig } from "#lib/chain/wagmi.ts";
 import { isSameAddress } from "#lib/validate.ts";
@@ -224,6 +229,35 @@ export async function listBought({
     fromBlock: deployBlock,
     map: purchaseFromLog,
     dedupeKey: boughtDedupeKey,
+    ...options,
+  });
+}
+
+const lifecycleAbiEvents = [
+  getAbiItem({ abi: OFFERING_ABI, name: "Failed" }),
+  getAbiItem({ abi: OFFERING_ABI, name: "Closed" }),
+  getAbiItem({ abi: OFFERING_ABI, name: "RefundPaid" }),
+  getAbiItem({ abi: OFFERING_ABI, name: "RefundSkipped" }),
+  getAbiItem({ abi: OFFERING_ABI, name: "FailedUnitsSwept" }),
+];
+
+// The terminal-lifecycle events on one offering: how it ended, refund
+// progress, and escrow sweeps. Scanned only once an offering leaves the live
+// phase.
+export async function listLifecycle({
+  offering,
+  deployBlock = deployBlockDefault(),
+  ...options
+}: ScanOptions & {
+  offering: Address;
+  deployBlock?: number | undefined;
+}): Promise<LifecycleEvent[]> {
+  return cachedScan<LifecycleEvent>({
+    key: "pact:lifecycle:" + String(offering).toLowerCase(),
+    filter: { address: getAddress(offering), events: lifecycleAbiEvents },
+    fromBlock: deployBlock,
+    map: lifecycleEventFromLog,
+    dedupeKey: (event) => event.txHash + ":" + event.logIndex,
     ...options,
   });
 }

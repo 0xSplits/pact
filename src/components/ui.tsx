@@ -201,7 +201,13 @@ export function SignatureBlock({
 
 // Lifecycle dot + label shared by the status page and the home dashboard
 // tables (pass note: "" where there is no room for the sub-note).
-export function StatusBadge({ status }: { status: StatusInfo }) {
+export function StatusBadge({
+  status,
+  noteHref,
+}: {
+  status: StatusInfo;
+  noteHref?: string | undefined;
+}) {
   if (status.tone === "loading") return <Loading />;
   const icons = {
     secured: <CheckIcon />,
@@ -233,7 +239,15 @@ export function StatusBadge({ status }: { status: StatusInfo }) {
         </span>
         <span>{status.label}</span>
       </span>
-      {status.note ? <Sub>{status.note}</Sub> : null}
+      {status.note ? (
+        <Sub>
+          {noteHref ? (
+            <AddressLink href={noteHref}>{status.note}</AddressLink>
+          ) : (
+            status.note
+          )}
+        </Sub>
+      ) : null}
     </>
   );
 }

@@ -1,11 +1,11 @@
 import "#pages/create.css";
 
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { flushSync } from "react-dom";
+import { useEffect, useRef, useState } from "react";
 import { BaseError, UserRejectedRequestError } from "viem";
 import type { Address } from "viem";
 import { useAccount } from "wagmi";
 
+import { CurveChart } from "#components/curve-chart.tsx";
 import { Button, SignatureBlock } from "#components/ui.tsx";
 import { useErrorTip } from "#hooks/use-error-tip.ts";
 import {
@@ -26,8 +26,6 @@ import {
   usdcBaseUnitsToDollars,
 } from "#lib/format.ts";
 import { statusPath } from "#lib/routes.ts";
-import { attachCurveHover, drawCurve } from "#lib/ui/chart.ts";
-import type { CurveChartConfig } from "#lib/ui/chart.ts";
 import { showToast } from "#lib/ui/toast.ts";
 import { isAddress } from "#lib/validate.ts";
 
@@ -321,51 +319,6 @@ function buildPact(
   };
 }
 
-// Canvas chart. The vanilla drawCurve/attachCurveHover helpers repaint the
-// canvas directly; React only owns the element, so hover reads the latest
-// config through a ref.
-function CurveChart({
-  curveState,
-  forceLight,
-  themeTick,
-}: {
-  curveState: CurveChartConfig | null;
-  forceLight: boolean;
-  themeTick: number;
-}) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const cfgRef = useRef<CurveChartConfig | null>(null);
-  cfgRef.current = curveState
-    ? {
-        ...curveState,
-        forceLight,
-        defaultF: curveState.fMin,
-        showThreshold: false,
-      }
-    : null;
-
-  useEffect(() => {
-    attachCurveHover(canvasRef.current!, () => cfgRef.current);
-  }, []);
-
-  // Layout effect (not passive) so the redraw commits before the browser
-  // paints or captures a print snapshot — the print handler pairs this with
-  // flushSync so switching to the light palette lands before Cmd+P prints.
-  useLayoutEffect(() => {
-    if (cfgRef.current) drawCurve(canvasRef.current!, cfgRef.current);
-  }, [curveState, forceLight, themeTick]);
-
-  return (
-    <canvas
-      ref={canvasRef}
-      id="chart"
-      width="1344"
-      height="620"
-      className="w-full block"
-    />
-  );
-}
-
 export function CreateApp() {
   const [form, setForm] = useState<CreateForm>(() => ({
     projectName: randomName(),
@@ -386,8 +339,6 @@ export function CreateApp() {
   const [formError, setFormError] = useState("");
   const [signerName, setSignerName] = useState("");
   const [busy, setBusy] = useState(false);
-  const [forceLightChart, setForceLightChart] = useState(false);
-  const [themeTick, setThemeTick] = useState(0);
 
   const wallet = useAccount().address ?? null;
   useEffect(() => {
@@ -395,26 +346,6 @@ export function CreateApp() {
   }, [wallet]);
 
   useErrorTip(errors);
-
-  useEffect(() => {
-    // redraw the canvas chart when the system color scheme flips
-    const scheme = window.matchMedia("(prefers-color-scheme: dark)");
-    const onScheme = () => setThemeTick((t) => t + 1);
-    scheme.addEventListener("change", onScheme);
-
-    // print the chart in the light palette regardless of on-screen theme.
-    // flushSync forces the re-render + layout-effect redraw to commit
-    // synchronously, before the browser captures the print snapshot.
-    const before = () => flushSync(() => setForceLightChart(true));
-    const after = () => flushSync(() => setForceLightChart(false));
-    window.addEventListener("beforeprint", before);
-    window.addEventListener("afterprint", after);
-    return () => {
-      scheme.removeEventListener("change", onScheme);
-      window.removeEventListener("beforeprint", before);
-      window.removeEventListener("afterprint", after);
-    };
-  }, []);
 
   const d = deriveCurve(form, holders);
   const valid = formIsValid(form, holders, d) && !!signerName.trim();
@@ -879,11 +810,7 @@ export function CreateApp() {
       {/* Figure */}
       <figure className="mb-2 max-w-[620px] mx-auto">
         <div className="fig-frame curve-frame">
-          <CurveChart
-            curveState={d.curveState}
-            forceLight={forceLightChart}
-            themeTick={themeTick}
-          />
+          <CurveChart curveState={d.curveState} />
         </div>
         <figcaption className="text-sm leading-5 t-muted mt-2 italic">
           Post-money valuation as the round fills. Hover to explore effective
