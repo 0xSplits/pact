@@ -74,7 +74,10 @@ Both tranches share one linear curve (`costFor` over total units sold).
   `buyPrivate` takes an owner-signed EIP-712 voucher endorsing a throwaway
   per-allocation _link key_; the link key rides in the share URL fragment and
   signs the claiming buyer's address at purchase time, so the link is the
-  sole capability and a claim in the mempool can't be frontrun. Vouchers are
+  sole capability and a claim in the mempool can't be frontrun. Both
+  signatures are EIP-712 under the offering's own domain (chain id +
+  contract address), so neither replays against a same-address deployment
+  on another chain. Vouchers are
   USDC-capped, one-shot (`AllocationAlreadyConsumed`), and have no expiry;
   the owner can revoke one with `cancelAllocation`. A voucher caps dollars,
   not price: buys between issuance and claim move the shared curve, so the
