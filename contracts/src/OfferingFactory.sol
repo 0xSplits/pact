@@ -72,6 +72,9 @@ contract OfferingFactory {
 
         for (uint256 i = 0; i < holderAccounts.length; i++) {
             if (holderAccounts[i] == address(0) || holderAccounts[i] == offering) revert InvalidAllocations();
+            // A zero allocation mints nothing but still emits TransferSingle,
+            // polluting the event-scan-derived holder lists the app relies on.
+            if (holderAllocations[i] == 0) revert InvalidAllocations();
         }
         // PactToken validates the 1000-unit total and mints offeringUnits to the escrow.
         pactToken =
