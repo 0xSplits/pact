@@ -65,7 +65,11 @@ unit is 0.1% ownership.
 Both tranches share one linear curve (`costFor` over total units sold).
 
 - **Public**: `buyPublic(unitsWanted, maxCost, buyerName)` is permissionless
-  up to `publicUnits`, an owner-adjustable cap (`setPublicUnits`).
+  up to `publicUnits`, an owner-adjustable cap (`setPublicUnits`). The
+  advertised cap is always deliverable: private claims cannot consume the
+  unsold public tranche (`PublicReservationExceeded`), and `setPublicUnits`
+  cannot exceed what the escrow can still deliver — to make a large private
+  allocation the owner first lowers `publicUnits`, on the record.
 - **Private**: the rest is claimable only via allocation vouchers.
   `buyPrivate` takes an owner-signed EIP-712 voucher endorsing a throwaway
   per-allocation _link key_; the link key rides in the share URL fragment and

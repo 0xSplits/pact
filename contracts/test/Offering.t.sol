@@ -84,17 +84,35 @@ contract OfferingTest is BaseTest {
         offering.buyPublic(10, staleQuote, "");
     }
 
-    function testPrivateClaimStarvesPublicSupply() public {
+    function testPrivateClaimCannotStarvePublicReservation() public {
         Offering.Voucher memory voucher = _voucher("Alice", 500e6);
         bytes memory ownerSig = _ownerSig(offering, voucher);
         bytes memory claimSig = _claimSig(offering, voucher.allocationId, buyer2);
+
+        // 200 escrowed, 100 reserved for the public tranche: 150 dips into it.
+        vm.prank(buyer2);
+        vm.expectRevert(Offering.PublicReservationExceeded.selector);
+        offering.buyPrivate(voucher, ownerSig, claimSig, 150, type(uint256).max);
+
+        // Lowering the cap frees the supply openly, and the claim goes through.
+        vm.prank(treasury);
+        offering.setPublicUnits(50);
         vm.prank(buyer2);
         offering.buyPrivate(voucher, ownerSig, claimSig, 150, type(uint256).max);
 
-        // The public cap still admits 100, but only 50 units remain in escrow.
+        // The advertised public headroom stays deliverable.
         vm.prank(buyer);
-        vm.expectRevert(Offering.InsufficientSupply.selector);
-        offering.buyPublic(100, type(uint256).max, "");
+        offering.buyPublic(50, type(uint256).max, "");
+        assertEq(offering.remainingUnits(), 0, "escrow exactly emptied");
+    }
+
+    function testSetPublicUnitsCannotExceedDeliverableSupply() public {
+        vm.prank(treasury);
+        offering.setPublicUnits(200);
+
+        vm.prank(treasury);
+        vm.expectRevert(Offering.InvalidConfig.selector);
+        offering.setPublicUnits(201);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -102,6 +120,10 @@ contract OfferingTest is BaseTest {
     //////////////////////////////////////////////////////////////*/
 
     function testBuyPrivateWithVoucher() public {
+        // Free 150 units for the private tranche (100 stay publicly reserved).
+        vm.prank(treasury);
+        offering.setPublicUnits(50);
+
         Offering.Voucher memory voucher = _voucher("Alice", 200e6);
         bytes memory ownerSig = _ownerSig(offering, voucher);
         bytes memory claimSig = _claimSig(offering, voucher.allocationId, buyer2);
@@ -121,6 +143,9 @@ contract OfferingTest is BaseTest {
     }
 
     function testBuyPrivateWithSmartWalletOwner() public {
+        vm.prank(treasury);
+        offering.setPublicUnits(50);
+
         MockERC1271Wallet wallet = new MockERC1271Wallet();
         vm.prank(treasury);
         offering.transferOwnership(address(wallet));

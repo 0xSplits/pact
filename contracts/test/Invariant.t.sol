@@ -52,8 +52,10 @@ contract OfferingHandler is CommonBase, StdCheats, StdUtils {
 
     function buyPrivate(uint256 actorSeed, uint256 unitsSeed) external {
         uint256 supply = offering.remainingUnits();
-        if (supply == 0 || !_buyable()) return;
-        _buy(actorSeed, bound(unitsSeed, 1, supply), true);
+        uint256 reserved = offering.publicUnits() - offering.publicUnitsSold();
+        uint256 max = supply > reserved ? supply - reserved : 0;
+        if (max == 0 || !_buyable()) return;
+        _buy(actorSeed, bound(unitsSeed, 1, max), true);
     }
 
     function withdraw() external {

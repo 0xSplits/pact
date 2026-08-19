@@ -32,8 +32,10 @@ abstract contract OfferingHandler is Properties {
 
     function offering_buyPrivate_clamped(uint8 idSeed, uint256 unitsWanted) public {
         uint256 supply = offering.remainingUnits();
-        if (supply == 0) return;
-        unitsWanted = clampBetween(unitsWanted, 1, supply);
+        uint256 reserved = offering.publicUnits() - offering.publicUnitsSold();
+        uint256 unreserved = supply > reserved ? supply - reserved : 0;
+        if (unreserved == 0) return;
+        unitsWanted = clampBetween(unitsWanted, 1, unreserved);
         uint256 cost = offering.quote(unitsWanted);
         offering_buyPrivate(idSeed, unitsWanted, cost, cost);
     }
@@ -234,8 +236,9 @@ abstract contract OfferingHandler is Properties {
         _syncMonotonicGhosts();
     }
 
-    // Deliberately allows publicUnits above the escrowed supply — the setter
-    // only enforces >= publicUnitsSold, so probe past OFFERING_UNITS too.
+    // Deliberately probes past the deliverable supply (up to 1200) — the
+    // setter's upper bound (`remainingUnits() + publicUnitsSold`) should
+    // reject those, which the try/catch tolerates.
     function _offering_setPublicUnits(uint256 publicUnits_) internal {
         snapshotBefore();
         vm.prank(admin);
