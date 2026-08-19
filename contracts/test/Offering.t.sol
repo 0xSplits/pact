@@ -6,7 +6,7 @@ import {ReentrancyGuard} from "solady/utils/ReentrancyGuard.sol";
 import {BaseTest} from "./Base.t.sol";
 import {IERC1155Receiver, Offering} from "../src/Offering.sol";
 import {PactToken} from "../src/PactToken.sol";
-import {MockUSDC, MockERC1271Wallet, MockShortReturnToken, ReenterOnReceive} from "./Mocks.sol";
+import {MockUSDC, MockERC1271Wallet, ReenterOnReceive} from "./Mocks.sol";
 
 contract OfferingTest is BaseTest {
     /*//////////////////////////////////////////////////////////////
@@ -302,7 +302,7 @@ contract OfferingTest is BaseTest {
         offering.refund();
     }
 
-    function testRefundAllSkipsBlockedBuyerAndContinues() public {
+    function testRefundAllRevertsOnBlockedBuyer() public {
         vm.prank(buyer);
         offering.buyPublic(10, type(uint256).max, "");
         Offering.Voucher memory voucher = _voucher("Alice", 200e6);
@@ -312,19 +312,26 @@ contract OfferingTest is BaseTest {
         offering.buyPrivate(voucher, ownerSig, claimSig, 10, type(uint256).max);
         _fail();
 
+        // A failing transfer reverts the whole batch; the owner retries
+        // without the blocked buyer.
         usdc.setBlocked(buyer, true);
         address[] memory buyers = new address[](2);
         buyers[0] = buyer;
         buyers[1] = buyer2;
         vm.prank(treasury);
+        vm.expectRevert();
         offering.refundAll(buyers);
-
         assertGt(offering.deposits(buyer), 0, "blocked kept deposit");
-        assertEq(token.balanceOf(buyer, 0), 10, "blocked kept units");
+        assertGt(offering.deposits(buyer2), 0, "batch fully unwound");
+
+        address[] memory retry = new address[](1);
+        retry[0] = buyer2;
+        vm.prank(treasury);
+        offering.refundAll(retry);
         assertEq(offering.deposits(buyer2), 0, "second refunded");
         assertEq(token.balanceOf(buyer2, 0), 0, "second units reclaimed");
 
-        // The skipped buyer keeps the pull path once unblocked.
+        // The omitted buyer keeps the pull path once unblocked.
         usdc.setBlocked(buyer, false);
         vm.prank(buyer);
         offering.refund();
@@ -438,24 +445,6 @@ contract OfferingTest is BaseTest {
 
         assertEq(usdc.balanceOf(buyer), 1_000e6, "refunded exactly once");
         assertEq(offering.deposits(buyer), 0, "deposit cleared");
-    }
-
-    function testRefundAllSkipsShortReturnTransfer() public {
-        vm.prank(buyer);
-        offering.buyPublic(10, type(uint256).max, "");
-        _fail();
-
-        // Re-etch USDC so transfer returns one byte: the batch must skip the
-        // buyer, not bubble the decode revert.
-        vm.etch(USDC_ADDRESS, address(new MockShortReturnToken()).code);
-        address[] memory buyers = new address[](1);
-        buyers[0] = buyer;
-        vm.expectEmit(true, false, false, true, address(offering));
-        emit Offering.RefundSkipped(buyer);
-        vm.prank(treasury);
-        offering.refundAll(buyers);
-
-        assertGt(offering.deposits(buyer), 0, "skipped buyer keeps deposit");
     }
 
     function testRefundAllRevertsDuringFunding() public {

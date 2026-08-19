@@ -73,18 +73,6 @@ contract MockVoidToken {
     }
 }
 
-/// @notice ERC-20 whose transfer returns a single byte — too short for
-/// abi.decode(bool), which reverts on it. Offering._tryTransfer must read it
-/// as failure instead of bubbling the revert through the whole batch.
-contract MockShortReturnToken {
-    function transfer(address, uint256) external pure {
-        assembly {
-            mstore8(0, 1)
-            return(0, 1)
-        }
-    }
-}
-
 /// @notice ERC-1271 wallet that approves digests explicitly and ignores the
 /// signature bytes — from the verifier's side this is exactly what a
 /// passkey/WebAuthn smart wallet looks like (an opaque, non-ECDSA blob).
