@@ -7,23 +7,55 @@ import {Offering} from "./Offering.sol";
 import {ERC1155} from "./vendor/ERC1155.sol";
 import {LiquidSplit} from "./vendor/LiquidSplit.sol";
 
-/// @title PactToken
-/// @notice The PACT cap table: a custom liquid split ERC-1155 whose 1000 units
-/// of token id 0 are real claims on split proceeds via 0xSplits SplitMain.
-/// Metadata is fully onchain so wallets and marketplaces render the project
-/// without any server.
-/// @dev Total supply must stay exactly 1000 — LiquidSplit distributions revert
-/// if percents don't sum to 1e6, so there is no burn path anywhere.
+/**
+ * @title PactToken
+ * @author Splits
+ * @notice The PACT cap table: a custom liquid split ERC-1155 whose 1000 units
+ * of token id 0 are real claims on split proceeds via 0xSplits SplitMain.
+ * @dev Total supply must stay exactly 1000 — LiquidSplit distributions revert
+ * if percents don't sum to 1e6, so there is no burn path anywhere.
+ */
 contract PactToken is ERC1155, LiquidSplit {
-    uint256 public constant TOKEN_ID = 0;
-    uint256 public constant TOTAL_SUPPLY = 1000;
-    uint32 public constant SUPPLY_TO_PERCENTAGE = 1000; // PERCENTAGE_SCALE / TOTAL_SUPPLY
+    /*´:°•.°+.*•´.*:˚.°*.˚•´.°:°•.°•.*•´.*:˚.°*.˚•´.°:°•.°+.*•´.*:*/
+    /*                       CUSTOM ERRORS                        */
+    /*.•°:°.´+˚.*°.˚:*.´•*.+°.•°:´*.´•*.•°.•°:°.´:•˚°.*°.˚:*.´+°.•*/
 
-    string public projectName;
+    /// @dev The holder allocations are invalid or don't sum to the fixed total.
+    error InvalidAllocations();
+
+    /// @dev Distribution is blocked while the offering is still Funding.
+    error DistributionWhileFunding();
+
+    /*´:°•.°+.*•´.*:˚.°*.˚•´.°:°•.°•.*•´.*:˚.°*.˚•´.°:°•.°+.*•´.*:*/
+    /*                         CONSTANTS                          */
+    /*.•°:°.´+˚.*°.˚:*.´•*.+°.•°:´*.´•*.•°.•°:°.´:•˚°.*°.˚:*.´+°.•*/
+
+    /// @dev The single cap-table token id.
+    uint256 public constant TOKEN_ID = 0;
+
+    /// @dev Fixed unit supply; 1 unit = 0.1% of the cap table.
+    uint256 public constant TOTAL_SUPPLY = 1000;
+
+    /// @dev PERCENTAGE_SCALE / TOTAL_SUPPLY.
+    uint32 public constant SUPPLY_TO_PERCENTAGE = 1000;
+
+    /*´:°•.°+.*•´.*:˚.°*.˚•´.°:°•.°•.*•´.*:˚.°*.˚•´.°:°•.°+.*•´.*:*/
+    /*                         IMMUTABLES                         */
+    /*.•°:°.´+˚.*°.˚:*.´•*.+°.•°:´*.´•*.•°.•°:°.´:•˚°.*°.˚:*.´+°.•*/
+
+    /// @dev The escrow selling this token; a permanent operator.
     address public immutable offering;
 
-    error InvalidAllocations();
-    error DistributionWhileFunding();
+    /*´:°•.°+.*•´.*:˚.°*.˚•´.°:°•.°•.*•´.*:˚.°*.˚•´.°:°•.°+.*•´.*:*/
+    /*                          STORAGE                           */
+    /*.•°:°.´+˚.*°.˚:*.´•*.+°.•°:´*.´•*.•°.•°:°.´:•˚°.*°.˚:*.´+°.•*/
+
+    /// @dev Display name rendered in the onchain metadata.
+    string public projectName;
+
+    /*´:°•.°+.*•´.*:˚.°*.˚•´.°:°•.°•.*•´.*:˚.°*.˚•´.°:°•.°+.*•´.*:*/
+    /*                        CONSTRUCTOR                         */
+    /*.•°:°.´+˚.*°.˚:*.´•*.+°.•°:´*.´•*.•°.•°:°.´:•˚°.*°.˚:*.´+°.•*/
 
     constructor(
         address splitMain_,
@@ -40,40 +72,56 @@ contract PactToken is ERC1155, LiquidSplit {
         uint256 total = offeringUnits;
         _mint(offering_, TOKEN_ID, offeringUnits, "");
         for (uint256 i = 0; i < holderAccounts.length; i++) {
+            // The factory's holder loop runs before this token exists, so the
+            // self-mint check has to live here: units held by the token itself
+            // would recirculate their own split share forever.
+            if (holderAccounts[i] == address(this)) revert InvalidAllocations();
             total += holderAllocations[i];
             _mint(holderAccounts[i], TOKEN_ID, holderAllocations[i], "");
         }
         if (total != TOTAL_SUPPLY) revert InvalidAllocations();
     }
 
-    /// @notice The offering escrow is a permanent operator, so a failed raise
-    /// can reclaim purchased units on refund without a per-buyer approval.
+    /*´:°•.°+.*•´.*:˚.°*.˚•´.°:°•.°•.*•´.*:˚.°*.˚•´.°:°•.°+.*•´.*:*/
+    /*                      PUBLIC FUNCTIONS                      */
+    /*.•°:°.´+˚.*°.˚:*.´•*.+°.•°:´*.´•*.•°.•°:°.´:•˚°.*°.˚:*.´+°.•*/
+
+    /**
+     * @notice The offering escrow is a permanent operator, so a failed raise
+     * can reclaim purchased units on refund without a per-buyer approval.
+     */
     function isApprovedForAll(address owner, address operator) public view override returns (bool) {
         return operator == offering || super.isApprovedForAll(owner, operator);
     }
 
-    /// @notice Distribution is gated while the offering is still Funding: the
-    /// bonding curve prices units off `unitsSold` alone, so a mid-raise
-    /// distribution would let a buyer purchase revenue-blind units and
-    /// atomically capture banked revenue (audit Finding 2). Once the raise is
-    /// Closed or Failed the curve is dead and distribution is permissionless
-    /// as usual. Residual accepted: in Failed, revenue accrued before the
-    /// failure stays distributable by not-yet-refunded holders.
+    /**
+     * @notice Distribution is gated while the offering is still Funding: the
+     * bonding curve prices units off `unitsSold` alone, so a mid-raise
+     * distribution would let a buyer purchase revenue-blind units and
+     * atomically capture banked revenue. Once the raise is Closed or Failed
+     * the curve is dead and distribution is permissionless as usual. Residual
+     * accepted: in Failed, revenue accrued before the failure stays
+     * distributable by not-yet-refunded holders.
+     */
     function distributeFunds(address token, address[] calldata accounts, address distributorAddress) public override {
         if (Offering(payable(offering)).state() == Offering.State.Funding) revert DistributionWhileFunding();
         super.distributeFunds(token, accounts, distributorAddress);
     }
 
-    /// @notice Unit balance as a 0xSplits percentage (1 unit = 0.1% = 1000 on
-    /// the 1e6 scale).
+    /**
+     * @notice Unit balance as a 0xSplits percentage (1 unit = 0.1% = 1000 on
+     * the 1e6 scale).
+     */
     function scaledPercentBalanceOf(address account) public view override returns (uint32) {
         unchecked {
             return uint32(balanceOf[account][TOKEN_ID] * SUPPLY_TO_PERCENTAGE);
         }
     }
 
-    /// @notice Fully onchain metadata: a base64 JSON data URI whose image is an
-    /// inline SVG of the project name, so wallets render without any server.
+    /**
+     * @notice Fully onchain metadata: a base64 JSON data URI whose image is an
+     * inline SVG of the project name.
+     */
     function uri(uint256) public view override returns (string memory) {
         string memory svg = string.concat(
             "<svg xmlns='http://www.w3.org/2000/svg' width='600' height='600'>",

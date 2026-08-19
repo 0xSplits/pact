@@ -116,9 +116,10 @@ event scans with a localStorage delta cache (see architecture doc).
   USDC-blocklisted) stays counted as buyer liability: no one — buyer, owner,
   or treasury — can reach it, an accepted trade-off for keeping deposits
   unstealable.
-- `refundAll(address[] buyers)` is owner-only after failure. Each buyer is an
-  atomic step; a failing transfer (e.g. USDC blocklist) emits
-  `RefundSkipped` and continues, and skipped buyers keep the pull path.
+- `refundAll(address[] buyers)` is owner-only after failure. A buyer missing
+  their units emits `RefundSkipped` and is passed over; a failing transfer
+  (e.g. USDC blocklist) reverts the whole batch — the owner retries without
+  that buyer, who keeps the pull path either way.
 - `sweepFailedUnits()` is permissionless and repeatable after failure: it
   sweeps escrow-held units (unsold + reclaimed) to treasury, reverting the
   cap table to the founders. If the sweep lands all 1000 units on one address
@@ -140,8 +141,9 @@ withdraw proceeds, or close.
 
 The 2026 audit findings are addressed in this deployment: refunds reclaim
 units and failure sweeps them (H-1/H-2), Base USDC is hardcoded
-(H-3/M-1/M-2, with `rescue`/`skimUsdc` for recovery), `refundAll` skips
-blocklisted buyers (M-3), ownership transfer is two-step (M-4), and the
+(H-3/M-1/M-2, with `rescue`/`skimUsdc` for recovery), a blocklisted buyer
+never loses their refund — `refundAll` reverts and they keep the pull
+`refund()` path (M-3), ownership transfer is two-step (M-4), and the
 factory rejects a `raiseMin` the curve cannot reach (M-5). Two findings are
 **accepted with rationale** rather than fixed:
 

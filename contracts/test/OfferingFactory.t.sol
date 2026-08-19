@@ -4,6 +4,7 @@ pragma solidity ^0.8.24;
 import {BaseTest} from "./Base.t.sol";
 import {Offering} from "../src/Offering.sol";
 import {OfferingFactory} from "../src/OfferingFactory.sol";
+import {PactToken} from "../src/PactToken.sol";
 
 contract OfferingFactoryTest is BaseTest {
     function testFactoryCreatesOfferingAndToken() public view {
@@ -47,6 +48,36 @@ contract OfferingFactoryTest is BaseTest {
         vm.expectRevert(Offering.InvalidConfig.selector);
         factory.createOffering(
             "Test Project", 100e6, uint64(block.timestamp + 7 days), 0, 1000, 100, treasury, holders, allocations, 200
+        );
+    }
+
+    function testFactoryRejectsZeroAllocation() public {
+        address[] memory holders = new address[](2);
+        holders[0] = holder;
+        holders[1] = buyer;
+        uint32[] memory allocations = new uint32[](2);
+        allocations[0] = 800;
+        allocations[1] = 0;
+
+        vm.expectRevert(OfferingFactory.InvalidAllocations.selector);
+        factory.createOffering(
+            "Test Project", 100e6, uint64(block.timestamp + 7 days), 1e6, 1000, 100, treasury, holders, allocations, 200
+        );
+    }
+
+    function testPactTokenRejectsSelfMint() public {
+        // The PactToken address is predictable (factory nonce), so a creator
+        // could pass it as a holder; setUp deployed two contracts, so the next
+        // pair is nonces 3 (offering) and 4 (token).
+        address predictedToken = vm.computeCreateAddress(address(factory), 4);
+        address[] memory holders = new address[](1);
+        holders[0] = predictedToken;
+        uint32[] memory allocations = new uint32[](1);
+        allocations[0] = 800;
+
+        vm.expectRevert(PactToken.InvalidAllocations.selector);
+        factory.createOffering(
+            "Test Project", 100e6, uint64(block.timestamp + 7 days), 1e6, 1000, 100, treasury, holders, allocations, 200
         );
     }
 
