@@ -40,6 +40,10 @@ contract PactToken is ERC1155, LiquidSplit {
         uint256 total = offeringUnits;
         _mint(offering_, TOKEN_ID, offeringUnits, "");
         for (uint256 i = 0; i < holderAccounts.length; i++) {
+            // The factory's holder loop runs before this token exists, so the
+            // self-mint check has to live here: units held by the token itself
+            // would recirculate their own split share forever.
+            if (holderAccounts[i] == address(this)) revert InvalidAllocations();
             total += holderAllocations[i];
             _mint(holderAccounts[i], TOKEN_ID, holderAllocations[i], "");
         }
