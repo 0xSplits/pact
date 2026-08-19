@@ -169,16 +169,9 @@ abstract contract Properties is Snapshots {
         if (pu > pus) gte(offering.remainingUnits(), pu - pus, "GL-19: public tranche not fillable");
     }
 
-    /// @notice GL-20: the set of nonzero unit holders never shrinks below two.
-    /// @dev EXPLORATORY — real SplitMain rejects fewer than two accounts.
-    function property_capTableKeepsTwoHolders() public {
-        uint256 count;
-        address[] memory h = _unitHolders();
-        for (uint256 i; i < h.length; i++) {
-            if (token.balanceOf(h[i], TOKEN_ID) > 0) count++;
-        }
-        gte(count, 2, "GL-20: fewer than two unit holders");
-    }
+    // GL-20 (cap table never shrinks below two holders) is retired from the
+    // campaign: the collapse is an accepted, documented state (`sweepFailedUnits`
+    // NatSpec, docs/onchain.md) pinned by `test_repro_capTableCollapse`.
 
     /// @notice GL-21: the curve has no rounding surface — per-unit sum equals the
     /// bulk cost and the doubled closed form is exact.

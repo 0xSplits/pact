@@ -363,6 +363,12 @@ contract Offering is IERC1155Receiver, EIP712, ReentrancyGuard {
     /// @notice Sweeps escrow-held units (unsold + reclaimed) to treasury after
     /// failure: the cap table reverts to the founders (audit H-1).
     /// @dev Permissionless and repeatable — refunds keep pulling units back.
+    /// Accepted footgun (fizz GL-20): if the sweep lands all 1000 units on one
+    /// address (treasury set to the sole remaining holder), SplitMain's two-
+    /// account minimum makes `distributeFunds` revert until any 1 unit moves —
+    /// revenue waits in the PactToken/split, locked but not lost. Owner-
+    /// triggered and self-healing, so not guarded: a holder-count check here
+    /// would only strand the units in escrow instead.
     function sweepFailedUnits() external nonReentrant returns (uint256 units) {
         if (state != State.Failed) revert NotFailed();
         units = remainingUnits();

@@ -115,7 +115,11 @@ event scans with a localStorage delta cache (see architecture doc).
   `RefundSkipped` and continues, and skipped buyers keep the pull path.
 - `sweepFailedUnits()` is permissionless and repeatable after failure: it
   sweeps escrow-held units (unsold + reclaimed) to treasury, reverting the
-  cap table to the founders.
+  cap table to the founders. If the sweep lands all 1000 units on one address
+  (treasury pointed at the sole remaining holder), `distributeFunds` reverts —
+  SplitMain requires at least two recipients — until any 1 unit moves; revenue
+  meanwhile sits in the PactToken/split, retryable. Accepted as a documented
+  footgun: owner-triggered, self-inflicted, and self-healing.
 - `rescue(token, to)` / `skimUsdc()` are owner-only recovery for stray tokens
   and USDC in excess of buyer liability (e.g. split revenue pushed in by
   SplitMain's permissionless withdraw). Buyer liability is always
