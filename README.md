@@ -29,10 +29,9 @@ Under the hood:
 
 More detail:
 
-- [Architecture](docs/architecture.md) (includes a full repository layout map)
-- [Onchain Offering](docs/onchain.md)
-- [Deployment](docs/deployment.md)
-- [Testing](docs/testing.md)
+- [Architecture](docs/architecture.md) — system-level design and vocabulary
+- [Contract Design](docs/contracts.md)
+- [App Design](docs/app.md)
 
 ## Local Development
 
@@ -109,10 +108,10 @@ must update a Playwright spec or include the template's explicit, concrete
 
 ## Deployment
 
-See [Deployment](docs/deployment.md). The short version: Vercel serves the
-static build and auto-deploys `main` (`https://pact.splits.org`); contracts
-redeploy rarely via `npm run deploy:factory`, followed by re-pinning the
-factory address in `src/generated/offering-contracts.ts`.
+Vercel serves the static build and auto-deploys `main`
+(`https://pact.splits.org`); contracts redeploy rarely via
+`npm run deploy:factory`, followed by re-pinning the factory address in
+`src/generated/offering-contracts.ts`.
 
 ## Current Limitations
 

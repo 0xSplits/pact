@@ -171,7 +171,7 @@ abstract contract Properties is Snapshots {
 
     // GL-20 (cap table never shrinks below two holders) is retired from the
     // campaign: the collapse is an accepted, documented state (`sweepFailedUnits`
-    // NatSpec, docs/onchain.md) pinned by `test_repro_capTableCollapse`.
+    // NatSpec, docs/contracts.md) pinned by `test_repro_capTableCollapse`.
 
     /// @notice GL-21: the curve has no rounding surface — per-unit sum equals the
     /// bulk cost and the doubled closed form is exact.

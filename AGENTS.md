@@ -32,7 +32,7 @@ exception, not a way to skip running E2E.
 Contract changes should also hold up under the stateful fuzz suite
 (`contracts/test/fizz/`, specs in `PROPERTIES.md`) — run
 `FOUNDRY_PROFILE=fuzz medusa fuzz --config medusa.json` from `contracts/`;
-see docs/testing.md.
+see `contracts/test/fizz/README.md`.
 
 ## Publishing changes
 
