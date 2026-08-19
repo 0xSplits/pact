@@ -50,6 +50,27 @@ contract MockSplitMain {
     function createSplit(address[] calldata, uint32[] calldata, uint32, address) external returns (address) {
         return address(uint160(uint256(keccak256(abi.encode(address(this), ++nonce)))));
     }
+
+    function updateAndDistributeETH(address, address[] calldata, uint32[] calldata, uint32, address) external {}
+
+    function updateAndDistributeERC20(address, address, address[] calldata, uint32[] calldata, uint32, address)
+        external {}
+}
+
+/// @notice USDT-family ERC-20 whose transfer returns nothing — reverts any
+/// caller that ABI-decodes a bool from it (audit Finding 4's trigger).
+contract MockVoidToken {
+    mapping(address => uint256) public balanceOf;
+
+    function mint(address to, uint256 amount) external {
+        balanceOf[to] += amount;
+    }
+
+    function transfer(address to, uint256 amount) external {
+        require(balanceOf[msg.sender] >= amount, "balance");
+        balanceOf[msg.sender] -= amount;
+        balanceOf[to] += amount;
+    }
 }
 
 /// @notice ERC-1271 wallet that approves digests explicitly and ignores the

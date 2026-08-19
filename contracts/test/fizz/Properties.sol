@@ -713,10 +713,16 @@ abstract contract Properties is Snapshots {
         }
     }
 
-    /// @notice SP-29: distributeFunds over the complete nonzero-holder set never
-    /// reverts.
+    /// @notice SP-29: outside Funding, distributeFunds over the complete
+    /// nonzero-holder set never reverts.
     function property_distributeFundsNeverReverts(bool success) internal {
         t(success, "SP-29: distributeFunds reverted with the full holder set");
+    }
+
+    /// @notice SP-35: distributeFunds always reverts while the offering is
+    /// Funding (the anti-capture gate, audit Finding 2).
+    function property_distributeFundsGatedWhileFunding(bool success) internal {
+        t(!success, "SP-35: distributeFunds succeeded while Funding");
     }
 
     /// @notice SP-30: an ETH distribution empties the token and lands the balance

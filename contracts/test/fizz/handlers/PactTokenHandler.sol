@@ -130,13 +130,15 @@ abstract contract PactTokenHandler is Properties {
         }
 
         snapshotBefore();
+        bool funding = offering.state() == Offering.State.Funding;
         bool success;
         try token.distributeFunds(eth ? address(0) : USDC_ADDRESS, accounts, actor) {
             success = true;
             snapshotAfter();
             if (eth) property_ethDistributionReachesPayoutSplit();
         } catch {}
-        property_distributeFundsNeverReverts(success);
+        if (funding) property_distributeFundsGatedWhileFunding(success);
+        else property_distributeFundsNeverReverts(success);
     }
 
     // ―――――――――――――――――――――― New handlers ――――――――――――――――――――――――

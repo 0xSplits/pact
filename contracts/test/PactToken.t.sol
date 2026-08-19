@@ -3,8 +3,47 @@ pragma solidity ^0.8.24;
 
 import {BaseTest} from "./Base.t.sol";
 import {PactToken} from "../src/PactToken.sol";
+import {MockVoidToken} from "./Mocks.sol";
 
 contract PactTokenTest is BaseTest {
+    function _holders() internal view returns (address[] memory accounts) {
+        accounts = new address[](2);
+        accounts[0] = holder;
+        accounts[1] = buyer;
+    }
+
+    function testDistributeFundsRevertsWhileFunding() public {
+        usdc.mint(address(token), 50e6);
+        vm.expectRevert(PactToken.DistributionWhileFunding.selector);
+        token.distributeFunds(USDC_ADDRESS, _holders(), address(this));
+    }
+
+    function testDistributeFundsSucceedsOnceClosed() public {
+        vm.prank(buyer);
+        offering.buyPublic(100, type(uint256).max, "");
+        vm.prank(treasury);
+        offering.closeAndWithdraw();
+
+        usdc.mint(address(token), 50e6);
+        token.distributeFunds(USDC_ADDRESS, _holders(), address(this));
+        assertEq(usdc.balanceOf(token.payoutSplit()), 50e6, "revenue reaches payout split");
+    }
+
+    function testDistributeFundsSucceedsWhenFailed() public {
+        _fail();
+        vm.deal(address(token), 1 ether);
+        token.distributeFunds(address(0), _holders(), address(this));
+        assertEq(token.payoutSplit().balance, 1 ether, "eth reaches payout split");
+    }
+
+    function testDistributeFundsHandlesVoidReturnToken() public {
+        MockVoidToken usdt = new MockVoidToken();
+        usdt.mint(address(token), 77e6);
+        _fail();
+        token.distributeFunds(address(usdt), _holders(), address(this));
+        assertEq(usdt.balanceOf(token.payoutSplit()), 77e6, "void-return token reaches payout split");
+    }
+
     function testTotalSupplyGuardRejectsBadSums() public {
         address[] memory holders = new address[](1);
         holders[0] = holder;

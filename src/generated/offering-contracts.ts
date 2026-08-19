@@ -1928,12 +1928,12 @@ export const PACT_TOKEN_ABI = [
   },
   {
     "type": "error",
-    "name": "InvalidAllocations",
+    "name": "DistributionWhileFunding",
     "inputs": []
   },
   {
     "type": "error",
-    "name": "TransferFailed",
+    "name": "InvalidAllocations",
     "inputs": []
   }
 ] as const;

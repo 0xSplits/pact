@@ -3,6 +3,7 @@ pragma solidity ^0.8.24;
 
 import {Base64} from "solady/utils/Base64.sol";
 import {LibString} from "solady/utils/LibString.sol";
+import {Offering} from "./Offering.sol";
 import {ERC1155} from "./vendor/ERC1155.sol";
 import {LiquidSplit} from "./vendor/LiquidSplit.sol";
 
@@ -22,6 +23,7 @@ contract PactToken is ERC1155, LiquidSplit {
     address public immutable offering;
 
     error InvalidAllocations();
+    error DistributionWhileFunding();
 
     constructor(
         address splitMain_,
@@ -48,6 +50,18 @@ contract PactToken is ERC1155, LiquidSplit {
     /// can reclaim purchased units on refund without a per-buyer approval.
     function isApprovedForAll(address owner, address operator) public view override returns (bool) {
         return operator == offering || super.isApprovedForAll(owner, operator);
+    }
+
+    /// @notice Distribution is gated while the offering is still Funding: the
+    /// bonding curve prices units off `unitsSold` alone, so a mid-raise
+    /// distribution would let a buyer purchase revenue-blind units and
+    /// atomically capture banked revenue (audit Finding 2). Once the raise is
+    /// Closed or Failed the curve is dead and distribution is permissionless
+    /// as usual. Residual accepted: in Failed, revenue accrued before the
+    /// failure stays distributable by not-yet-refunded holders.
+    function distributeFunds(address token, address[] calldata accounts, address distributorAddress) public override {
+        if (Offering(offering).state() == Offering.State.Funding) revert DistributionWhileFunding();
+        super.distributeFunds(token, accounts, distributorAddress);
     }
 
     /// @notice Unit balance as a 0xSplits percentage (1 unit = 0.1% = 1000 on
