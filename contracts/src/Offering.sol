@@ -30,20 +30,12 @@ interface IERC1155Receiver {
  * @author Splits
  * @notice Sells a PactToken carve-out along a linear USDC bonding curve, in
  * two tranches sharing one curve: a permissionless public tranche capped at
- * `publicUnits`, and a private tranche gated by owner-signed two-key vouchers
- * (the owner endorses a per-allocation link key; the link key endorses the
- * claiming buyer, so a claim in the mempool can't be frontrun).
+ * `publicUnits`, and a private tranche.
  * @dev Once the minimum raise is met, buyers lose refund rights and the
  * treasury can withdraw proceeds. The owner decides when to close a
  * successful offer and reclaim unsold units. On failure, refunds reclaim the
  * buyer's units (the escrow is a permanent PactToken operator) and escrow-held
  * units sweep to treasury, so a failed raise never gives away equity.
- *
- * The minimum is a coordination signal, not a trustless guarantee: the owner
- * can meet it with their own funds and withdraw — any owner-keyed rule is
- * sybil-trivial to defeat; PACT's trust model is reputational. `setTreasury`
- * is likewise unrestricted mid-raise: the owner is the party being funded
- * either way, and re-pointing to a multisig is the legitimate use.
  */
 contract Offering is IERC1155Receiver, EIP712, ReentrancyGuard {
     /*´:°•.°+.*•´.*:˚.°*.˚•´.°:°•.°•.*•´.*:˚.°*.˚•´.°:°•.°+.*•´.*:*/
@@ -350,7 +342,7 @@ contract Offering is IERC1155Receiver, EIP712, ReentrancyGuard {
     /**
      * @notice Buys from the public tranche. Permissionless up to `publicUnits`.
      * @param buyerName Emitted, never stored; empty when unused. Names land in
-     * public permanent logs — pseudonyms are the privacy mitigation.
+     * public permanent logs.
      */
     function buyPublic(uint256 unitsWanted, uint256 maxCost, string calldata buyerName)
         external
@@ -368,13 +360,7 @@ contract Offering is IERC1155Receiver, EIP712, ReentrancyGuard {
      * carries an unbound capability.
      * @dev Verifies against the live `owner()`, so rotating ownership
      * mass-revokes outstanding allocation links (the right default under key
-     * compromise; re-issuing links is free). The owner check accepts EOA and
-     * ERC-1271 signatures, so passkey/smart-wallet issuers work; the link key
-     * is always a raw browser-generated key, so the claim check is pure ECDSA.
-     * The voucher caps dollars, not price: it carries no curve position, so
-     * buys between issuance and claim reprice the allocation. Claimers see the
-     * live curve and consent via `maxCost` — accepted under the owner
-     * trust model above rather than bounding `unitsSold` in the voucher.
+     * compromise; re-issuing links is free).
      */
     function buyPrivate(
         Voucher calldata voucher,
@@ -390,15 +376,11 @@ contract Offering is IERC1155Receiver, EIP712, ReentrancyGuard {
         if (ECDSA.recoverCalldata(claimDigest(voucher.allocationId, msg.sender), claimSig) != voucher.linkKey) {
             revert InvalidClaimSignature();
         }
-        // The unsold public tranche is reserved supply: a private claim only
-        // takes what the escrow holds beyond `publicUnits - publicUnitsSold`,
-        // so the advertised public cap stays deliverable. To free supply the
-        // owner lowers `publicUnits` first — the same move, made visible.
+
         uint256 reserved = publicUnits - publicUnitsSold;
         uint256 supply = remainingUnits();
         if (unitsWanted > (supply > reserved ? supply - reserved : 0)) revert PublicReservationExceeded();
 
-        // One-shot: the first claim consumes the allocation even if under-spent.
         allocationConsumed[voucher.allocationId] = true;
         cost = _buy(unitsWanted, maxCost, voucher.allocationId, voucher.buyerName);
         if (cost > voucher.amountCapUsdc) revert AllocationCapExceeded();
@@ -412,9 +394,8 @@ contract Offering is IERC1155Receiver, EIP712, ReentrancyGuard {
 
     /**
      * @notice Moves supply between the tranches. Raising it shifts private
-     * supply public (how oversubscription is handled); it can never undercut
-     * units the public tranche already sold, nor advertise more units than
-     * the escrow can still deliver.
+     * supply public; it can never undercut units the public tranche already sold,
+     * nor advertise more units than the escrow can still deliver.
      */
     function setPublicUnits(uint256 publicUnits_) external onlyOwner {
         if (publicUnits_ < publicUnitsSold) revert InvalidConfig();
@@ -439,10 +420,7 @@ contract Offering is IERC1155Receiver, EIP712, ReentrancyGuard {
      * @notice Refunds the caller's USDC after failure, reclaiming their
      * purchased units in the same call.
      * @dev Pays only if the full purchased amount is recovered — a buyer who
-     * transferred units away mid-raise forfeits the refund. An undeliverable
-     * deposit (units moved away, or the buyer USDC-blocklisted) stays counted
-     * in `raised`, so it remains buyer liability that neither `skimUsdc` nor
-     * `rescue` can reach — frozen in the contract by design.
+     * transferred units away mid-raise forfeits the refund.
      */
     function refund() external nonReentrant {
         if (state != State.Failed) revert NotFailed();
@@ -488,13 +466,6 @@ contract Offering is IERC1155Receiver, EIP712, ReentrancyGuard {
     /**
      * @notice Sweeps escrow-held units (unsold + reclaimed) to treasury after
      * failure: the cap table reverts to the founders.
-     * @dev Permissionless and repeatable — refunds keep pulling units back.
-     * Accepted footgun: if the sweep lands all 1000 units on one address
-     * (treasury set to the sole remaining holder), SplitMain's two-account
-     * minimum makes `distributeFunds` revert until any 1 unit moves — revenue
-     * waits in the PactToken/split, locked but not lost. Owner-triggered and
-     * self-healing, so not guarded: a holder-count check here would only
-     * strand the units in escrow instead.
      */
     function sweepFailedUnits() external nonReentrant returns (uint256 units) {
         if (state != State.Failed) revert NotFailed();

@@ -12,8 +12,6 @@ import {LiquidSplit} from "./vendor/LiquidSplit.sol";
  * @author Splits
  * @notice The PACT cap table: a custom liquid split ERC-1155 whose 1000 units
  * of token id 0 are real claims on split proceeds via 0xSplits SplitMain.
- * Metadata is fully onchain so wallets and marketplaces render the project
- * without any server.
  * @dev Total supply must stay exactly 1000 — LiquidSplit distributions revert
  * if percents don't sum to 1e6, so there is no burn path anywhere.
  */
@@ -122,7 +120,7 @@ contract PactToken is ERC1155, LiquidSplit {
 
     /**
      * @notice Fully onchain metadata: a base64 JSON data URI whose image is an
-     * inline SVG of the project name, so wallets render without any server.
+     * inline SVG of the project name.
      */
     function uri(uint256) public view override returns (string memory) {
         string memory svg = string.concat(
