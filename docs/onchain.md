@@ -102,6 +102,10 @@ event scans with a localStorage delta cache (see architecture doc).
 - `refund()` is buyer self-serve after failure. It reclaims the buyer's full
   purchased units back to escrow in the same call and pays only if the full
   amount is recovered — a buyer who transferred units away mid-raise forfeits.
+  A forfeited or undeliverable deposit (units gone, or the buyer permanently
+  USDC-blocklisted) stays counted as buyer liability: no one — buyer, owner,
+  or treasury — can reach it, an accepted trade-off for keeping deposits
+  unstealable.
 - `refundAll(address[] buyers)` is owner-only after failure. Each buyer is an
   atomic step; a failing transfer (e.g. USDC blocklist) emits
   `RefundSkipped` and continues, and skipped buyers keep the pull path.

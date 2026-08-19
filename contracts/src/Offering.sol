@@ -303,7 +303,11 @@ contract Offering is IERC1155Receiver, EIP712, ReentrancyGuard {
     /// @notice Refunds the caller's USDC after failure, reclaiming their
     /// purchased units in the same call (audit H-1/H-2).
     /// @dev Pays only if the full purchased amount is recovered — a buyer who
-    /// transferred units away mid-raise forfeits the refund.
+    /// transferred units away mid-raise forfeits the refund. An undeliverable
+    /// deposit (units moved away, or the buyer USDC-blocklisted) stays counted
+    /// in `raised`, so it remains buyer liability that neither `skimUsdc` nor
+    /// `rescue` can reach — frozen in the contract by design (audit Finding 3,
+    /// accepted).
     function refund() external nonReentrant {
         if (state != State.Failed) revert NotFailed();
         uint256 amount = deposits[msg.sender];
