@@ -76,7 +76,10 @@ Both tranches share one linear curve (`costFor` over total units sold).
   signs the claiming buyer's address at purchase time, so the link is the
   sole capability and a claim in the mempool can't be frontrun. Vouchers are
   USDC-capped, one-shot (`AllocationAlreadyConsumed`), and have no expiry;
-  the owner can revoke one with `cancelAllocation`.
+  the owner can revoke one with `cancelAllocation`. A voucher caps dollars,
+  not price: buys between issuance and claim move the shared curve, so the
+  claimer's units-per-dollar is set at claim time — they see the live quote
+  and bound it with `maxCost`, and no signed field pins a curve position.
 
 Voucher signatures verify against the live `owner()` via ERC-1271-aware
 checking, so smart-wallet/passkey issuers work — and an ownership rotation
