@@ -1,22 +1,25 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
+import {SafeTransferLib} from "solady/utils/SafeTransferLib.sol";
 import {ISplitMain} from "./ISplitMain.sol";
 
 interface IERC20Balance {
     function balanceOf(address account) external view returns (uint256);
-    function transfer(address to, uint256 amount) external returns (bool);
 }
 
 /// @title LiquidSplit
 /// @notice An abstract liquid split base. Vendored from 0xSplits
-/// splits-liquid-template (src/LiquidSplit.sol), commit c64201f, with the
-/// solady SafeTransferLib calls replaced by plain checked calls.
+/// splits-liquid-template (src/LiquidSplit.sol), commit c64201f, keeping
+/// upstream's solady SafeTransferLib transfers (an earlier snapshot replaced
+/// them with plain checked calls, which bricked void-return ERC-20s — audit
+/// Finding 4). One deviation from upstream: `distributeFunds` is `public`
+/// instead of `external` so an implementer can gate it and `super`-call.
 /// @dev The implementer mints the 1155 supply and overrides
 /// `scaledPercentBalanceOf`; if the percents passed to `distributeFunds` don't
 /// sum to 1e6 the split fails to update and funds are stuck in `payoutSplit`.
 abstract contract LiquidSplit {
-    error TransferFailed();
+    using SafeTransferLib for address;
 
     /// @notice funds have been received
     event ReceiveETH(uint256 amount);
@@ -63,7 +66,7 @@ abstract contract LiquidSplit {
     /// @param accounts Ordered, unique list of NFT holders
     /// @param distributorAddress Address to receive distributorFee
     function distributeFunds(address token, address[] calldata accounts, address distributorAddress)
-        external
+        public
         virtual
     {
         uint256 numRecipients = accounts.length;
@@ -78,7 +81,7 @@ abstract contract LiquidSplit {
         // atomically deposit funds into split, update recipients to reflect
         // current NFT holders, and distribute
         if (token == address(0)) {
-            payoutSplit.call{value: address(this).balance}("");
+            payoutSplit.safeTransferETH(address(this).balance);
             splitMain.updateAndDistributeETH({
                 split: payoutSplit,
                 accounts: accounts,
@@ -87,8 +90,7 @@ abstract contract LiquidSplit {
                 distributorAddress: distributorAddress
             });
         } else {
-            uint256 balance = IERC20Balance(token).balanceOf(address(this));
-            if (balance > 0 && !IERC20Balance(token).transfer(payoutSplit, balance)) revert TransferFailed();
+            token.safeTransfer(payoutSplit, IERC20Balance(token).balanceOf(address(this)));
             splitMain.updateAndDistributeERC20({
                 split: payoutSplit,
                 token: token,

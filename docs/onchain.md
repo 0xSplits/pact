@@ -53,6 +53,12 @@ unit is 0.1% ownership.
   holes, so there is no burn path anywhere.
 - The Offering is hardwired as an approved operator, which is what lets
   refunds reclaim units without a buyer approval transaction.
+- `distributeFunds` reverts while the offering is still Funding: the curve
+  prices units off `unitsSold` alone, so a mid-raise distribution would let a
+  buyer purchase revenue-blind units and atomically capture banked revenue.
+  Once Closed or Failed it is permissionless as usual. Accepted residual: in
+  Failed, revenue accrued before the failure stays distributable by holders
+  who have not yet refunded.
 
 ## Two Tranches
 
