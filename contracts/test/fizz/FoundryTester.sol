@@ -26,8 +26,8 @@ contract FoundryTester is Test, Handlers {
     // Each test_repro_* replays a shrunk fuzzer sequence that violated a
     // property during the campaign. GL-19 has since been fixed (buyPrivate
     // reserves the public tranche) and its repro is now a regression test;
-    // GL-20 remains EXPLORATORY and PASSES when the property is violated as
-    // the campaign found. Run all with:
+    // GL-20 is an accepted, documented state (`sweepFailedUnits` NatSpec,
+    // docs/onchain.md) and its repro pins the collapse directly. Run all with:
     //   FOUNDRY_PROFILE=fuzz forge test --match-contract FoundryTester -vvv
 
     /// GL-19 (ADV-17) regression: the campaign's shrunk sequence — one 150-unit
@@ -45,8 +45,8 @@ contract FoundryTester is Test, Handlers {
 
     /// GL-20: sweeping a failed raise into a treasury that already holds units
     /// collapses the cap table to a single holder. On real 0xSplits SplitMain a
-    /// one-account split is rejected (`_validSplit` needs >= 2), so all future
-    /// revenue is permanently stuck in `payoutSplit` — value locked, not lost.
+    /// one-account split is rejected (`_validSplit` needs >= 2), so revenue is
+    /// stuck — locked, not lost — until any 1 unit moves to a second address.
     function test_repro_capTableCollapse() public {
         setCurrentActor(0);
         offering_roundTrip_buyFailRefund(); // buy 1 -> markFailed -> refund; escrow holds all 200 again
@@ -58,8 +58,17 @@ contract FoundryTester is Test, Handlers {
         offering.sweepFailedUnits();
 
         assertEq(token.balanceOf(actors[2], TOKEN_ID), 1000, "founder should hold the entire cap table");
-        try this.property_capTableKeepsTwoHolders() {
-            revert("GL-20 should be violated: cap table collapsed to one holder");
+        address[] memory accounts = new address[](1);
+        accounts[0] = actors[2];
+        try token.distributeFunds(USDC_ADDRESS, accounts, actors[2]) {
+            revert("GL-20: single-holder distribution should revert");
         } catch {}
+
+        // Self-healing: moving 1 unit restores a two-account split.
+        vm.prank(actors[2]);
+        token.safeTransferFrom(actors[2], actors[0], TOKEN_ID, 1, "");
+        address[] memory two = new address[](2);
+        (two[0], two[1]) = actors[0] < actors[2] ? (actors[0], actors[2]) : (actors[2], actors[0]);
+        token.distributeFunds(USDC_ADDRESS, two, actors[2]);
     }
 }
