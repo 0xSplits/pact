@@ -191,6 +191,20 @@ contract OfferingTest is BaseTest {
         offering.buyPrivate(voucher, ownerSig, claimSig, 10, type(uint256).max);
     }
 
+    function testBuyPrivateRejectsCrossChainClaimSig() public {
+        Offering.Voucher memory voucher = _voucher("Alice", 200e6);
+        bytes memory claimSig = _claimSig(offering, voucher.allocationId, buyer2);
+
+        // A CREATE2 twin on another chain: the owner re-endorses the same
+        // allocation there, but the link key's signature stays chain-bound.
+        vm.chainId(8453);
+        bytes memory ownerSig = _ownerSig(offering, voucher);
+
+        vm.prank(buyer2);
+        vm.expectRevert(Offering.InvalidClaimSignature.selector);
+        offering.buyPrivate(voucher, ownerSig, claimSig, 10, type(uint256).max);
+    }
+
     function testBuyPrivateRejectsTamperedVoucher() public {
         Offering.Voucher memory voucher = _voucher("Alice", 50e6);
         bytes memory ownerSig = _ownerSig(offering, voucher);

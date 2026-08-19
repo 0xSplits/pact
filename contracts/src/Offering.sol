@@ -92,6 +92,8 @@ contract Offering is IERC1155Receiver, EIP712, ReentrancyGuard {
     bytes32 private constant VOUCHER_TYPEHASH =
         keccak256("Voucher(bytes32 allocationId,string buyerName,uint256 amountCapUsdc,address linkKey)");
 
+    bytes32 private constant CLAIM_TYPEHASH = keccak256("Claim(bytes32 allocationId,address buyer)");
+
     event Initialized(address indexed pactToken);
     event Bought(address indexed buyer, bytes32 indexed allocationId, uint256 units, uint256 cost, string buyerName);
     event AllocationCancelled(bytes32 indexed allocationId);
@@ -296,9 +298,12 @@ contract Offering is IERC1155Receiver, EIP712, ReentrancyGuard {
         return _hashTypedData(structHash);
     }
 
-    /// @notice Digest the link key signs to endorse the claiming buyer.
+    /// @notice EIP-712 digest the link key signs to endorse the claiming buyer.
+    /// @dev Typed like `voucherDigest` so the domain binds chain id and
+    /// verifying contract — a CREATE2 twin on another chain can't replay a
+    /// claim signature even if the owner re-issues the same allocation there.
     function claimDigest(bytes32 allocationId, address buyer) public view returns (bytes32) {
-        return keccak256(abi.encode(address(this), allocationId, buyer));
+        return _hashTypedData(keccak256(abi.encode(CLAIM_TYPEHASH, allocationId, buyer)));
     }
 
     function _domainNameAndVersion() internal pure override returns (string memory, string memory) {
