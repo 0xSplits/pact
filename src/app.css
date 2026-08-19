@@ -605,15 +605,9 @@ body {
   opacity: 1;
 }
 
-/* status: colored text only */
+/* status badges: primary text for active states, muted for terminal ones */
 .badge {
   white-space: nowrap;
-}
-.badge.funded {
-  color: var(--ok);
-}
-.badge.allocated {
-  color: var(--pending);
 }
 .badge.revoked {
   color: var(--muted);

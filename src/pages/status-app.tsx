@@ -718,7 +718,9 @@ function AllocationsTable({
                   <>
                     <span className="badge allocated">Allocated</span>{" "}
                     {row.createdAt ? (
-                      <span>{fmtShortDate(row.createdAt)}</span>
+                      <span className="t-muted">
+                        {fmtShortDate(row.createdAt)}
+                      </span>
                     ) : null}
                   </>
                 )}
@@ -1601,7 +1603,11 @@ export function StatusApp() {
     saveAllocationLedgerRow(record.offering, row);
     setLedger(listAllocationLedger(record.offering));
     setEntryOpen(false);
-    copyText(link, "Link copied — send it to " + name);
+    copyText(
+      link,
+      "Link copied — send it to " + name,
+      "Allocation link created",
+    );
   }
 
   async function handleRevokeAllocation(row: OpenRow) {

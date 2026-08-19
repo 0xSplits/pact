@@ -15,9 +15,16 @@ export function showToast(message: string): void {
   hideTimer = setTimeout(() => toast!.classList.remove("show"), 2500);
 }
 
-export function copyText(text: string, message: string = "Copied"): void {
+// Clipboard writes need transient user activation, which expires while the
+// wallet popup is up. Callers whose copy runs after an async wallet round-trip
+// should pass a fallback message that steers the user to a manual button.
+export function copyText(
+  text: string,
+  message: string = "Copied",
+  fallbackMessage: string = "Copy failed",
+): void {
   navigator.clipboard
     .writeText(text)
     .then(() => showToast(message))
-    .catch(() => showToast("Copy failed"));
+    .catch(() => showToast(fallbackMessage));
 }

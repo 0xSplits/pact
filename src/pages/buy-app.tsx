@@ -54,7 +54,11 @@ import {
   relDays,
   usdcBaseUnitsToDollars,
 } from "#lib/format.ts";
-import { currentOfferingAddress, currentVoucherFragment } from "#lib/routes.ts";
+import {
+  currentOfferingAddress,
+  currentVoucherFragment,
+  termsPath,
+} from "#lib/routes.ts";
 import { debugActive } from "#lib/ui/debug-menu.ts";
 import { showToast } from "#lib/ui/toast.ts";
 import { isSameAddress } from "#lib/validate.ts";
@@ -859,13 +863,22 @@ export function BuyApp() {
             />
             <span>
               I understand that this is a Purchase Agreement for Community
-              Tokens (a &ldquo;PACT&rdquo;), and that the Units confer no legal
-              rights but may participate in the Project&rsquo;s future value as
-              its creator expressly provides. The Units exist solely to align
-              their holders with the Project, and it is for the creator to
-              determine what, if anything, they are used for. My purchase is
-              refundable in full if the offering does not reach its minimum of{" "}
-              {fmtUsd(minUsd, "cents")} by {fmtDate(closeDate)}.
+              Tokens (a{" "}
+              <a
+                className="linkbtn"
+                href={termsPath(offeringAddress!)}
+                target="_blank"
+                rel="noreferrer"
+              >
+                &ldquo;PACT&rdquo;
+              </a>
+              ), and that the Units confer no legal rights but may participate
+              in the Project&rsquo;s future value as its creator expressly
+              provides. The Units exist solely to align their holders with the
+              Project, and it is for the creator to determine what, if anything,
+              they are used for. My purchase is refundable in full if the
+              offering does not reach its minimum of {fmtUsd(minUsd, "cents")}{" "}
+              by {fmtDate(closeDate)}.
             </span>
           </label>
           <SignatureBlock
