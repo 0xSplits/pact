@@ -510,6 +510,8 @@ contract OfferingTest is BaseTest {
         usdc.mint(address(offering), 5e6); // e.g. split revenue pushed in by SplitMain.withdraw
 
         vm.prank(treasury);
+        vm.expectEmit(false, false, false, true, address(offering));
+        emit Offering.Skimmed(5e6);
         uint256 skimmed = offering.skimUsdc();
         assertEq(skimmed, 5e6, "skimmed excess only");
         assertEq(usdc.balanceOf(address(offering)), cost, "liability intact");
@@ -526,6 +528,8 @@ contract OfferingTest is BaseTest {
         MockUSDC stray = new MockUSDC();
         stray.mint(address(offering), 7e6);
         vm.prank(treasury);
+        vm.expectEmit(true, true, false, true, address(offering));
+        emit Offering.Rescued(address(stray), treasury, 7e6);
         offering.rescue(address(stray), treasury);
         assertEq(stray.balanceOf(treasury), 7e6, "rescued");
     }
@@ -540,6 +544,8 @@ contract OfferingTest is BaseTest {
         assertTrue(ok, "receive accepts ETH");
 
         vm.prank(treasury);
+        vm.expectEmit(true, true, false, true, address(offering));
+        emit Offering.Rescued(address(0), treasury, 1 ether);
         offering.rescue(address(0), treasury);
         assertEq(treasury.balance, 1 ether, "rescued");
         assertEq(address(offering).balance, 0, "swept");

@@ -103,6 +103,8 @@ contract Offering is IERC1155Receiver, EIP712, ReentrancyGuard {
     event Failed();
     event FailedUnitsSwept(address indexed treasury, uint256 units);
     event Withdrawn(address indexed treasury, uint256 amount);
+    event Skimmed(uint256 amount);
+    event Rescued(address indexed token, address indexed to, uint256 amount);
     event Closed(address indexed treasury, uint256 usdcAmount, uint256 unsoldUnits);
     event TreasuryUpdated(address indexed treasury);
     event OwnershipTransferStarted(address indexed previousOwner, address indexed newOwner);
@@ -431,11 +433,13 @@ contract Offering is IERC1155Receiver, EIP712, ReentrancyGuard {
             uint256 ethBalance = address(this).balance;
             if (ethBalance == 0) revert NothingToWithdraw();
             SafeTransferLib.safeTransferETH(to, ethBalance);
+            emit Rescued(address(0), to, ethBalance);
             return;
         }
         uint256 balance = SafeTransferLib.balanceOf(token, address(this));
         if (balance == 0) revert NothingToWithdraw();
         SafeTransferLib.safeTransfer(token, to, balance);
+        emit Rescued(token, to, balance);
     }
 
     /// @notice Sweeps USDC in excess of the buyer liability to treasury —
@@ -447,6 +451,7 @@ contract Offering is IERC1155Receiver, EIP712, ReentrancyGuard {
         if (balance <= liability) revert NothingToWithdraw();
         amount = balance - liability;
         SafeTransferLib.safeTransfer(USDC, treasury, amount);
+        emit Skimmed(amount);
     }
 
     /// @notice Updates the treasury address that receives withdrawals and unsold units.
