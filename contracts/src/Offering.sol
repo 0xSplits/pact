@@ -357,13 +357,18 @@ contract Offering is IERC1155Receiver, EIP712, ReentrancyGuard {
                 emit RefundSkipped(buyer);
                 continue;
             }
-            if (!_tryTransfer(USDC, buyer, amount)) {
-                emit RefundSkipped(buyer);
-                continue;
-            }
+            // Effects before the USDC call (CEI, matching refund()); restored
+            // on failure so a skipped buyer keeps the pull refund() path.
             deposits[buyer] = 0;
             unitsBought[buyer] = 0;
             raised -= amount;
+            if (!_tryTransfer(USDC, buyer, amount)) {
+                deposits[buyer] = amount;
+                unitsBought[buyer] = units;
+                raised += amount;
+                emit RefundSkipped(buyer);
+                continue;
+            }
             if (units > 0) IERC1155(pactToken).safeTransferFrom(buyer, address(this), TOKEN_ID, units, "");
             emit RefundPaid(buyer, amount);
         }
@@ -484,12 +489,15 @@ contract Offering is IERC1155Receiver, EIP712, ReentrancyGuard {
         view
         returns (bytes4)
     {
+        // Token check first: `operator` is attacker-controlled calldata from
+        // whatever contract calls the hook, so a hostile ERC-1155 passing
+        // `operator == address(this)` must not skip it.
+        if (pactToken != address(0) && msg.sender != pactToken) revert InvalidAddress();
         // Refund reclaims pull units back while Failed; the escrow itself is the operator.
         if (operator != address(this)) {
             if (state != State.Funding) revert ClosedOrFailed();
             if (id != TOKEN_ID) revert BadTokenId();
             if (block.timestamp > closeDate && !minMet) revert PastCloseDate();
-            if (pactToken != address(0) && msg.sender != pactToken) revert InvalidAddress();
         }
         return IERC1155Receiver.onERC1155Received.selector;
     }
@@ -501,10 +509,10 @@ contract Offering is IERC1155Receiver, EIP712, ReentrancyGuard {
         uint256[] calldata,
         bytes calldata
     ) external view returns (bytes4) {
+        if (pactToken != address(0) && msg.sender != pactToken) revert InvalidAddress();
         if (operator != address(this)) {
             if (state != State.Funding) revert ClosedOrFailed();
             if (block.timestamp > closeDate && !minMet) revert PastCloseDate();
-            if (pactToken != address(0) && msg.sender != pactToken) revert InvalidAddress();
             for (uint256 i = 0; i < ids.length; i++) {
                 if (ids[i] != TOKEN_ID) revert BadTokenId();
             }
@@ -517,9 +525,11 @@ contract Offering is IERC1155Receiver, EIP712, ReentrancyGuard {
     }
 
     // Solady has no non-reverting ERC20 transfer; refundAll needs one to skip
-    // blocklisted buyers instead of bricking the whole batch.
+    // blocklisted buyers instead of bricking the whole batch. A 1–31-byte
+    // return would make abi.decode revert — treated as failure instead, so one
+    // odd response can't brick the batch this function exists to protect.
     function _tryTransfer(address token, address to, uint256 amount) private returns (bool) {
         (bool ok, bytes memory data) = token.call(abi.encodeWithSignature("transfer(address,uint256)", to, amount));
-        return ok && (data.length == 0 || abi.decode(data, (bool)));
+        return ok && (data.length == 0 || (data.length >= 32 && abi.decode(data, (bool))));
     }
 }

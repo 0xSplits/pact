@@ -6,7 +6,7 @@ import {ReentrancyGuard} from "solady/utils/ReentrancyGuard.sol";
 import {BaseTest} from "./Base.t.sol";
 import {IERC1155Receiver, Offering} from "../src/Offering.sol";
 import {PactToken} from "../src/PactToken.sol";
-import {MockUSDC, MockERC1271Wallet, ReenterOnReceive} from "./Mocks.sol";
+import {MockUSDC, MockERC1271Wallet, MockShortReturnToken, ReenterOnReceive} from "./Mocks.sol";
 
 contract OfferingTest is BaseTest {
     /*//////////////////////////////////////////////////////////////
@@ -440,6 +440,24 @@ contract OfferingTest is BaseTest {
         assertEq(offering.deposits(buyer), 0, "deposit cleared");
     }
 
+    function testRefundAllSkipsShortReturnTransfer() public {
+        vm.prank(buyer);
+        offering.buyPublic(10, type(uint256).max, "");
+        _fail();
+
+        // Re-etch USDC so transfer returns one byte: the batch must skip the
+        // buyer, not bubble the decode revert.
+        vm.etch(USDC_ADDRESS, address(new MockShortReturnToken()).code);
+        address[] memory buyers = new address[](1);
+        buyers[0] = buyer;
+        vm.expectEmit(true, false, false, true, address(offering));
+        emit Offering.RefundSkipped(buyer);
+        vm.prank(treasury);
+        offering.refundAll(buyers);
+
+        assertGt(offering.deposits(buyer), 0, "skipped buyer keeps deposit");
+    }
+
     function testRefundAllRevertsDuringFunding() public {
         vm.prank(treasury);
         vm.expectRevert(Offering.NotFailed.selector);
@@ -724,8 +742,8 @@ contract OfferingTest is BaseTest {
     }
 
     function testReceiverRejectsWrongTokenId() public {
-        // Direct hook call: msg.sender is the test, so this exercises the
-        // guard path a foreign multi-id 1155 would hit; the id check fires first.
+        // Both hooks check the caller before the ids, so pose as the pact token.
+        vm.prank(address(token));
         vm.expectRevert(Offering.BadTokenId.selector);
         offering.onERC1155Received(buyer, buyer, 1, 5, "");
 
@@ -733,10 +751,21 @@ contract OfferingTest is BaseTest {
         ids[0] = 1;
         uint256[] memory amounts = new uint256[](1);
         amounts[0] = 5;
-        // Batch checks the caller before the ids, so pose as the pact token.
         vm.prank(address(token));
         vm.expectRevert(Offering.BadTokenId.selector);
         offering.onERC1155BatchReceived(buyer, buyer, ids, amounts, "");
+    }
+
+    function testReceiverRejectsSpoofedOperator() public {
+        // A hostile 1155 supplies the operator argument itself; naming the
+        // escrow as operator must not bypass the token check.
+        vm.expectRevert(Offering.InvalidAddress.selector);
+        offering.onERC1155Received(address(offering), buyer, 0, 5, "");
+
+        uint256[] memory ids = new uint256[](1);
+        uint256[] memory amounts = new uint256[](1);
+        vm.expectRevert(Offering.InvalidAddress.selector);
+        offering.onERC1155BatchReceived(address(offering), buyer, ids, amounts, "");
     }
 
     function testBatchReceiveTopsUpDuringFunding() public {
