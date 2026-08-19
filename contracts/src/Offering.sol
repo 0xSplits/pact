@@ -207,6 +207,10 @@ contract Offering is IERC1155Receiver, EIP712, ReentrancyGuard {
     /// compromise; re-issuing links is free). The owner check accepts EOA and
     /// ERC-1271 signatures, so passkey/smart-wallet issuers work; the link key
     /// is always a raw browser-generated key, so the claim check is pure ECDSA.
+    /// The voucher caps dollars, not price: it carries no curve position, so
+    /// buys between issuance and claim reprice the allocation. Claimers see the
+    /// live curve and consent via `maxCost` — accepted under the owner
+    /// trust model above rather than bounding `unitsSold` in the voucher.
     function buyPrivate(
         Voucher calldata voucher,
         bytes calldata ownerSig,
