@@ -191,8 +191,7 @@ contract Offering is IERC1155Receiver, EIP712, ReentrancyGuard {
     uint256 public constant TOKEN_ID = 0;
 
     /**
-     * @dev Base mainnet USDC, hardcoded so a wrong or fee-on-transfer
-     * payment token can't be configured.
+     * @dev Base mainnet USDC.
      */
     address public constant USDC = 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913;
 
