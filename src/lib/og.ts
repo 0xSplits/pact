@@ -48,6 +48,13 @@ export const OG_PAGES: OgPage[] = [
     description: "Raise a friends & family round without the paperwork.",
     image: "/og/pact.png",
   },
+  {
+    path: "/terms",
+    label: "Terms",
+    title: "PACT: Terms",
+    description: "Raise a friends & family round without the paperwork.",
+    image: "/og/pact.png",
+  },
 ];
 
 export function ogPageForPath(pathname: string): OgPage | undefined {

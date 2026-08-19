@@ -7,8 +7,11 @@ import type { Address } from "viem";
 import { isAddress } from "#lib/validate.ts";
 
 export const CREATE_PATH = "/create";
+export const TERMS_PATH = "/terms";
 export const statusPath = (offering: Address) => "/status?offering=" + offering;
 export const buyPath = (offering: Address) => "/buy?offering=" + offering;
+export const termsPath = (offering: Address) =>
+  TERMS_PATH + "?offering=" + offering;
 export const buyLinkPath = (offering: Address, fragment: string) =>
   buyPath(offering) + "#" + fragment;
 // A shareable absolute URL for an app path.
