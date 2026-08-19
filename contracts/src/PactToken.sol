@@ -60,7 +60,7 @@ contract PactToken is ERC1155, LiquidSplit {
     /// as usual. Residual accepted: in Failed, revenue accrued before the
     /// failure stays distributable by not-yet-refunded holders.
     function distributeFunds(address token, address[] calldata accounts, address distributorAddress) public override {
-        if (Offering(offering).state() == Offering.State.Funding) revert DistributionWhileFunding();
+        if (Offering(payable(offering)).state() == Offering.State.Funding) revert DistributionWhileFunding();
         super.distributeFunds(token, accounts, distributorAddress);
     }
 

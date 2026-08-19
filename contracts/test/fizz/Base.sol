@@ -167,7 +167,7 @@ abstract contract Base is PropertiesAsserts, Clamp, Deployer, Math {
             allocations,
             OFFERING_UNITS
         );
-        offering = Offering(offeringAddress);
+        offering = Offering(payable(offeringAddress));
         token = PactToken(payable(tokenAddress));
         vm.label(offeringAddress, "Offering");
         vm.label(tokenAddress, "PactToken");

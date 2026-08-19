@@ -41,7 +41,7 @@ contract BaseTest is Test {
         factory = new OfferingFactory(address(splitMain));
 
         (address offeringAddress, address tokenAddress) = _create(100e6, 100);
-        offering = Offering(offeringAddress);
+        offering = Offering(payable(offeringAddress));
         token = PactToken(payable(tokenAddress));
 
         usdc.mint(buyer, 1_000e6);

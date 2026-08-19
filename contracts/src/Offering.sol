@@ -387,10 +387,24 @@ contract Offering is IERC1155Receiver, EIP712, ReentrancyGuard {
         emit Closed(treasury, amount, unsoldUnits);
     }
 
-    /// @notice Recovers tokens that are not the payment token or the cap table
-    /// (audit M-1).
+    /// @notice Accepts ETH so SplitMain's permissionless withdraw can deliver
+    /// an ETH split share credited while the escrow held units — without this
+    /// the push reverts and the share is stranded in SplitMain forever (audit
+    /// Finding 1). Recover with `rescue(address(0), to)`.
+    receive() external payable {}
+
+    /// @notice Recovers tokens that are not the payment token or the cap table,
+    /// and ETH via `token == address(0)` (audit M-1, Finding 1). ETH is never
+    /// buyer liability — all deposits are USDC — so the full balance is safe to
+    /// sweep.
     function rescue(address token, address to) external onlyOwner nonReentrant {
         if (token == USDC || token == pactToken || to == address(0)) revert InvalidAddress();
+        if (token == address(0)) {
+            uint256 ethBalance = address(this).balance;
+            if (ethBalance == 0) revert NothingToWithdraw();
+            SafeTransferLib.safeTransferETH(to, ethBalance);
+            return;
+        }
         uint256 balance = SafeTransferLib.balanceOf(token, address(this));
         if (balance == 0) revert NothingToWithdraw();
         SafeTransferLib.safeTransfer(token, to, balance);
