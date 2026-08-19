@@ -122,6 +122,7 @@ contract Offering is IERC1155Receiver, EIP712, ReentrancyGuard {
     error NothingToWithdraw();
     error InsufficientSupply();
     error PublicAllocationExceeded();
+    error PublicReservationExceeded();
     error AllocationAlreadyConsumed();
     error AllocationCapExceeded();
     error InvalidVoucherSignature();
@@ -220,6 +221,14 @@ contract Offering is IERC1155Receiver, EIP712, ReentrancyGuard {
         if (ECDSA.recoverCalldata(claimDigest(voucher.allocationId, msg.sender), claimSig) != voucher.linkKey) {
             revert InvalidClaimSignature();
         }
+        // The unsold public tranche is reserved supply: a private claim only
+        // takes what the escrow holds beyond `publicUnits - publicUnitsSold`,
+        // so the advertised public cap stays deliverable. To free supply the
+        // owner lowers `publicUnits` first — the same move, made visible.
+        uint256 reserved = publicUnits - publicUnitsSold;
+        uint256 supply = remainingUnits();
+        if (unitsWanted > (supply > reserved ? supply - reserved : 0)) revert PublicReservationExceeded();
+
         // One-shot: the first claim consumes the allocation even if under-spent.
         allocationConsumed[voucher.allocationId] = true;
         cost = _buy(unitsWanted, maxCost, voucher.allocationId, voucher.buyerName);
@@ -260,9 +269,11 @@ contract Offering is IERC1155Receiver, EIP712, ReentrancyGuard {
 
     /// @notice Moves supply between the tranches. Raising it shifts private
     /// supply public (how oversubscription is handled); it can never undercut
-    /// units the public tranche already sold.
+    /// units the public tranche already sold, nor advertise more units than
+    /// the escrow can still deliver.
     function setPublicUnits(uint256 publicUnits_) external onlyOwner {
         if (publicUnits_ < publicUnitsSold) revert InvalidConfig();
+        if (publicUnits_ > remainingUnits() + publicUnitsSold) revert InvalidConfig();
         publicUnits = publicUnits_;
         emit PublicUnitsUpdated(publicUnits_);
     }

@@ -160,8 +160,8 @@ abstract contract Properties is Snapshots {
     }
 
     /// @notice GL-19: while Funding, the escrow retains the unsold public tranche.
-    /// @dev EXPLORATORY and deliberately falsifiable — buyPrivate bypasses the
-    /// public counter, so a counterexample sequence is the deliverable.
+    /// @dev SHOULD-HOLD — buyPrivate reserves `publicUnits - publicUnitsSold`
+    /// and setPublicUnits is bounded by deliverable supply.
     function property_publicTrancheStaysFillable() public {
         if (offering.state() != Offering.State.Funding) return;
         uint256 pu = offering.publicUnits();
