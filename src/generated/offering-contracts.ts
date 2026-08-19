@@ -222,6 +222,10 @@ export const OFFERING_ABI = [
     "stateMutability": "nonpayable"
   },
   {
+    "type": "receive",
+    "stateMutability": "payable"
+  },
+  {
     "type": "function",
     "name": "TOKEN_ID",
     "inputs": [],

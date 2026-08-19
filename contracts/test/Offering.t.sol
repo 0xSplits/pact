@@ -484,6 +484,21 @@ contract OfferingTest is BaseTest {
         assertEq(stray.balanceOf(treasury), 7e6, "rescued");
     }
 
+    function testRescueEth() public {
+        vm.prank(treasury);
+        vm.expectRevert(Offering.NothingToWithdraw.selector);
+        offering.rescue(address(0), treasury);
+
+        vm.deal(address(this), 1 ether);
+        (bool ok,) = address(offering).call{value: 1 ether}(""); // e.g. SplitMain.withdraw pushing an ETH split share
+        assertTrue(ok, "receive accepts ETH");
+
+        vm.prank(treasury);
+        offering.rescue(address(0), treasury);
+        assertEq(treasury.balance, 1 ether, "rescued");
+        assertEq(address(offering).balance, 0, "swept");
+    }
+
     function testTwoStepOwnership() public {
         address newOwner = makeAddr("newOwner");
         vm.prank(treasury);
@@ -708,7 +723,7 @@ contract OfferingTest is BaseTest {
 
         // Fresh offering: buy to minimum, close, then try the same top-up.
         (address offeringAddress, address tokenAddress) = _create(100e6, 100);
-        Offering closed = Offering(offeringAddress);
+        Offering closed = Offering(payable(offeringAddress));
         PactToken closedToken = PactToken(payable(tokenAddress));
         vm.startPrank(buyer);
         usdc.approve(address(closed), type(uint256).max);
