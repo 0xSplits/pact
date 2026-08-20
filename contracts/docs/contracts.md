@@ -104,7 +104,7 @@ Allocation semantics:
 - **One-shot, no expiry.** A single consumed flag per allocation id covers
   both a completed claim and an issuer cancellation.
 - **Ownership rotation mass-revokes.** Because vouchers verify against the
-  live owner, completing an ownership handover invalidates every
+  live owner, any ownership change invalidates every
   outstanding link. Conversely, ownership returning to a previous owner
   (A→B→A) revives that owner's unclaimed vouchers — rotation is not a
   substitute for cancelling a specific allocation.
@@ -188,9 +188,9 @@ The code must uphold these at all times; the fuzzing campaign
 - **The curve position never decreases**, and the public tranche
   invariants hold across cap adjustments: units sold publicly never exceed
   the cap, and the cap never exceeds deliverable escrow.
-- **Ownership moves only by two-step handover** — the new owner requests
-  it (the request expires after 48 hours) and the current owner completes
-  it. Direct transfer and renounce are disabled.
+- **Only the owner moves ownership** — by direct transfer, by renounce,
+  or by completing a two-step handover the incoming owner requested
+  (requests expire after 48 hours).
 
 ## Accepted trade-offs
 

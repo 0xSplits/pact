@@ -439,7 +439,7 @@ abstract contract OfferingHandler is Properties {
         property_claimSignatureIsBuyerBound(reverted);
     }
 
-    /// SP-27: every onlyOwner entry point (and the disabled transferOwnership)
+    /// SP-27: every onlyOwner entry point (including transferOwnership)
     /// reverts when a random non-owner calls it.
     function offering_adminAsRandomActor(uint8 selector, uint256 arg0, address arg1) public {
         address caller = toActor(arg1);

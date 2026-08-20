@@ -688,7 +688,7 @@ abstract contract Properties is Snapshots {
         }
     }
 
-    /// @notice SP-27: every onlyOwner entry point (and the disabled
+    /// @notice SP-27: every onlyOwner entry point (including
     /// transferOwnership) reverts for an arbitrary non-owner.
     function property_onlyOwnerGatesHold(bool reverted) internal {
         t(reverted, "SP-27: an owner-gated call was reachable by a non-owner");

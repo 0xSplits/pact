@@ -516,23 +516,6 @@ contract Offering is IERC1155Receiver, EIP712, Ownable, ReentrancyGuard {
     }
 
     /**
-     * @notice Disabled: ownership moves only by two-step handover — the new
-     * owner calls `requestOwnershipHandover()` (expires in 48 hours) and the
-     * current owner calls `completeOwnershipHandover(newOwner)`.
-     * @dev Completing a handover revokes every outstanding allocation link,
-     * since vouchers verify against the live owner. Conversely, ownership
-     * returning to a previous owner revives that owner's unclaimed vouchers.
-     */
-    function transferOwnership(address) public payable override {
-        revert Unauthorized();
-    }
-
-    /// @notice Disabled: the offering always has an owner.
-    function renounceOwnership() public payable override {
-        revert Unauthorized();
-    }
-
-    /**
      * @notice Accepts cap-table units only while the raise is live: refund
      * reclaims (self-operated) always land; anything else must be a top-up of
      * this offering's own token id during Funding.

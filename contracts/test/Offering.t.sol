@@ -578,13 +578,16 @@ contract OfferingTest is BaseTest {
         offering.completeOwnershipHandover(newOwner);
     }
 
-    function testDirectTransferAndRenounceDisabled() public {
-        vm.startPrank(treasury);
+    function testDirectTransferOwnership() public {
+        address newOwner = makeAddr("newOwner");
+
+        vm.prank(buyer);
         vm.expectRevert(Ownable.Unauthorized.selector);
-        offering.transferOwnership(makeAddr("newOwner"));
-        vm.expectRevert(Ownable.Unauthorized.selector);
-        offering.renounceOwnership();
-        vm.stopPrank();
+        offering.transferOwnership(newOwner);
+
+        vm.prank(treasury);
+        offering.transferOwnership(newOwner);
+        assertEq(offering.owner(), newOwner, "transferred");
     }
 
     function testWithdrawRevertsBeforeMinimum() public {
