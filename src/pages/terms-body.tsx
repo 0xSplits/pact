@@ -15,6 +15,7 @@ import {
   fmtUsd,
   usdcBaseUnitsToDollars,
 } from "#lib/format.ts";
+import { UNITS_DISCLAIMER } from "#pages/pact-copy.tsx";
 
 export interface FilledTerms {
   projectName: string;
@@ -193,18 +194,12 @@ export function TermsBody({
 
   return (
     <>
-      <p className="text-sm uppercase text-justify mb-9">
-        The Units issued pursuant to this instrument confer no legal rights, but
-        may participate in the Project&rsquo;s future value as its creator
-        expressly provides. They exist solely to align their holders with the
-        Project, and it is for the creator to determine what, if anything, the
-        Units are used for.
-      </p>
+      <p className="text-sm uppercase text-justify mb-9">{UNITS_DISCLAIMER}</p>
 
       {executed ? (
         <p className="mb-9 text-justify">
           This Purchase Agreement for Community Tokens (this &ldquo;PACT&rdquo;)
-          certifies that in exchange for the payment by{" "}
+          certifies that {nameField} (the &ldquo;Project&rdquo;) has issued to{" "}
           {executed.buyerName ? (
             <>
               <Filled>{executed.buyerName}</Filled> (
@@ -215,8 +210,10 @@ export function TermsBody({
               <AddressLink address={executed.buyer} />
             </Filled>
           )}{" "}
-          (the &ldquo;Buyer&rdquo;) of{" "}
-          <Filled>{fmtUsd(executed.amountUsd, "cents")}</Filled> (the
+          (the &ldquo;Buyer&rdquo;){" "}
+          <Filled>{executed.units.toLocaleString("en-US")}</Filled> community
+          units (the &ldquo;Units&rdquo;) in consideration of the Buyer&rsquo;s
+          payment of <Filled>{fmtUsd(executed.amountUsd, "cents")}</Filled> (the
           &ldquo;Purchase Amount&rdquo;)
           {executed.dateMs ? (
             <>
@@ -224,10 +221,7 @@ export function TermsBody({
               on <Filled>{fmtDate(executed.dateMs)}</Filled>
             </>
           ) : null}
-          , {nameField} (the &ldquo;Project&rdquo;) has issued to the Buyer{" "}
-          <Filled>{executed.units.toLocaleString("en-US")}</Filled> community
-          units (the &ldquo;Units&rdquo;), upon and subject to the terms set
-          forth herein.
+          , upon and subject to the terms set forth herein.
         </p>
       ) : (
         <p className="mb-9 text-justify">
