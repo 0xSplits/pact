@@ -29,6 +29,7 @@ const rewriteCleanUrls: Connect.NextHandleFunction = (req, _res, next) => {
       "/status": "/status.html",
       "/buy": "/buy.html",
       "/terms": "/terms.html",
+      "/receipt": "/receipt.html",
     } as Record<string, string>
   )[pathname];
   if (target && req.url)
@@ -115,6 +116,7 @@ export default defineConfig(({ isPreview }) => ({
         status: page("status.html"),
         buy: page("buy.html"),
         terms: page("terms.html"),
+        receipt: page("receipt.html"),
       },
     },
   },

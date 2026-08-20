@@ -98,6 +98,7 @@ import {
   buyPath,
   CREATE_PATH,
   currentOfferingAddress,
+  receiptPath,
 } from "#lib/routes.ts";
 import { debugActive } from "#lib/ui/debug-menu.ts";
 import { copyText, showToast } from "#lib/ui/toast.ts";
@@ -633,9 +634,9 @@ function AllocationsTable({
                     {row.txHash ? (
                       <AddressLink
                         className="act muted"
-                        href={basescanTx(row.txHash)}
+                        href={receiptPath(offeringAddress!, row.txHash)}
                       >
-                        View txn
+                        View receipt
                       </AddressLink>
                     ) : null}
                     {row.link ? (
@@ -812,12 +813,7 @@ function PurchasesTable({
               isSameAddress(wallet, row.buyer);
             return (
               <tr key={row.key}>
-                <td>
-                  {row.name}
-                  {row.isPublic ? (
-                    <span className="t-muted"> · public</span>
-                  ) : null}
-                </td>
+                <td>{row.name}</td>
                 <td className="num">{fmtUsd(cost)}</td>
                 <td>
                   <span className="tokencell">
@@ -827,6 +823,9 @@ function PurchasesTable({
                       / unit
                     </span>
                   </span>
+                  {row.isPublic ? (
+                    <span className="t-muted"> (public sale)</span>
+                  ) : null}
                   {refund === "refunded" ? (
                     <>
                       {" "}
@@ -857,9 +856,9 @@ function PurchasesTable({
                     {row.txHash ? (
                       <AddressLink
                         className="act muted"
-                        href={basescanTx(row.txHash)}
+                        href={receiptPath(offeringAddress!, row.txHash)}
                       >
-                        View txn
+                        View receipt
                       </AddressLink>
                     ) : null}
                   </span>

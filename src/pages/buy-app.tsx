@@ -57,6 +57,7 @@ import {
 import {
   currentOfferingAddress,
   currentVoucherFragment,
+  receiptPath,
   termsPath,
 } from "#lib/routes.ts";
 import { debugActive } from "#lib/ui/debug-menu.ts";
@@ -571,14 +572,24 @@ export function BuyApp() {
   });
   const txLabel =
     receipt && receipt.txHash ? (
-      <a
-        className="linkbtn"
-        href={basescanTx(receipt.txHash)}
-        target="_blank"
-        rel="noreferrer"
-      >
-        View transaction
-      </a>
+      <>
+        <a
+          className="linkbtn"
+          href={receiptPath(offeringAddress!, receipt.txHash)}
+          target="_blank"
+          rel="noreferrer"
+        >
+          View receipt
+        </a>
+        <a
+          className="linkbtn t-muted text-sm"
+          href={basescanTx(receipt.txHash)}
+          target="_blank"
+          rel="noreferrer"
+        >
+          Basescan
+        </a>
+      </>
     ) : null;
 
   const failedRefundCopy = debugRefunded

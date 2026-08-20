@@ -181,6 +181,26 @@ body {
   grid-template-columns: minmax(0, 1fr) minmax(0, 324px);
   margin-top: 44px;
 }
+/* Read-only signature line used on the /receipt page — the wallet address IS
+   the signature, so there's no cursive preview, underline, or input. All
+   static rows share a two-column grid so the labels stack on the left and
+   the values stack on the right. */
+.signature-row + .signature-row {
+  margin-top: 12px;
+}
+.signature-row.signature-static-row .signature-by {
+  margin-top: 0;
+}
+.signature-row.signature-static-row .signature-inner {
+  display: grid;
+  grid-template-columns: 6.5rem minmax(0, 1fr);
+  align-items: baseline;
+  gap: 12px;
+}
+.signature-static {
+  padding: 0 5px;
+  color: var(--ink);
+}
 .signature-inner {
   grid-column: 2;
   display: flex;
