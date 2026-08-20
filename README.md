@@ -30,7 +30,7 @@ Under the hood:
 More detail:
 
 - [Architecture](docs/architecture.md) — system-level design and vocabulary
-- [Contract Design](docs/contracts.md)
+- [Contract Specification](contracts/docs/contracts.md)
 - [App Design](docs/app.md)
 
 ## Local Development

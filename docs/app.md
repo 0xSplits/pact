@@ -4,7 +4,7 @@ The app is the static half of the system: a multi-page site that renders
 and transacts against the contracts, holding nothing durable of its own.
 Vocabulary is defined in the [architecture document](architecture.md);
 the mechanisms it renders are specified in the
-[contract design](contracts.md).
+[contract specification](../contracts/docs/contracts.md).
 
 ## Static pages, state in the URL
 

@@ -27,7 +27,7 @@ contract FoundryTester is Test, Handlers {
     // property during the campaign. GL-19 has since been fixed (buyPrivate
     // reserves the public tranche) and its repro is now a regression test;
     // GL-20 is an accepted, documented state (`sweepFailedUnits` NatSpec,
-    // docs/contracts.md) and its repro pins the collapse directly. Run all with:
+    // contracts/docs/contracts.md) and its repro pins the collapse directly. Run all with:
     //   FOUNDRY_PROFILE=fuzz forge test --match-contract FoundryTester -vvv
 
     /// GL-19 (ADV-17) regression: the campaign's shrunk sequence — one 150-unit

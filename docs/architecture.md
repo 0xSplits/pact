@@ -4,7 +4,8 @@ PACT raises small onchain rounds by selling a slice of a project's cap table
 along a bonding curve, for USDC on Base. It is a static web app plus a set
 of contracts; the chain is the only backend. This document names the
 components and walks a raise through them. The layers are specified in
-[contract design](contracts.md) and [app design](app.md).
+the [contract specification](../contracts/docs/contracts.md) and
+[app design](app.md).
 
 ## Vocabulary
 
@@ -99,6 +100,6 @@ What the contracts do guarantee: deposits can be stolen by no one, and are
 refundable if the raise fails; proceeds can only ever reach the treasury;
 the advertised public tranche is always deliverable; and an allocation link
 is the sole capability needed to claim its allocation, unusable by anyone
-who intercepts a claim in flight. The [contract design](contracts.md)
-document states these guarantees precisely, along with the trade-offs the
-design accepts.
+who intercepts a claim in flight. The
+[contract specification](../contracts/docs/contracts.md) states these
+guarantees precisely, along with the trade-offs the design accepts.
