@@ -57,7 +57,6 @@ import {
 import {
   currentOfferingAddress,
   currentVoucherFragment,
-  receiptPath,
   termsPath,
 } from "#lib/routes.ts";
 import { debugActive } from "#lib/ui/debug-menu.ts";
@@ -575,7 +574,7 @@ export function BuyApp() {
       <>
         <a
           className="linkbtn"
-          href={receiptPath(offeringAddress!, receipt.txHash)}
+          href={termsPath(offeringAddress!, receipt.txHash)}
           target="_blank"
           rel="noreferrer"
         >

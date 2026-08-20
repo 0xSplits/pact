@@ -98,7 +98,7 @@ import {
   buyPath,
   CREATE_PATH,
   currentOfferingAddress,
-  receiptPath,
+  termsPath,
 } from "#lib/routes.ts";
 import { debugActive } from "#lib/ui/debug-menu.ts";
 import { copyText, showToast } from "#lib/ui/toast.ts";
@@ -634,7 +634,7 @@ function AllocationsTable({
                     {row.txHash ? (
                       <AddressLink
                         className="act muted"
-                        href={receiptPath(offeringAddress!, row.txHash)}
+                        href={termsPath(offeringAddress!, row.txHash)}
                       >
                         View receipt
                       </AddressLink>
@@ -856,7 +856,7 @@ function PurchasesTable({
                     {row.txHash ? (
                       <AddressLink
                         className="act muted"
-                        href={receiptPath(offeringAddress!, row.txHash)}
+                        href={termsPath(offeringAddress!, row.txHash)}
                       >
                         View receipt
                       </AddressLink>

@@ -1,6 +1,6 @@
-// Shared body of the PACT document, rendered by both the reference /terms
-// page and the per-purchase /receipt page. Everything that fills in offering
-// values lives here so the two pages stay in lockstep.
+// Shared body of the PACT document, rendered by /terms in two modes: a
+// reference template when the page has no `tx` param, and an executed
+// certificate for a specific buyer when it does.
 import type { ReactNode } from "react";
 import type { Address } from "viem";
 
@@ -22,7 +22,6 @@ export interface FilledTerms {
   maxUsd: number;
   dilutionPct: number;
   closeDateMs: number;
-  publicPct: number;
   treasury: Address;
   cap: number;
   floor: number;
@@ -54,7 +53,6 @@ export function deriveFilledTerms(
     maxUsd,
     dilutionPct: (offeredUnits / TOTAL_LIQUID_SPLIT_UNITS) * 100,
     closeDateMs: state.closeDate * 1000,
-    publicPct: offeredUnits > 0 ? (state.publicUnits / offeredUnits) * 100 : 0,
     treasury: state.treasury,
     cap,
     floor,
@@ -114,10 +112,9 @@ export function TermsLoadNotice({
 }
 
 // The particulars of a specific buyer's purchase, woven into the executed
-// preamble on the /receipt page. When present the opening paragraph shifts
-// from a generic template ("shall issue…") to a SAFE-style certificate
-// ("in exchange for the payment by X of $Y on [date], the Project has
-// issued to the Buyer N Units…").
+// preamble when present. Swaps the opening paragraph from a generic template
+// ("shall issue…") to a SAFE-style certificate ("in exchange for the payment
+// by X of $Y on [date], the Project has issued to the Buyer N Units…").
 export interface ExecutedPurchase {
   buyer: Address;
   buyerName: string | null;
@@ -128,20 +125,15 @@ export interface ExecutedPurchase {
 
 // The doctrinal body of the PACT — everything after the header. Rendered with
 // blanks when `filled` is null, and with the offering's numbers otherwise.
-// `omitCapitalization`: drops §3 (Capitalization) — the receipt page prefers
-// to reserve that section for the buyer's specific purchase — and renumbers
-// what follows so the sequence stays contiguous. `executed`: swaps the
-// preamble for the filled-in certificate form when present.
+// `executed`: swaps the preamble for the filled-in certificate form when the
+// document is a receipt for a specific purchase.
 export function TermsBody({
   filled,
-  omitCapitalization = false,
   executed = null,
 }: {
   filled: FilledTerms | null;
-  omitCapitalization?: boolean;
   executed?: ExecutedPurchase | null;
 }) {
-  const resultingNo = omitCapitalization ? 3 : 4;
   const nameField = filled?.projectName ? (
     <Filled>{filled.projectName}</Filled>
   ) : filled ? (
@@ -170,13 +162,6 @@ export function TermsBody({
     <Filled>{fmtDate(filled.closeDateMs)}</Filled>
   ) : (
     <Placeholder label="Close Date" />
-  );
-  const publicField = filled ? (
-    <Filled>{fmtPct(filled.publicPct)}</Filled>
-  ) : (
-    <>
-      <Placeholder label="Public" />%
-    </>
   );
   const treasuryField = filled ? (
     <AddressLink address={filled.treasury} />
@@ -263,7 +248,7 @@ export function TermsBody({
         Units (the &ldquo;Offering&rdquo;). Should the Maximum not be met, any
         unsold Units may be reclaimed solely by the Treasury.
       </p>
-      <p className="mb-4 pl-4 text-justify">
+      <p className="mb-9 pl-4 text-justify">
         <span className="font-bold">(a) Close Date.</span>{" "}
         {filled ? (
           <>
@@ -279,11 +264,6 @@ export function TermsBody({
           </>
         )}
       </p>
-      <p className="mb-9 pl-4 text-justify">
-        <span className="font-bold">(b) Public Portion.</span> Up to{" "}
-        {publicField} of the Offering shall be purchasable publicly; the
-        remainder shall be reserved for private allocations.
-      </p>
 
       <SectionTitle>&sect;2. Use of Proceeds</SectionTitle>
       <p className="mb-9 text-justify">
@@ -292,21 +272,7 @@ export function TermsBody({
         {treasuryField}.
       </p>
 
-      {omitCapitalization ? null : (
-        <>
-          <SectionTitle>&sect;3. Capitalization</SectionTitle>
-          <p className="mb-4 text-justify">
-            The capital structure of the Project, before and after the Offering,
-            is set forth in an exhibit fixed at issuance, listing each
-            holder&rsquo;s wallet, pre-Offering percentage, post-Offering
-            percentage, and Unit count, together with the Units reserved for the
-            Offering itself. Upon issuance, each holder receives their Units
-            directly in their wallet(s), as defined in the exhibit.
-          </p>
-        </>
-      )}
-
-      <SectionTitle>&sect;{resultingNo}. Resulting Terms</SectionTitle>
+      <SectionTitle>&sect;3. Resulting Terms</SectionTitle>
       <p className="mb-4 text-justify">
         Accordingly, upon full subscription the effective post-money valuation
         shall be ${capField}.

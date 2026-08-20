@@ -8,13 +8,12 @@ import { isAddress } from "#lib/validate.ts";
 
 export const CREATE_PATH = "/create";
 export const TERMS_PATH = "/terms";
-export const RECEIPT_PATH = "/receipt";
 export const statusPath = (offering: Address) => "/status?offering=" + offering;
 export const buyPath = (offering: Address) => "/buy?offering=" + offering;
-export const termsPath = (offering: Address) =>
-  TERMS_PATH + "?offering=" + offering;
-export const receiptPath = (offering: Address, txHash: Hex | string) =>
-  RECEIPT_PATH + "?offering=" + offering + "&tx=" + txHash;
+// With a tx hash the page renders the executed receipt for that purchase;
+// without one it renders the reference template filled in from live state.
+export const termsPath = (offering: Address, txHash?: Hex | string) =>
+  TERMS_PATH + "?offering=" + offering + (txHash ? "&tx=" + txHash : "");
 export const buyLinkPath = (offering: Address, fragment: string) =>
   buyPath(offering) + "#" + fragment;
 // A shareable absolute URL for an app path.
