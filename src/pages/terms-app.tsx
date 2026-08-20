@@ -19,8 +19,8 @@ import { listBought, listLifecycle } from "#lib/chain/offerings.ts";
 import { getBlockTimestamp, getProjectName } from "#lib/chain/onchain.ts";
 import { basescanTx, usdcBaseUnitsToDollars } from "#lib/format.ts";
 import { currentOfferingAddress, currentTxHash } from "#lib/routes.ts";
+import { deriveFilledTerms } from "#lib/terms-fields.ts";
 import {
-  deriveFilledTerms,
   TermsBody,
   TermsHeading,
   TermsLoadNotice,
