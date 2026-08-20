@@ -32,6 +32,16 @@ is distributable to holders in proportion to their units via [Splits](https://sp
   update requires the percentages to sum to 100% — an incomplete list
   fails to update the split and the pushed funds wait in the payout split
   until a complete call succeeds.
+- **Distribution has a holder-count ceiling of roughly 650.**
+  `distributeFunds` needs the complete holder list in a single
+  transaction and costs ~25k gas per listed holder against SplitMain
+  (measured on a Base mainnet fork with every recipient slot cold: 12.6M
+  gas at 500 holders, 25.2M at 1,000). Base caps a transaction at
+  16,777,216 gas ([EIP-7825](https://docs.base.org/base-chain/network-information/throughput-and-limits), Azul hardfork), so a distribution
+  stops fitting somewhere around 650 holders — while the 1-unit minimum
+  permits up to 1,000. A cap table fragmented past the ceiling cannot
+  distribute (pushed funds wait in the token, and nothing else breaks)
+  until transfers consolidate holdings back under it.
 - **Metadata is fully onchain**: `uri` returns a data URI embedding the
   project name and a rendered SVG.
 
@@ -94,8 +104,10 @@ Allocation semantics:
 - **One-shot, no expiry.** A single consumed flag per allocation id covers
   both a completed claim and an issuer cancellation.
 - **Ownership rotation mass-revokes.** Because vouchers verify against the
-  live owner, completing an ownership transfer invalidates every
-  outstanding link.
+  live owner, completing an ownership handover invalidates every
+  outstanding link. Conversely, ownership returning to a previous owner
+  (A→B→A) revives that owner's unclaimed vouchers — rotation is not a
+  substitute for cancelling a specific allocation.
 
 Every purchase, public or private, emits `Bought` carrying the buyer's
 display name and the allocation id (zero for public buys).
@@ -167,7 +179,7 @@ The code must uphold these at all times; the fuzzing campaign
 - **Buyer liability is `raised − withdrawn`**, where `raised` decrements
   on refund. Deposits are reachable by no one except the buyers they
   belong to: withdrawal and closing move only non-liability proceeds to
-  the treasury, the USDC skim moves only balance in excess of liability
+  the treasury, the excess-USDC sweep moves only balance above liability
   (split revenue can be pushed in by third parties), and rescue rejects
   USDC and the cap-table token outright. A forfeited or undeliverable
   deposit stays counted as liability forever.
@@ -176,8 +188,9 @@ The code must uphold these at all times; the fuzzing campaign
 - **The curve position never decreases**, and the public tranche
   invariants hold across cap adjustments: units sold publicly never exceed
   the cap, and the cap never exceeds deliverable escrow.
-- **Ownership moves only by two-step transfer** — a nomination the new
-  owner must accept. There is no renounce path.
+- **Ownership moves only by two-step handover** — the new owner requests
+  it (the request expires after 48 hours) and the current owner completes
+  it. Direct transfer and renounce are disabled.
 
 ## Accepted trade-offs
 
@@ -197,3 +210,5 @@ The code must uphold these at all times; the fuzzing campaign
 - **A failed-raise sweep can collapse the cap table to one holder.** If
   the sweep lands all 1,000 units on a single address, distribution
   reverts until any one unit moves.
+- **Stray NFTs are unrecoverable.** `rescue` moves only ERC-20s and ETH;
+  an ERC-721 or ERC-1155 sent to the escrow by mistake is stuck.

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
+import {Ownable} from "solady/auth/Ownable.sol";
 import {ReentrancyGuard} from "solady/utils/ReentrancyGuard.sol";
 
 import {BaseTest} from "./Base.t.sol";
@@ -91,7 +92,7 @@ contract OfferingTest is BaseTest {
 
         // 200 escrowed, 100 reserved for the public tranche: 150 dips into it.
         vm.prank(buyer2);
-        vm.expectRevert(Offering.PublicReservationExceeded.selector);
+        vm.expectRevert(abi.encodeWithSelector(Offering.PublicReservationExceeded.selector, 100));
         offering.buyPrivate(voucher, ownerSig, claimSig, 150, type(uint256).max);
 
         // Lowering the cap frees the supply openly, and the claim goes through.
@@ -147,10 +148,10 @@ contract OfferingTest is BaseTest {
         offering.setPublicUnits(50);
 
         MockERC1271Wallet wallet = new MockERC1271Wallet();
-        vm.prank(treasury);
-        offering.transferOwnership(address(wallet));
         vm.prank(address(wallet));
-        offering.acceptOwnership();
+        offering.requestOwnershipHandover();
+        vm.prank(treasury);
+        offering.completeOwnershipHandover(address(wallet));
 
         Offering.Voucher memory voucher = _voucher("Alice", 200e6);
         wallet.approveDigest(offering.voucherDigest(voucher));
@@ -167,10 +168,10 @@ contract OfferingTest is BaseTest {
 
     function testBuyPrivateSmartWalletRejectsUnapprovedDigest() public {
         MockERC1271Wallet wallet = new MockERC1271Wallet();
-        vm.prank(treasury);
-        offering.transferOwnership(address(wallet));
         vm.prank(address(wallet));
-        offering.acceptOwnership();
+        offering.requestOwnershipHandover();
+        vm.prank(treasury);
+        offering.completeOwnershipHandover(address(wallet));
 
         Offering.Voucher memory voucher = _voucher("Alice", 200e6);
         bytes memory claimSig = _claimSig(offering, voucher.allocationId, buyer2);
@@ -259,10 +260,10 @@ contract OfferingTest is BaseTest {
         bytes memory claimSig = _claimSig(offering, voucher.allocationId, buyer2);
 
         address newOwner = makeAddr("newOwner");
-        vm.prank(treasury);
-        offering.transferOwnership(newOwner);
         vm.prank(newOwner);
-        offering.acceptOwnership();
+        offering.requestOwnershipHandover();
+        vm.prank(treasury);
+        offering.completeOwnershipHandover(newOwner);
 
         vm.prank(buyer2);
         vm.expectRevert(Offering.InvalidVoucherSignature.selector);
@@ -362,7 +363,7 @@ contract OfferingTest is BaseTest {
     }
 
     function testMarkFailedRevertsBeforeCloseDate() public {
-        vm.expectRevert(Offering.PastCloseDate.selector);
+        vm.expectRevert(Offering.CloseDateNotPassed.selector);
         offering.markFailed();
         assertEq(uint256(offering.state()), uint256(Offering.State.Funding), "still funding");
     }
@@ -504,16 +505,16 @@ contract OfferingTest is BaseTest {
         assertGt(usdc.balanceOf(treasury), 0, "usdc");
     }
 
-    function testSkimUsdcSweepsOnlyExcess() public {
+    function testSweepExcessUsdcSweepsOnlyExcess() public {
         vm.prank(buyer);
         uint256 cost = offering.buyPublic(100, type(uint256).max, "");
         usdc.mint(address(offering), 5e6); // e.g. split revenue pushed in by SplitMain.withdraw
 
         vm.prank(treasury);
         vm.expectEmit(false, false, false, true, address(offering));
-        emit Offering.Skimmed(5e6);
-        uint256 skimmed = offering.skimUsdc();
-        assertEq(skimmed, 5e6, "skimmed excess only");
+        emit Offering.ExcessSwept(5e6);
+        uint256 swept = offering.sweepExcessUsdc();
+        assertEq(swept, 5e6, "swept excess only");
         assertEq(usdc.balanceOf(address(offering)), cost, "liability intact");
     }
 
@@ -551,20 +552,39 @@ contract OfferingTest is BaseTest {
         assertEq(address(offering).balance, 0, "swept");
     }
 
-    function testTwoStepOwnership() public {
+    function testTwoStepOwnershipHandover() public {
         address newOwner = makeAddr("newOwner");
-        vm.prank(treasury);
-        offering.transferOwnership(newOwner);
-        assertEq(offering.owner(), treasury, "owner unchanged until accept");
+        vm.prank(newOwner);
+        offering.requestOwnershipHandover();
+        assertEq(offering.owner(), treasury, "owner unchanged until completed");
 
         vm.prank(buyer);
-        vm.expectRevert(Offering.NotOwner.selector);
-        offering.acceptOwnership();
+        vm.expectRevert(Ownable.Unauthorized.selector);
+        offering.completeOwnershipHandover(newOwner);
 
+        vm.prank(treasury);
+        offering.completeOwnershipHandover(newOwner);
+        assertEq(offering.owner(), newOwner, "handed over");
+    }
+
+    function testExpiredHandoverCannotComplete() public {
+        address newOwner = makeAddr("newOwner");
         vm.prank(newOwner);
-        offering.acceptOwnership();
-        assertEq(offering.owner(), newOwner, "accepted");
-        assertEq(offering.pendingOwner(), address(0), "pending cleared");
+        offering.requestOwnershipHandover();
+
+        vm.warp(block.timestamp + 49 hours);
+        vm.prank(treasury);
+        vm.expectRevert(Ownable.NoHandoverRequest.selector);
+        offering.completeOwnershipHandover(newOwner);
+    }
+
+    function testDirectTransferAndRenounceDisabled() public {
+        vm.startPrank(treasury);
+        vm.expectRevert(Ownable.Unauthorized.selector);
+        offering.transferOwnership(makeAddr("newOwner"));
+        vm.expectRevert(Ownable.Unauthorized.selector);
+        offering.renounceOwnership();
+        vm.stopPrank();
     }
 
     function testWithdrawRevertsBeforeMinimum() public {
@@ -653,39 +673,39 @@ contract OfferingTest is BaseTest {
         vm.stopPrank();
     }
 
-    function testSkimUsdcRevertsWithoutExcess() public {
+    function testSweepExcessUsdcRevertsWithoutExcess() public {
         vm.prank(buyer);
         uint256 cost = offering.buyPublic(10, type(uint256).max, "");
         _fail();
 
         vm.prank(treasury);
         vm.expectRevert(Offering.NothingToWithdraw.selector);
-        offering.skimUsdc();
+        offering.sweepExcessUsdc();
 
         usdc.mint(address(offering), 5e6);
         vm.prank(treasury);
-        assertEq(offering.skimUsdc(), 5e6, "skimmed excess");
+        assertEq(offering.sweepExcessUsdc(), 5e6, "swept excess");
         assertEq(usdc.balanceOf(address(offering)), cost, "liability intact");
     }
 
     function testOnlyOwnerFunctionsRejectNonOwner() public {
         vm.startPrank(buyer);
-        vm.expectRevert(Offering.NotOwner.selector);
+        vm.expectRevert(Ownable.Unauthorized.selector);
         offering.cancelAllocation(bytes32(0));
-        vm.expectRevert(Offering.NotOwner.selector);
+        vm.expectRevert(Ownable.Unauthorized.selector);
         offering.setPublicUnits(150);
-        vm.expectRevert(Offering.NotOwner.selector);
+        vm.expectRevert(Ownable.Unauthorized.selector);
         offering.refundAll(new address[](0));
-        vm.expectRevert(Offering.NotOwner.selector);
+        vm.expectRevert(Ownable.Unauthorized.selector);
         offering.closeAndWithdraw();
-        vm.expectRevert(Offering.NotOwner.selector);
+        vm.expectRevert(Ownable.Unauthorized.selector);
         offering.rescue(address(1), address(2));
-        vm.expectRevert(Offering.NotOwner.selector);
-        offering.skimUsdc();
-        vm.expectRevert(Offering.NotOwner.selector);
+        vm.expectRevert(Ownable.Unauthorized.selector);
+        offering.sweepExcessUsdc();
+        vm.expectRevert(Ownable.Unauthorized.selector);
         offering.setTreasury(address(1));
-        vm.expectRevert(Offering.NotOwner.selector);
-        offering.transferOwnership(address(1));
+        vm.expectRevert(Ownable.Unauthorized.selector);
+        offering.completeOwnershipHandover(address(1));
         vm.stopPrank();
     }
 
@@ -819,7 +839,7 @@ contract OfferingTest is BaseTest {
         offering.initialize(address(1));
 
         vm.prank(address(factory));
-        vm.expectRevert(Offering.AlreadyInitialized.selector);
+        vm.expectRevert(Ownable.AlreadyInitialized.selector);
         offering.initialize(address(1));
     }
 
