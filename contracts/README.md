@@ -3,9 +3,8 @@
 PACT raises small onchain rounds by selling a slice of a project's cap
 table along a linear bonding curve, in USDC on Base. Each raise is its own
 `Offering` + `PactToken` pair, deployed and wired in one transaction by
-`OfferingFactory`. The [contract specification](docs/contracts.md) is the
-source of truth for behavior — including the full lifecycle state machine
-— and the code must match it.
+`OfferingFactory`. Behavior is specified in the
+[contract specification](docs/contracts.md).
 
 This is a self-contained Foundry project; when running forge from the repo
 root, pass `--root contracts`.
