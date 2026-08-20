@@ -106,20 +106,24 @@ display name and the allocation id (zero for public buys).
 stateDiagram-v2
     direction TB
 
-    state "Raising<br/>Funding · minimum not met" as Raising
-    state "Succeeded<br/>Funding · minimum met, irreversible" as Succeeded
-    state "Expired<br/>Funding · close date passed, minimum unmet" as Expired
-    state "Closed<br/>terminal · distribution unlocks" as Closed
-    state "Failed<br/>terminal · distribution unlocks" as Failed
+    state Funding {
+        direction TB
+        state "Raising<br/>buyPublic · buyPrivate" as Raising
+        state "Succeeded<br/>buys continue · withdraw open" as Succeeded
+        state "Expired<br/>every buy reverts" as Expired
 
-    [*] --> Raising : factory deploys the pair — founder units<br/>minted, for-sale units escrowed
-    Raising --> Raising : buys, either tranche
-    Raising --> Succeeded : a buy brings raised past the minimum
-    Raising --> Expired : close date passes —<br/>every further buy reverts
-    Succeeded --> Succeeded : buys continue · withdrawal open
-    Succeeded --> Closed : issuer closes
-    Expired --> Failed : anyone declares failure
-    Failed --> Failed : buyer self-refund · issuer batch refund ·<br/>anyone sweeps escrowed units to treasury
+        [*] --> Raising : createOffering<br/>founder units minted,<br/>for-sale units escrowed
+        Raising --> Succeeded : buy brings raised past<br/>the minimum (latches)
+        Raising --> Expired : close date passes,<br/>minimum unmet
+    }
+
+    state "Closed<br/>unsold units to treasury<br/>distribution unlocked" as Closed
+    state "Failed<br/>refund · batchRefund · sweepFailedUnits<br/>distribution unlocked" as Failed
+
+    Succeeded --> Closed : closeAndWithdraw (owner)
+    Expired --> Failed : markFailed (anyone)
+    Closed --> [*]
+    Failed --> [*]
 ```
 
 Exact conditions:
