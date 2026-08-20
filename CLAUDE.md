@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-PACT: raise small onchain rounds by selling a slice of a project's cap table — a custom liquid-split ERC-1155 (`PactToken`, token id 0, 1000 units = 100%) — along a linear bonding curve, in USDC on Base mainnet. Fully serverless: a static Vite app on Vercel with the chain as the only backend. Prototype. See `docs/` (architecture.md, onchain.md, testing.md, deployment.md) for full detail.
+PACT: raise small onchain rounds by selling a slice of a project's cap table — a custom liquid-split ERC-1155 (`PactToken`, token id 0, 1000 units = 100%) — along a linear bonding curve, in USDC on Base mainnet. Fully serverless: a static Vite app on Vercel with the chain as the only backend. Prototype. See `docs/architecture.md` for the system design and `contracts/docs/contracts.md` for the contract specification.
 
 ## Commands
 
@@ -14,10 +14,10 @@ PACT: raise small onchain rounds by selling a slice of a project's cap table —
 - `npm test` — colocated unit tests (`vitest run` over `src/**/*.test.ts`; run against fakes, never real RPC)
 - `forge test --root contracts` (or `npm run test:contracts`) — Solidity suite incl. fuzz + invariants (requires Foundry)
   - single test: `forge test --root contracts --match-test <name>`
-- `FOUNDRY_PROFILE=fuzz medusa fuzz --config medusa.json` (from `contracts/`) — stateful Medusa fuzz suite (`contracts/test/fizz/`, specs in `PROPERTIES.md`); see `contracts/test/fizz/README.md` and docs/testing.md
+- `FOUNDRY_PROFILE=fuzz medusa fuzz --config medusa.json` (from `contracts/`) — stateful Medusa fuzz suite (`contracts/test/fizz/`, specs in `PROPERTIES.md`); see `contracts/test/fizz/README.md`
 - `npm run test:e2e` — Vite build then anvil-backed Playwright flow (`tests/pact-flow.spec.ts`, real local-chain transactions through a mocked EIP-1193 wallet; needs `forge build` artifacts)
 - `npm run build:contracts` — after Solidity changes: `forge build` + regenerate `src/generated/offering-contracts.ts` (checked in, so frontend builds don't need Foundry)
-- `npm run deploy:factory` — CREATE2 factory deploy to Base (rare; see docs/deployment.md)
+- `npm run deploy:factory` — CREATE2 factory deploy to Base (rare)
 
 Node >= 22.18 (`.nvmrc` / `.tool-versions`). Imports use explicit `.ts` extensions so tests/scripts run on Node's native type stripping. CI (`.github/workflows/ci.yml`) runs fmt-check, forge, typecheck, units, and the e2e; Vercel deploys `main` independently of CI.
 
@@ -43,4 +43,4 @@ Pages read the contract on load and poll while visible; live reads always beat c
 - ES modules, strict TypeScript, explicit `.ts` import extensions; no default exports of config-like objects. Solidity stays Foundry.
 - The `/create` flow only seeds the local cache and redirects after the `OfferingCreated` event is decoded — keep that ordering.
 - Unit tests are colocated (`src/**/*.test.ts`) and take injectable fakes (`getLogs`, `storage`). The JS↔Solidity voucher boundary is pinned by `tests/fixtures/voucher-golden.json`, asserted by both suites — regenerate it only for intentional struct changes.
-- For small frontend-only changes, prefer targeted manual browser checks against the running dev server; run the full suites before committing (see `docs/testing.md`, which also has the manual Base dust checklist).
+- For small frontend-only changes, prefer targeted manual browser checks against the running dev server; run the full suites before committing.
