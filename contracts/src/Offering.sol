@@ -378,6 +378,7 @@ contract Offering is IERC1155Receiver, EIP712, ReentrancyGuard {
 
         uint256 reserved = publicUnits - publicUnitsSold;
         uint256 supply = remainingUnits();
+        /// should the revert include any data? supply - reserved?
         if (unitsWanted > (supply > reserved ? supply - reserved : 0)) revert PublicReservationExceeded();
 
         allocationConsumed[voucher.allocationId] = true;
@@ -387,6 +388,7 @@ contract Offering is IERC1155Receiver, EIP712, ReentrancyGuard {
 
     /// @notice Revokes an unclaimed allocation link.
     function cancelAllocation(bytes32 allocationId) external onlyOwner {
+        /// skip if it's already been canceled? or already consumed?
         allocationConsumed[allocationId] = true;
         emit AllocationCancelled(allocationId);
     }
@@ -409,6 +411,7 @@ contract Offering is IERC1155Receiver, EIP712, ReentrancyGuard {
      */
     function markFailed() external {
         if (state != State.Funding) revert NotFunding();
+        /// this name is weird. doesn't this mean you are NOT past the close date?
         if (block.timestamp <= closeDate) revert PastCloseDate();
         if (minMet) revert MinimumAlreadyMet();
         state = State.Failed;
@@ -421,6 +424,11 @@ contract Offering is IERC1155Receiver, EIP712, ReentrancyGuard {
      * @dev Pays only if the full purchased amount is recovered — a buyer who
      * transferred units away mid-raise forfeits the refund.
      */
+    /**
+    * just confirming my understanding. this has to be called by the (original) owner of the liquid splits.
+    * and they need to have ALL of their liquid splits still. otherwise it's bricked. is that right? no partial
+    * refunds?
+    **/
     function refund() external nonReentrant {
         if (state != State.Failed) revert NotFailed();
         uint256 amount = deposits[msg.sender];
@@ -474,6 +482,14 @@ contract Offering is IERC1155Receiver, EIP712, ReentrancyGuard {
         emit FailedUnitsSwept(treasury, units);
     }
 
+    /**
+    * just confirming my understanding. this is owner only. withdraw is permissionless, but that
+    * just pulls funds out to the treasury. it does not "close" the funding. what are the repercussions
+    * of never "closing" it? the liquid split is blocked, right? is that ok? is anything else blocked?
+    * just wondering if a malicious owner (or a lost eoa) could be a problem. should there a permissionless
+    * version of this? with some time protection (i.e. one month past the end date, anyone can call the
+    * permisionless function to close/withdraw, etc.)
+    **/
     /// @notice Owner-controlled final close. Withdraws USDC and returns unsold units to treasury.
     function closeAndWithdraw() external onlyOwner nonReentrant {
         if (!minMet) revert MinimumNotMet();
@@ -499,6 +515,9 @@ contract Offering is IERC1155Receiver, EIP712, ReentrancyGuard {
      * and ETH via `token == address(0)`. ETH is never buyer liability — all
      * deposits are USDC — so the full balance is safe to sweep.
      */
+     /**
+     * can 721's or 1155's be rescued? if not, is that ok?
+     **/
     function rescue(address token, address to) external onlyOwner nonReentrant {
         if (token == USDC || token == pactToken || to == address(0)) revert InvalidAddress();
         if (token == address(0)) {
@@ -519,6 +538,11 @@ contract Offering is IERC1155Receiver, EIP712, ReentrancyGuard {
      * e.g. split revenue earned on escrowed units and pushed here by
      * SplitMain's permissionless withdraw.
      */
+     /**
+     * is this so that usdc sent directly to the contract, not through the buy flow, can be recovered?
+     * or is this something else? the name skimUSDC sounds weird to me. like skimming off the top.
+     * i get that is sorta what it's doing, just sounds...shady
+     **/
     function skimUsdc() external onlyOwner nonReentrant returns (uint256 amount) {
         uint256 liability = raised - withdrawn;
         uint256 balance = SafeTransferLib.balanceOf(USDC, address(this));
@@ -540,11 +564,18 @@ contract Offering is IERC1155Receiver, EIP712, ReentrancyGuard {
      * acceptance revokes every outstanding allocation link, since vouchers
      * verify against the live owner.
      */
+     /**
+     * i think an edge case, if ownership goes A --> B --> A, then the original vouchers go back to working.
+     * seems fine as long as people don't think that's a way to "clear" the vouchers without actually changing
+     * owners.
+     **/
     function transferOwnership(address newOwner) external onlyOwner {
         if (newOwner == address(0)) revert InvalidAddress();
         pendingOwner = newOwner;
         emit OwnershipTransferStarted(owner, newOwner);
     }
+
+    /// any way to cancel an ownership transfer?
 
     /// @notice Completes the transfer; only the pending owner may call.
     function acceptOwnership() external {
@@ -597,6 +628,7 @@ contract Offering is IERC1155Receiver, EIP712, ReentrancyGuard {
     }
 
     function supportsInterface(bytes4 interfaceId) external pure returns (bool) {
+        /// what is 0x01ffc9a7
         return interfaceId == type(IERC1155Receiver).interfaceId || interfaceId == 0x01ffc9a7;
     }
 
@@ -611,6 +643,8 @@ contract Offering is IERC1155Receiver, EIP712, ReentrancyGuard {
     }
 
     /// @notice Cost in USDC base units for `units` starting from sold count `sold`.
+    /// would love an example (or a couple). maybe there are some tests for this? didn't see one,
+    /// but admittedly didn't look super close for it.
     function costFor(uint256 sold, uint256 units) public view returns (uint256) {
         if (units == 0) return 0;
         return units * priceStart + priceSlope * (sold * units + (units * (units - 1)) / 2);
@@ -684,6 +718,7 @@ contract Offering is IERC1155Receiver, EIP712, ReentrancyGuard {
         unitsBought[msg.sender] += unitsWanted;
         raised += cost;
         unitsSold += unitsWanted;
+        /// why store this minMet boolean? why not just calculate it live any time it's needed?
         if (!minMet && raised >= raiseMin) minMet = true;
 
         SafeTransferLib.safeTransferFrom(USDC, msg.sender, address(this), cost);

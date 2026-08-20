@@ -91,6 +91,7 @@ contract PactToken is ERC1155, LiquidSplit {
      * can reclaim purchased units on refund without a per-buyer approval.
      */
     function isApprovedForAll(address owner, address operator) public view override returns (bool) {
+        /// should offering being the operator only apply in the failed state (not sure if we can even detect that here)
         return operator == offering || super.isApprovedForAll(owner, operator);
     }
 
@@ -103,8 +104,16 @@ contract PactToken is ERC1155, LiquidSplit {
      * accepted: in Failed, revenue accrued before the failure stays
      * distributable by not-yet-refunded holders.
      */
+    /**
+    * would an event here be useful? just wondering if we'd ever want a way to watch for
+    * these distributes (vs all other liquid split distributes). cause the funds end up in
+    * splitmain, right? maybe we'd want to withdraw on behalf of recipients or something?
+    * maybe not a priority for this mvp
+    **/
     function distributeFunds(address token, address[] calldata accounts, address distributorAddress) public override {
+        /// is it expected you can distributeFunds on a failed offering?
         if (Offering(payable(offering)).state() == Offering.State.Funding) revert DistributionWhileFunding();
+        /// I think liquid split distributions are blocked if everything is owned by 1 account. probably fine...
         super.distributeFunds(token, accounts, distributorAddress);
     }
 

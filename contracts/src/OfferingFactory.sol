@@ -67,6 +67,10 @@ contract OfferingFactory {
     /*.•°:°.´+˚.*°.˚:*.´•*.+°.•°:´*.´•*.•°.•°:°.´:•˚°.*°.˚:*.´+°.•*/
 
     /**
+    * do we need to cap the number of holders? not even sure how we would do that. but at some
+    * point the gas becomes an issue on distribution, right?
+    **/
+    /**
      * @notice Creates an Offering and PactToken in one transaction.
      * @param projectName Display name, stored on the token and emitted for listings.
      * @param raiseMin Minimum successful raise in USDC base units.
@@ -75,6 +79,7 @@ contract OfferingFactory {
      * @param priceSlope Price increase per unit sold.
      * @param publicUnits Cap on public-tranche sales; the rest of the offering
      * is claimable only via owner-signed allocation vouchers.
+     /// why is the treasury also the owner? why not two separate fields (and you could pass in the same address)
      * @param treasury Treasury and initial owner/admin for the offering.
      * @param holderAccounts Non-offering token recipients.
      * @param holderAllocations Unit allocations matching `holderAccounts`.
@@ -94,6 +99,9 @@ contract OfferingFactory {
     ) external returns (address offering, address pactToken) {
         if (treasury == address(0)) revert InvalidAddress();
 
+        /**
+        * why are holderAccounts required to be > 0?
+        **/
         if (holderAccounts.length == 0 || holderAccounts.length != holderAllocations.length || offeringUnits == 0) {
             revert InvalidAllocations();
         }
