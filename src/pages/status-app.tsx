@@ -98,6 +98,7 @@ import {
   buyPath,
   CREATE_PATH,
   currentOfferingAddress,
+  termsPath,
 } from "#lib/routes.ts";
 import { debugActive } from "#lib/ui/debug-menu.ts";
 import { copyText, showToast } from "#lib/ui/toast.ts";
@@ -515,7 +516,6 @@ interface FundedRow {
   cost: string;
   txHash: string | null;
   blockNumber: number | null;
-  link: string | null;
 }
 
 interface OpenRow {
@@ -551,7 +551,6 @@ function allocationRows(
       cost: p.cost,
       txHash: p.txHash,
       blockNumber: p.blockNumber,
-      link: ledgerRow ? ledgerRow.link : null,
     };
   });
   const open = ledger
@@ -633,19 +632,10 @@ function AllocationsTable({
                     {row.txHash ? (
                       <AddressLink
                         className="act muted"
-                        href={basescanTx(row.txHash)}
+                        href={termsPath(offeringAddress!, row.txHash)}
                       >
-                        View txn
+                        View receipt
                       </AddressLink>
-                    ) : null}
-                    {row.link ? (
-                      <TextButton
-                        tone="muted"
-                        data-act="copy"
-                        onClick={() => copyText(row.link!)}
-                      >
-                        Copy link
-                      </TextButton>
                     ) : null}
                   </span>
                 </td>
@@ -812,12 +802,7 @@ function PurchasesTable({
               isSameAddress(wallet, row.buyer);
             return (
               <tr key={row.key}>
-                <td>
-                  {row.name}
-                  {row.isPublic ? (
-                    <span className="t-muted"> · public</span>
-                  ) : null}
-                </td>
+                <td>{row.name}</td>
                 <td className="num">{fmtUsd(cost)}</td>
                 <td>
                   <span className="tokencell">
@@ -827,6 +812,9 @@ function PurchasesTable({
                       / unit
                     </span>
                   </span>
+                  {row.isPublic ? (
+                    <span className="t-muted"> (public sale)</span>
+                  ) : null}
                   {refund === "refunded" ? (
                     <>
                       {" "}
@@ -857,9 +845,9 @@ function PurchasesTable({
                     {row.txHash ? (
                       <AddressLink
                         className="act muted"
-                        href={basescanTx(row.txHash)}
+                        href={termsPath(offeringAddress!, row.txHash)}
                       >
-                        View txn
+                        View receipt
                       </AddressLink>
                     ) : null}
                   </span>

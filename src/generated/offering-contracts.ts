@@ -1228,6 +1228,44 @@ export const OFFERING_ABI = [
   },
   {
     "type": "event",
+    "name": "Rescued",
+    "inputs": [
+      {
+        "name": "token",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "to",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "amount",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "Skimmed",
+    "inputs": [
+      {
+        "name": "amount",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
     "name": "TreasuryUpdated",
     "inputs": [
       {
@@ -1361,6 +1399,11 @@ export const OFFERING_ABI = [
   {
     "type": "error",
     "name": "PublicAllocationExceeded",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "PublicReservationExceeded",
     "inputs": []
   },
   {
