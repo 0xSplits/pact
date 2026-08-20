@@ -516,7 +516,6 @@ interface FundedRow {
   cost: string;
   txHash: string | null;
   blockNumber: number | null;
-  link: string | null;
 }
 
 interface OpenRow {
@@ -552,7 +551,6 @@ function allocationRows(
       cost: p.cost,
       txHash: p.txHash,
       blockNumber: p.blockNumber,
-      link: ledgerRow ? ledgerRow.link : null,
     };
   });
   const open = ledger
@@ -638,15 +636,6 @@ function AllocationsTable({
                       >
                         View receipt
                       </AddressLink>
-                    ) : null}
-                    {row.link ? (
-                      <TextButton
-                        tone="muted"
-                        data-act="copy"
-                        onClick={() => copyText(row.link!)}
-                      >
-                        Copy link
-                      </TextButton>
                     ) : null}
                   </span>
                 </td>
