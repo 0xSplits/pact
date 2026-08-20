@@ -87,8 +87,8 @@ Three stores, in strict order of authority:
    events and confirmed by balance reads.
 3. **Browser storage** is display convenience only: the per-device event
    cache and the issuer's ledger of unclaimed allocation links. A corrupt
-   or missing cache triggers a full rescan — never wrong data — and live
-   reads always beat anything cached.
+   or missing cache triggers a full rescan, and live reads always beat
+   anything cached.
 
 ## Trust model
 

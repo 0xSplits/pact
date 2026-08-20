@@ -21,7 +21,7 @@ any request, log, or referrer.
 Home lists offerings and explains PACT. Create is the issuer's form; it
 submits the creation transaction, waits for the creation event, seeds the
 local cache from the decoded event, and only then redirects to the status
-page — the chain confirms before the app believes. Status is the issuer's
+page. Status is the issuer's
 dashboard: offering state, lifecycle actions, allocations, and the cap
 table. Buy is the purchase page for both tranches.
 
@@ -37,7 +37,7 @@ by scanning the factory's creation and purchase events. Providers cap how
 much history one log request may cover, so the scan proceeds in chunks,
 and each device caches the results along with the last block scanned —
 later visits scan only the delta. A corrupt or missing cache triggers a
-full rescan, never wrong data.
+full rescan.
 
 The issuer's unclaimed allocation links exist nowhere but the issuer's own
 browser storage. That loss semantic is deliberate: losing the ledger loses
@@ -57,5 +57,5 @@ The app's own RPC credentials never enter a wallet: any chain metadata
 handed to a wallet points at the public endpoint, so a keyed URL cannot
 leak through wallet configuration.
 
-All styling is compiled at build time — the app ships no runtime styling
-dependency, consistent with the static constraint.
+All styling is compiled at build time; the app ships no runtime styling
+dependency.

@@ -20,8 +20,8 @@ Each raise is its own pair of contracts on Base, deployed together:
   LiquidSplit base ([`src/vendor`](../src/vendor)), so units are live
   claims on revenue.
 
-The only payment token is USDC, hardcoded to the Base mainnet address —
-the contracts are Base-specific by construction.
+The only payment token is USDC, hardcoded to the Base mainnet address;
+the contracts are Base-specific.
 
 ## OfferingFactory
 
@@ -101,8 +101,8 @@ costFor(sold, units) = units · priceStart
 
 The arithmetic is exact: `units · (units − 1)` is a product of consecutive
 integers, so the halving never truncates. Buying N units in one call costs
-exactly the same as N single-unit buys — the curve has no rounding surface
-and no batch discount. A quote for zero units is zero.
+exactly the same as N single-unit buys; the curve has no rounding surface.
+A quote for zero units is zero.
 
 The curve position (`unitsSold`) is monotone: refunds return units to
 escrow but never rewind the curve, so a post-refund buyer pays the
@@ -123,7 +123,7 @@ The curve splits into a public tranche and a private one.
 - The cap itself is bounded from both sides: it can never drop below what
   the public tranche already sold, and never exceed what the escrow can
   still deliver. Enlarging the private side requires lowering the public
-  cap first — a visible, onchain act.
+  cap first.
 
 ## Allocations
 
@@ -206,8 +206,7 @@ Exact conditions:
   to the treasury. Terminal.
 - **Failure declaration** is permissionless and requires all three: state
   Funding, the close date passed, and the minimum unmet. Nothing forces
-  it, so an Expired offering can sit unlabeled indefinitely — but anyone
-  may end the wait. Terminal.
+  it, so an Expired offering can sit unlabeled indefinitely. Terminal.
 
 In Failed:
 
@@ -241,7 +240,7 @@ The code must uphold these at all times; the fuzzing campaign
   permissionless SplitMain push cannot strand a revenue share; the full
   ETH balance is always rescuable.
 - **Total token supply is exactly 1,000** — no mint after construction, no
-  burn ever.
+  burn path.
 - **The escrow's operator status is permanent** and not represented in
   approval events.
 - **The curve position never decreases**, and the public tranche

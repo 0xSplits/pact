@@ -21,9 +21,9 @@ root, pass `--root contracts`.
   always-deliverable cap; the rest is claimable only through private
   allocations.
 - **Two-key allocations**: an owner-signed EIP-712 voucher endorses a
-  throwaway link key, and the link key signs the claiming buyer — the
-  share link is the sole capability and claims cannot be redirected in the
-  mempool. Contract-wallet issuers work (ERC-1271); rotating ownership
+  throwaway link key, and the link key signs the claiming buyer, so the
+  share link alone authorizes a claim and a pending claim cannot be
+  redirected in the mempool. Contract-wallet issuers work (ERC-1271); rotating ownership
   mass-revokes outstanding links.
 - **Refundable minimum**: a raise that misses its minimum by the close
   date can be declared failed by anyone; refunds reclaim the buyer's units
