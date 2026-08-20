@@ -3,9 +3,8 @@
 PACT raises small onchain rounds by selling a slice of a project's cap table
 along a bonding curve, for USDC on Base. It is a static web app plus a set
 of contracts; the chain is the only backend. This document names the
-components and walks a raise through them. The layers are specified in
-the [contract specification](../contracts/docs/contracts.md) and
-[app design](app.md).
+components and walks a raise through them. The contract layer is specified
+in the [contract specification](../contracts/docs/contracts.md).
 
 ## Vocabulary
 
@@ -92,9 +91,8 @@ Three stores, in strict order of authority:
 
 ## Trust model
 
-Buyers trust the issuer reputationally, not trustlessly. The minimum is a
-coordination signal — "this raise proceeds only if enough others join" —
-not a guarantee against a dishonest issuer.
+Buyers trust the issuer reputationally, not trustlessly; the minimum is a
+coordination signal, not a guarantee against a dishonest issuer.
 
 What the contracts do guarantee: deposits can be stolen by no one, and are
 refundable if the raise fails; proceeds can only ever reach the treasury;

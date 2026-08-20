@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-PACT: raise small onchain rounds by selling a slice of a project's cap table — a custom liquid-split ERC-1155 (`PactToken`, token id 0, 1000 units = 100%) — along a linear bonding curve, in USDC on Base mainnet. Fully serverless: a static Vite app on Vercel with the chain as the only backend. Prototype. See `docs/` (architecture.md, app.md) for the system design and `contracts/docs/contracts.md` for the contract specification.
+PACT: raise small onchain rounds by selling a slice of a project's cap table — a custom liquid-split ERC-1155 (`PactToken`, token id 0, 1000 units = 100%) — along a linear bonding curve, in USDC on Base mainnet. Fully serverless: a static Vite app on Vercel with the chain as the only backend. Prototype. See `docs/architecture.md` for the system design and `contracts/docs/contracts.md` for the contract specification.
 
 ## Commands
 

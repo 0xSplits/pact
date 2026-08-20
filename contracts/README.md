@@ -14,17 +14,14 @@ root, pass `--root contracts`.
 - **Liquid-split cap table**: a 1,000-unit ERC-1155 (token id 0) built on
   the 0xSplits LiquidSplit base, so units are live claims on revenue. One
   unit is 0.1% ownership; metadata is fully onchain.
-- **Linear bonding curve**: exact integer pricing with no rounding surface
-  — N single-unit buys cost the same as one N-unit buy. Every buy is
-  slippage-bounded.
+- **Linear bonding curve**: exact integer pricing (N single-unit buys cost
+  the same as one N-unit buy); every buy is slippage-bounded.
 - **Two tranches**: permissionless public buys up to an issuer-adjustable,
   always-deliverable cap; the rest is claimable only through private
   allocations.
 - **Two-key allocations**: an owner-signed EIP-712 voucher endorses a
-  throwaway link key, and the link key signs the claiming buyer, so the
-  share link alone authorizes a claim and a pending claim cannot be
-  redirected in the mempool. Contract-wallet issuers work (ERC-1271); rotating ownership
-  mass-revokes outstanding links.
+  throwaway link key that signs the claiming buyer, so the share link
+  alone authorizes a claim and cannot be sniped in the mempool.
 - **Refundable minimum**: a raise that misses its minimum by the close
   date can be declared failed by anyone; refunds reclaim the buyer's units
   and a permissionless sweep reverts the cap table to the founders.
