@@ -625,7 +625,7 @@ function AllocationsTable({
                     </span>
                   </span>
                   {row.isPublic ? (
-                    <span className="t-muted"> (public sale)</span>
+                    <span className="t-muted"> (public)</span>
                   ) : null}
                 </td>
                 <td className="num whitespace-nowrap">
