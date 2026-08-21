@@ -54,6 +54,11 @@ export const OFFERING_FACTORY_ABI = [
         "internalType": "address"
       },
       {
+        "name": "owner",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
         "name": "holderAccounts",
         "type": "address[]",
         "internalType": "address[]"
@@ -253,13 +258,6 @@ export const OFFERING_ABI = [
   },
   {
     "type": "function",
-    "name": "acceptOwnership",
-    "inputs": [],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "type": "function",
     "name": "allocationConsumed",
     "inputs": [
       {
@@ -382,6 +380,13 @@ export const OFFERING_ABI = [
   },
   {
     "type": "function",
+    "name": "cancelOwnershipHandover",
+    "inputs": [],
+    "outputs": [],
+    "stateMutability": "payable"
+  },
+  {
+    "type": "function",
     "name": "claimDigest",
     "inputs": [
       {
@@ -423,6 +428,19 @@ export const OFFERING_ABI = [
       }
     ],
     "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "completeOwnershipHandover",
+    "inputs": [
+      {
+        "name": "pendingOwner",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "payable"
   },
   {
     "type": "function",
@@ -640,9 +658,28 @@ export const OFFERING_ABI = [
     "inputs": [],
     "outputs": [
       {
-        "name": "",
+        "name": "result",
         "type": "address",
         "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "ownershipHandoverExpiresAt",
+    "inputs": [
+      {
+        "name": "pendingOwner",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "result",
+        "type": "uint256",
+        "internalType": "uint256"
       }
     ],
     "stateMutability": "view"
@@ -650,19 +687,6 @@ export const OFFERING_ABI = [
   {
     "type": "function",
     "name": "pactToken",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "pendingOwner",
     "inputs": [],
     "outputs": [
       {
@@ -805,6 +829,20 @@ export const OFFERING_ABI = [
   },
   {
     "type": "function",
+    "name": "renounceOwnership",
+    "inputs": [],
+    "outputs": [],
+    "stateMutability": "payable"
+  },
+  {
+    "type": "function",
+    "name": "requestOwnershipHandover",
+    "inputs": [],
+    "outputs": [],
+    "stateMutability": "payable"
+  },
+  {
+    "type": "function",
     "name": "rescue",
     "inputs": [
       {
@@ -849,19 +887,6 @@ export const OFFERING_ABI = [
   },
   {
     "type": "function",
-    "name": "skimUsdc",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "amount",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "type": "function",
     "name": "state",
     "inputs": [],
     "outputs": [
@@ -894,6 +919,19 @@ export const OFFERING_ABI = [
   },
   {
     "type": "function",
+    "name": "sweepExcessUsdc",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "amount",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
     "name": "sweepFailedUnits",
     "inputs": [],
     "outputs": [
@@ -916,7 +954,7 @@ export const OFFERING_ABI = [
       }
     ],
     "outputs": [],
-    "stateMutability": "nonpayable"
+    "stateMutability": "payable"
   },
   {
     "type": "function",
@@ -1107,6 +1145,19 @@ export const OFFERING_ABI = [
   },
   {
     "type": "event",
+    "name": "ExcessSwept",
+    "inputs": [
+      {
+        "name": "amount",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
     "name": "Failed",
     "inputs": [],
     "anonymous": false
@@ -1145,16 +1196,23 @@ export const OFFERING_ABI = [
   },
   {
     "type": "event",
-    "name": "OwnershipTransferStarted",
+    "name": "OwnershipHandoverCanceled",
     "inputs": [
       {
-        "name": "previousOwner",
+        "name": "pendingOwner",
         "type": "address",
         "indexed": true,
         "internalType": "address"
-      },
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "OwnershipHandoverRequested",
+    "inputs": [
       {
-        "name": "newOwner",
+        "name": "pendingOwner",
         "type": "address",
         "indexed": true,
         "internalType": "address"
@@ -1167,7 +1225,7 @@ export const OFFERING_ABI = [
     "name": "OwnershipTransferred",
     "inputs": [
       {
-        "name": "previousOwner",
+        "name": "oldOwner",
         "type": "address",
         "indexed": true,
         "internalType": "address"
@@ -1253,19 +1311,6 @@ export const OFFERING_ABI = [
   },
   {
     "type": "event",
-    "name": "Skimmed",
-    "inputs": [
-      {
-        "name": "amount",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "type": "event",
     "name": "TreasuryUpdated",
     "inputs": [
       {
@@ -1318,6 +1363,11 @@ export const OFFERING_ABI = [
   },
   {
     "type": "error",
+    "name": "CloseDateNotPassed",
+    "inputs": []
+  },
+  {
+    "type": "error",
     "name": "ClosedOrFailed",
     "inputs": []
   },
@@ -1358,6 +1408,16 @@ export const OFFERING_ABI = [
   },
   {
     "type": "error",
+    "name": "NewOwnerIsZeroAddress",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "NoHandoverRequest",
+    "inputs": []
+  },
+  {
+    "type": "error",
     "name": "NotFactory",
     "inputs": []
   },
@@ -1374,11 +1434,6 @@ export const OFFERING_ABI = [
   {
     "type": "error",
     "name": "NotInitialized",
-    "inputs": []
-  },
-  {
-    "type": "error",
-    "name": "NotOwner",
     "inputs": []
   },
   {
@@ -1404,7 +1459,13 @@ export const OFFERING_ABI = [
   {
     "type": "error",
     "name": "PublicReservationExceeded",
-    "inputs": []
+    "inputs": [
+      {
+        "name": "available",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ]
   },
   {
     "type": "error",
@@ -1414,6 +1475,11 @@ export const OFFERING_ABI = [
   {
     "type": "error",
     "name": "Slippage",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "Unauthorized",
     "inputs": []
   },
   {
@@ -1860,6 +1926,25 @@ export const PACT_TOKEN_ABI = [
     "inputs": [
       {
         "name": "payoutSplit",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "FundsDistributed",
+    "inputs": [
+      {
+        "name": "token",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "distributorAddress",
         "type": "address",
         "indexed": true,
         "internalType": "address"

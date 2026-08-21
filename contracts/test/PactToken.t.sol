@@ -25,6 +25,8 @@ contract PactTokenTest is BaseTest {
         offering.closeAndWithdraw();
 
         usdc.mint(address(token), 50e6);
+        vm.expectEmit(true, true, false, true, address(token));
+        emit PactToken.FundsDistributed(USDC_ADDRESS, address(this));
         token.distributeFunds(USDC_ADDRESS, _holders(), address(this));
         assertEq(usdc.balanceOf(token.payoutSplit()), 50e6, "revenue reaches payout split");
     }
@@ -53,14 +55,34 @@ contract PactTokenTest is BaseTest {
         allocations[0] = 700;
         vm.expectRevert(PactToken.InvalidAllocations.selector);
         factory.createOffering(
-            "Test Project", 100e6, uint64(block.timestamp + 7 days), 1e6, 1000, 100, treasury, holders, allocations, 200
+            "Test Project",
+            100e6,
+            uint64(block.timestamp + 7 days),
+            1e6,
+            1000,
+            100,
+            treasury,
+            treasury,
+            holders,
+            allocations,
+            200
         );
 
         // 900 + 200 = 1100
         allocations[0] = 900;
         vm.expectRevert(PactToken.InvalidAllocations.selector);
         factory.createOffering(
-            "Test Project", 100e6, uint64(block.timestamp + 7 days), 1e6, 1000, 100, treasury, holders, allocations, 200
+            "Test Project",
+            100e6,
+            uint64(block.timestamp + 7 days),
+            1e6,
+            1000,
+            100,
+            treasury,
+            treasury,
+            holders,
+            allocations,
+            200
         );
     }
 
