@@ -5,6 +5,7 @@ import type { Address, Hex } from "viem";
 import { test } from "vitest";
 
 import {
+  availablePrivateUnits,
   availablePublicUnits,
   offeringRecordFromLog,
   offeringStateCurve,
@@ -141,6 +142,35 @@ test("availablePublicUnits caps by supply and public tranche headroom", () => {
       publicUnitsSold: 10,
     }),
     3,
+  );
+});
+
+test("availablePrivateUnits reserves the unsold public tranche", () => {
+  assert.equal(
+    availablePrivateUnits({
+      remainingUnits: 100,
+      publicUnits: 50,
+      publicUnitsSold: 10,
+    }),
+    60,
+  );
+  // Unsold public headroom exceeds supply: saturates to 0, never negative.
+  assert.equal(
+    availablePrivateUnits({
+      remainingUnits: 30,
+      publicUnits: 50,
+      publicUnitsSold: 10,
+    }),
+    0,
+  );
+  // Owner lowered publicUnits below what already sold: no negative headroom.
+  assert.equal(
+    availablePrivateUnits({
+      remainingUnits: 100,
+      publicUnits: 5,
+      publicUnitsSold: 10,
+    }),
+    100,
   );
 });
 
