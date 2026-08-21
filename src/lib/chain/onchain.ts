@@ -515,6 +515,20 @@ export const availablePublicUnits = (
     Math.max(0, state.publicUnits - state.publicUnitsSold),
   );
 
+// Units a private claim can take: buyPrivate reserves the unsold public
+// tranche, so the private ceiling is what remains after that headroom.
+export const availablePrivateUnits = (
+  state: Pick<
+    OfferingState,
+    "remainingUnits" | "publicUnits" | "publicUnitsSold"
+  >,
+): number =>
+  Math.max(
+    0,
+    state.remainingUnits -
+      Math.max(0, state.publicUnits - state.publicUnitsSold),
+  );
+
 export async function getProjectName({
   pactToken,
 }: {
@@ -876,7 +890,7 @@ export async function buyPrivateOffering({
   const units = unitsForBudget(
     curve,
     state.unitsSold,
-    state.remainingUnits,
+    availablePrivateUnits(state),
     cap,
   );
   if (units <= 0)
@@ -896,6 +910,7 @@ export async function buyPrivateOffering({
   const claimSig = await signClaim({
     linkPrivateKey,
     offering,
+    chainId: BASE_CHAIN_ID,
     allocationId: voucher.allocationId,
     buyer: normalizedBuyer,
   });

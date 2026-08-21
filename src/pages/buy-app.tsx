@@ -29,6 +29,7 @@ import {
 import { TOTAL_LIQUID_SPLIT_UNITS } from "#lib/chain/liquid-split.ts";
 import { listBought } from "#lib/chain/offerings.ts";
 import {
+  availablePrivateUnits,
   availablePublicUnits,
   buyPrivateOffering,
   buyPublicOffering,
@@ -166,6 +167,7 @@ function deriveBuyView({
   const raisedTotal = usdcBaseUnitsToDollars(offeringState.raised);
   const remainingUnits = offeringState.remainingUnits;
   const publicRemaining = availablePublicUnits(offeringState);
+  const privateRemaining = availablePrivateUnits(offeringState);
   const remainingCapacity = usdcBaseUnitsToDollars(
     costForUnits(curve, offeringState.unitsSold, remainingUnits),
   );
@@ -213,7 +215,7 @@ function deriveBuyView({
       ? unitsForBudget(
           curve,
           offeringState.unitsSold,
-          voucherPayload ? remainingUnits : publicRemaining,
+          voucherPayload ? privateRemaining : publicRemaining,
           budgetUsdc,
         )
       : 0;

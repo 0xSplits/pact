@@ -3,7 +3,7 @@
 // share URL and signs the claiming buyer's address at purchase time, so the
 // link is the sole capability and a claim in the mempool can't be frontrun.
 // Framework-free so the node test runner can exercise it directly.
-import { encodeAbiParameters, keccak256 } from "viem";
+import { hashTypedData, keccak256 } from "viem";
 import type { Address, Hex } from "viem";
 import {
   generatePrivateKey,
@@ -71,38 +71,53 @@ export function newAllocationKey(): {
   return { linkPrivateKey, linkKey, allocationId: keccak256(linkKey) };
 }
 
-// Mirrors Offering.claimDigest: keccak256(abi.encode(offering, allocationId, buyer)).
+// Mirrors Offering.claimDigest: EIP-712 typed data under the offering's own
+// domain, so a claim signature binds to one chain and one contract.
 function claimDigest({
   offering,
+  chainId,
   allocationId,
   buyer,
 }: {
   offering: Address;
+  chainId: number;
   allocationId: Hex;
   buyer: Address;
 }): Hex {
-  return keccak256(
-    encodeAbiParameters(
-      [{ type: "address" }, { type: "bytes32" }, { type: "address" }],
-      [offering, allocationId, buyer],
-    ),
-  );
+  return hashTypedData({
+    domain: {
+      name: "PACT",
+      version: "1",
+      chainId,
+      verifyingContract: offering,
+    },
+    types: {
+      Claim: [
+        { name: "allocationId", type: "bytes32" },
+        { name: "buyer", type: "address" },
+      ],
+    },
+    primaryType: "Claim",
+    message: { allocationId, buyer },
+  });
 }
 
 export async function signClaim({
   linkPrivateKey,
   offering,
+  chainId,
   allocationId,
   buyer,
 }: {
   linkPrivateKey: Hex;
   offering: Address;
+  chainId: number;
   allocationId: Hex;
   buyer: Address;
 }): Promise<Hex> {
   return serializeSignature(
     await sign({
-      hash: claimDigest({ offering, allocationId, buyer }),
+      hash: claimDigest({ offering, chainId, allocationId, buyer }),
       privateKey: linkPrivateKey,
     }),
   );

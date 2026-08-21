@@ -37,6 +37,7 @@ export async function buildGoldenFixture() {
   const claimSig = await signClaim({
     linkPrivateKey,
     offering,
+    chainId,
     allocationId: voucher.allocationId,
     buyer,
   });
