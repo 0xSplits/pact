@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-import {Ownable} from "solady/auth/Ownable.sol";
 import {ECDSA} from "solady/utils/ECDSA.sol";
 import {EIP712} from "solady/utils/EIP712.sol";
 import {ReentrancyGuard} from "solady/utils/ReentrancyGuard.sol";
@@ -38,10 +37,13 @@ interface IERC1155Receiver {
  * buyer's units (the escrow is a permanent PactToken operator) and escrow-held
  * units sweep to treasury, so a failed raise never gives away equity.
  */
-contract Offering is IERC1155Receiver, EIP712, Ownable, ReentrancyGuard {
+contract Offering is IERC1155Receiver, EIP712, ReentrancyGuard {
     /*´:°•.°+.*•´.*:˚.°*.˚•´.°:°•.°•.*•´.*:˚.°*.˚•´.°:°•.°+.*•´.*:*/
     /*                       CUSTOM ERRORS                        */
     /*.•°:°.´+˚.*°.˚:*.´•*.+°.•°:´*.´•*.•°.•°:°.´:•˚°.*°.˚:*.´+°.•*/
+
+    /// @dev The caller is not the owner.
+    error NotOwner();
 
     /// @dev The caller is not the deploying factory.
     error NotFactory();
@@ -52,7 +54,8 @@ contract Offering is IERC1155Receiver, EIP712, Ownable, ReentrancyGuard {
     /// @dev The configuration value is invalid.
     error InvalidConfig();
 
-    // The PactToken-already-bound revert reuses Ownable's `AlreadyInitialized`.
+    /// @dev The PactToken is already bound.
+    error AlreadyInitialized();
 
     /// @dev The PactToken is not yet bound.
     error NotInitialized();
@@ -65,9 +68,6 @@ contract Offering is IERC1155Receiver, EIP712, Ownable, ReentrancyGuard {
 
     /// @dev The action is on the wrong side of the close date.
     error PastCloseDate();
-
-    /// @dev The close date has not passed yet.
-    error CloseDateNotPassed();
 
     /// @dev The minimum raise is already met.
     error MinimumAlreadyMet();
@@ -90,9 +90,8 @@ contract Offering is IERC1155Receiver, EIP712, Ownable, ReentrancyGuard {
     /// @dev The purchase would exceed the public tranche cap.
     error PublicAllocationExceeded();
 
-    /// @dev The claim would eat into supply reserved for the public tranche;
-    /// `available` is what the private tranche can still deliver.
-    error PublicReservationExceeded(uint256 available);
+    /// @dev The claim would eat into supply reserved for the public tranche.
+    error PublicReservationExceeded();
 
     /// @dev The allocation is already claimed or cancelled.
     error AllocationAlreadyConsumed();
@@ -146,8 +145,8 @@ contract Offering is IERC1155Receiver, EIP712, Ownable, ReentrancyGuard {
     /// @dev Emitted when proceeds are sent to treasury.
     event Withdrawn(address indexed treasury, uint256 amount);
 
-    /// @dev Emitted when USDC in excess of buyer liability is swept to treasury.
-    event ExcessSwept(uint256 amount);
+    /// @dev Emitted when USDC in excess of buyer liability is skimmed to treasury.
+    event Skimmed(uint256 amount);
 
     /// @dev Emitted when a stray token or ETH balance is rescued.
     event Rescued(address indexed token, address indexed to, uint256 amount);
@@ -157,6 +156,12 @@ contract Offering is IERC1155Receiver, EIP712, Ownable, ReentrancyGuard {
 
     /// @dev Emitted when the treasury address changes.
     event TreasuryUpdated(address indexed treasury);
+
+    /// @dev Emitted when a two-step ownership transfer starts.
+    event OwnershipTransferStarted(address indexed previousOwner, address indexed newOwner);
+
+    /// @dev Emitted when ownership transfers.
+    event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
 
     /*´:°•.°+.*•´.*:˚.°*.˚•´.°:°•.°•.*•´.*:˚.°*.˚•´.°:°•.°+.*•´.*:*/
     /*                     STRUCTS AND ENUMS                      */
@@ -226,6 +231,12 @@ contract Offering is IERC1155Receiver, EIP712, Ownable, ReentrancyGuard {
     /// @dev Receives withdrawals and unsold units.
     address public treasury;
 
+    /// @dev Signs vouchers and administers the offering.
+    address public owner;
+
+    /// @dev Next owner in a two-step transfer.
+    address public pendingOwner;
+
     /**
      * @dev `raised` decrements on refund, so the buyer liability is always
      * `raised - withdrawn`.
@@ -263,6 +274,15 @@ contract Offering is IERC1155Receiver, EIP712, Ownable, ReentrancyGuard {
     mapping(bytes32 => bool) public allocationConsumed;
 
     /*´:°•.°+.*•´.*:˚.°*.˚•´.°:°•.°•.*•´.*:˚.°*.˚•´.°:°•.°+.*•´.*:*/
+    /*                         MODIFIERS                          */
+    /*.•°:°.´+˚.*°.˚:*.´•*.+°.•°:´*.´•*.•°.•°:°.´:•˚°.*°.˚:*.´+°.•*/
+
+    modifier onlyOwner() {
+        if (msg.sender != owner) revert NotOwner();
+        _;
+    }
+
+    /*´:°•.°+.*•´.*:˚.°*.˚•´.°:°•.°•.*•´.*:˚.°*.˚•´.°:°•.°+.*•´.*:*/
     /*                        CONSTRUCTOR                         */
     /*.•°:°.´+˚.*°.˚:*.´•*.+°.•°:´*.´•*.•°.•°:°.´:•˚°.*°.˚:*.´+°.•*/
 
@@ -284,8 +304,9 @@ contract Offering is IERC1155Receiver, EIP712, Ownable, ReentrancyGuard {
         priceSlope = priceSlope_;
         publicUnits = publicUnits_;
         treasury = treasury_;
+        owner = owner_;
         factory = msg.sender;
-        _initializeOwner(owner_);
+        emit OwnershipTransferred(address(0), owner_);
     }
 
     /*´:°•.°+.*•´.*:˚.°*.˚•´.°:°•.°•.*•´.*:˚.°*.˚•´.°:°•.°+.*•´.*:*/
@@ -348,7 +369,7 @@ contract Offering is IERC1155Receiver, EIP712, Ownable, ReentrancyGuard {
         uint256 maxCost
     ) external nonReentrant returns (uint256 cost) {
         if (allocationConsumed[voucher.allocationId]) revert AllocationAlreadyConsumed();
-        if (!SignatureCheckerLib.isValidSignatureNowCalldata(owner(), voucherDigest(voucher), ownerSig)) {
+        if (!SignatureCheckerLib.isValidSignatureNowCalldata(owner, voucherDigest(voucher), ownerSig)) {
             revert InvalidVoucherSignature();
         }
         if (ECDSA.recoverCalldata(claimDigest(voucher.allocationId, msg.sender), claimSig) != voucher.linkKey) {
@@ -357,8 +378,7 @@ contract Offering is IERC1155Receiver, EIP712, Ownable, ReentrancyGuard {
 
         uint256 reserved = publicUnits - publicUnitsSold;
         uint256 supply = remainingUnits();
-        uint256 available = supply > reserved ? supply - reserved : 0;
-        if (unitsWanted > available) revert PublicReservationExceeded(available);
+        if (unitsWanted > (supply > reserved ? supply - reserved : 0)) revert PublicReservationExceeded();
 
         allocationConsumed[voucher.allocationId] = true;
         cost = _buy(unitsWanted, maxCost, voucher.allocationId, voucher.buyerName);
@@ -389,7 +409,7 @@ contract Offering is IERC1155Receiver, EIP712, Ownable, ReentrancyGuard {
      */
     function markFailed() external {
         if (state != State.Funding) revert NotFunding();
-        if (block.timestamp <= closeDate) revert CloseDateNotPassed();
+        if (block.timestamp <= closeDate) revert PastCloseDate();
         if (minMet) revert MinimumAlreadyMet();
         state = State.Failed;
         emit Failed();
@@ -499,13 +519,13 @@ contract Offering is IERC1155Receiver, EIP712, Ownable, ReentrancyGuard {
      * e.g. split revenue earned on escrowed units and pushed here by
      * SplitMain's permissionless withdraw.
      */
-    function sweepExcessUsdc() external onlyOwner nonReentrant returns (uint256 amount) {
+    function skimUsdc() external onlyOwner nonReentrant returns (uint256 amount) {
         uint256 liability = raised - withdrawn;
         uint256 balance = SafeTransferLib.balanceOf(USDC, address(this));
         if (balance <= liability) revert NothingToWithdraw();
         amount = balance - liability;
         SafeTransferLib.safeTransfer(USDC, treasury, amount);
-        emit ExcessSwept(amount);
+        emit Skimmed(amount);
     }
 
     /// @notice Updates the treasury address that receives withdrawals and unsold units.
@@ -513,6 +533,26 @@ contract Offering is IERC1155Receiver, EIP712, Ownable, ReentrancyGuard {
         if (treasury_ == address(0)) revert InvalidAddress();
         treasury = treasury_;
         emit TreasuryUpdated(treasury_);
+    }
+
+    /**
+     * @notice Starts a two-step ownership transfer. Note the new owner's
+     * acceptance revokes every outstanding allocation link, since vouchers
+     * verify against the live owner.
+     */
+    function transferOwnership(address newOwner) external onlyOwner {
+        if (newOwner == address(0)) revert InvalidAddress();
+        pendingOwner = newOwner;
+        emit OwnershipTransferStarted(owner, newOwner);
+    }
+
+    /// @notice Completes the transfer; only the pending owner may call.
+    function acceptOwnership() external {
+        if (msg.sender != pendingOwner) revert NotOwner();
+        address previous = owner;
+        owner = msg.sender;
+        pendingOwner = address(0);
+        emit OwnershipTransferred(previous, msg.sender);
     }
 
     /**
@@ -557,7 +597,6 @@ contract Offering is IERC1155Receiver, EIP712, Ownable, ReentrancyGuard {
     }
 
     function supportsInterface(bytes4 interfaceId) external pure returns (bool) {
-        // 0x01ffc9a7 is the ERC-165 interface id itself (EIP-165).
         return interfaceId == type(IERC1155Receiver).interfaceId || interfaceId == 0x01ffc9a7;
     }
 
@@ -571,12 +610,7 @@ contract Offering is IERC1155Receiver, EIP712, Ownable, ReentrancyGuard {
         return IERC1155(pactToken).balanceOf(address(this), TOKEN_ID);
     }
 
-    /**
-     * @notice Cost in USDC base units for `units` starting from sold count `sold`.
-     * @dev Unit n costs `priceStart + priceSlope * n`, so a batch is the sum of
-     * consecutive unit prices. E.g. priceStart 10e6, priceSlope 1e6, sold 5,
-     * units 3 buys units 5,6,7 for 15e6 + 16e6 + 17e6 = 48e6.
-     */
+    /// @notice Cost in USDC base units for `units` starting from sold count `sold`.
     function costFor(uint256 sold, uint256 units) public view returns (uint256) {
         if (units == 0) return 0;
         return units * priceStart + priceSlope * (sold * units + (units * (units - 1)) / 2);

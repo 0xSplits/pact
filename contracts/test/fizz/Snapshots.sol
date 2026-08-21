@@ -59,7 +59,7 @@ abstract contract Snapshots is Base {
         state.treasuryUnits = token.balanceOf(treasury, TOKEN_ID);
 
         state.owner = offering.owner();
-        state.pendingOwner = _handoverPending();
+        state.pendingOwner = offering.pendingOwner();
 
         state.actorUsdc = usdc.balanceOf(actor);
         state.actorUnits = token.balanceOf(actor, TOKEN_ID);

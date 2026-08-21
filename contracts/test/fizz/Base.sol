@@ -163,7 +163,6 @@ abstract contract Base is PropertiesAsserts, Clamp, Deployer, Math {
             PRICE_SLOPE,
             PUBLIC_UNITS,
             admin,
-            admin,
             holders,
             allocations,
             OFFERING_UNITS
@@ -364,18 +363,9 @@ abstract contract Base is PropertiesAsserts, Clamp, Deployer, Math {
         address own = offering.owner();
         t(own != address(0), "GL-33: owner is zero");
         if (own != ghosts.lastOwner) {
-            t(own == ghosts.lastPendingOwner, "GL-33: owner not prior handover requester");
-            t(offering.ownershipHandoverExpiresAt(own) == 0, "GL-33: handover not cleared on completion");
+            t(own == ghosts.lastPendingOwner, "GL-33: owner not prior pendingOwner");
+            t(offering.pendingOwner() == address(0), "GL-33: pendingOwner not cleared on handoff");
         }
-    }
-
-    /// @dev The rotation counterpart with a live handover request, or zero —
-    /// the handover-pattern stand-in for the removed `pendingOwner` slot.
-    function _handoverPending() internal returns (address) {
-        address a = vm.addr(OWNER_KEY);
-        address b = vm.addr(OWNER_KEY_B);
-        address other = offering.owner() == a ? b : a;
-        return offering.ownershipHandoverExpiresAt(other) >= block.timestamp ? other : address(0);
     }
 
     function _glTerminalFreeze() internal {
@@ -430,7 +420,7 @@ abstract contract Base is PropertiesAsserts, Clamp, Deployer, Math {
         ghosts.lastState = uint8(st);
         ghosts.lastPactToken = offering.pactToken();
         ghosts.lastOwner = offering.owner();
-        ghosts.lastPendingOwner = _handoverPending();
+        ghosts.lastPendingOwner = offering.pendingOwner();
         ghosts.lastUnitsSold = offering.unitsSold();
         ghosts.lastWithdrawn = offering.withdrawn();
         ghosts.lastPublicUnitsSold = offering.publicUnitsSold();

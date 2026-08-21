@@ -659,19 +659,18 @@ abstract contract Properties is Snapshots {
         property_nonTransitionCallsLeaveStateAndLedger();
     }
 
-    /// @notice SP-25a: requestOwnershipHandover stakes a live handover and
-    /// leaves owner.
+    /// @notice SP-25a: transferOwnership stakes pendingOwner and leaves owner.
     function property_ownershipTransferPostconditions(address newOwner) internal {
-        t(stateAfter.owner == stateBefore.owner, "SP-25: owner changed on request");
-        t(stateAfter.pendingOwner == newOwner, "SP-25: handover not staked");
+        t(stateAfter.owner == stateBefore.owner, "SP-25: owner changed on transfer");
+        t(stateAfter.pendingOwner == newOwner, "SP-25: pendingOwner not staked");
         property_nonTransitionCallsLeaveStateAndLedger();
     }
 
-    /// @notice SP-25b: completeOwnershipHandover moves owner to the prior
-    /// requester and clears the request, touching no accounting.
+    /// @notice SP-25b: acceptOwnership moves owner to the prior pendingOwner and
+    /// clears it, touching no accounting.
     function property_ownershipAcceptPostconditions() internal {
-        t(stateAfter.owner == stateBefore.pendingOwner, "SP-25: owner != prior requester");
-        t(stateAfter.pendingOwner == address(0), "SP-25: handover not cleared");
+        t(stateAfter.owner == stateBefore.pendingOwner, "SP-25: owner != prior pendingOwner");
+        t(stateAfter.pendingOwner == address(0), "SP-25: pendingOwner not cleared");
         property_nonTransitionCallsLeaveStateAndLedger();
     }
 
@@ -688,8 +687,8 @@ abstract contract Properties is Snapshots {
         }
     }
 
-    /// @notice SP-27: every onlyOwner entry point (including
-    /// transferOwnership) reverts for an arbitrary non-owner.
+    /// @notice SP-27: every onlyOwner entry point (and acceptOwnership from a
+    /// non-pending address) reverts for an arbitrary non-owner.
     function property_onlyOwnerGatesHold(bool reverted) internal {
         t(reverted, "SP-27: an owner-gated call was reachable by a non-owner");
     }

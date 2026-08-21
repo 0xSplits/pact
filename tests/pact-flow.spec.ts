@@ -135,7 +135,6 @@ async function seedOffering({
         1000n, // +$0.001 per unit sold
         BigInt(publicUnits),
         deployer,
-        deployer,
         [holder],
         [800],
         200,

@@ -21,47 +21,6 @@ contract OfferingFactoryTest is BaseTest {
         assertEq(token.projectName(), "Test Project", "name");
     }
 
-    function testFactorySeparatesOwnerFromTreasury() public {
-        address owner = makeAddr("distinctOwner");
-        address[] memory holders = new address[](1);
-        holders[0] = holder;
-        uint32[] memory allocations = new uint32[](1);
-        allocations[0] = 800;
-
-        (address created,) = factory.createOffering(
-            "Test Project",
-            100e6,
-            uint64(block.timestamp + 7 days),
-            1e6,
-            1000,
-            100,
-            treasury,
-            owner,
-            holders,
-            allocations,
-            200
-        );
-        assertEq(Offering(payable(created)).owner(), owner, "owner");
-        assertEq(Offering(payable(created)).treasury(), treasury, "treasury");
-    }
-
-    function testFactoryAllowsEmptyHolders() public {
-        (address created, address createdToken) = factory.createOffering(
-            "Test Project",
-            100e6,
-            uint64(block.timestamp + 7 days),
-            1e6,
-            1000,
-            100,
-            treasury,
-            treasury,
-            new address[](0),
-            new uint32[](0),
-            1000
-        );
-        assertEq(PactToken(payable(createdToken)).balanceOf(created, 0), 1000, "full supply escrowed");
-    }
-
     function testFactoryRejectsImpossibleMinimum() public {
         // costFor(0, 200) = 200e6 + 1000 * (200*199/2) = 219.9e6
         vm.expectRevert(OfferingFactory.InvalidConfig.selector);
@@ -82,33 +41,13 @@ contract OfferingFactoryTest is BaseTest {
         // closeDate not in the future
         vm.expectRevert(Offering.InvalidConfig.selector);
         factory.createOffering(
-            "Test Project",
-            100e6,
-            uint64(block.timestamp),
-            1e6,
-            1000,
-            100,
-            treasury,
-            treasury,
-            holders,
-            allocations,
-            200
+            "Test Project", 100e6, uint64(block.timestamp), 1e6, 1000, 100, treasury, holders, allocations, 200
         );
 
         // zero priceStart
         vm.expectRevert(Offering.InvalidConfig.selector);
         factory.createOffering(
-            "Test Project",
-            100e6,
-            uint64(block.timestamp + 7 days),
-            0,
-            1000,
-            100,
-            treasury,
-            treasury,
-            holders,
-            allocations,
-            200
+            "Test Project", 100e6, uint64(block.timestamp + 7 days), 0, 1000, 100, treasury, holders, allocations, 200
         );
     }
 
@@ -122,17 +61,7 @@ contract OfferingFactoryTest is BaseTest {
 
         vm.expectRevert(OfferingFactory.InvalidAllocations.selector);
         factory.createOffering(
-            "Test Project",
-            100e6,
-            uint64(block.timestamp + 7 days),
-            1e6,
-            1000,
-            100,
-            treasury,
-            treasury,
-            holders,
-            allocations,
-            200
+            "Test Project", 100e6, uint64(block.timestamp + 7 days), 1e6, 1000, 100, treasury, holders, allocations, 200
         );
     }
 
@@ -148,17 +77,7 @@ contract OfferingFactoryTest is BaseTest {
 
         vm.expectRevert(PactToken.InvalidAllocations.selector);
         factory.createOffering(
-            "Test Project",
-            100e6,
-            uint64(block.timestamp + 7 days),
-            1e6,
-            1000,
-            100,
-            treasury,
-            treasury,
-            holders,
-            allocations,
-            200
+            "Test Project", 100e6, uint64(block.timestamp + 7 days), 1e6, 1000, 100, treasury, holders, allocations, 200
         );
     }
 

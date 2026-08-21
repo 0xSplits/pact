@@ -381,7 +381,6 @@ export async function createOffering({
       curve.priceSlope,
       BigInt(publicUnits),
       treasury,
-      normalizedOwner,
       inputs.holderAccounts,
       inputs.holderAllocations,
       inputs.offeringUnits,

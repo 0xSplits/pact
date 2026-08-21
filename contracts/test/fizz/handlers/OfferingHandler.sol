@@ -41,7 +41,7 @@ abstract contract OfferingHandler is Properties {
     }
 
     /// Simulates SplitMain's permissionless withdraw pushing split revenue
-    /// USDC into the escrow — the surplus sweepExcessUsdc exists to recover.
+    /// USDC into the escrow — the surplus skimUsdc exists to recover.
     function offering_donateUsdc_clamped(uint256 amount) public {
         amount = clampBetween(amount, 1, 1_000_000e6);
         snapshotBefore();
@@ -60,10 +60,10 @@ abstract contract OfferingHandler is Properties {
         else if (selector == 2) _offering_cancelAllocation(uint8(arg0));
         else if (selector == 3) _offering_setPublicUnits(arg0);
         else if (selector == 4) _offering_setTreasury(arg1);
-        else if (selector == 5) _offering_sweepExcessUsdc();
+        else if (selector == 5) _offering_skimUsdc();
         else if (selector == 6) _offering_rescue(arg1);
-        else if (selector == 7) _offering_requestHandover();
-        else _offering_completeHandover();
+        else if (selector == 7) _offering_transferOwnership();
+        else _offering_acceptOwnership();
     }
 
     // ―――――――――――――――――――――――― Unclamped ―――――――――――――――――――――――――
@@ -259,10 +259,10 @@ abstract contract OfferingHandler is Properties {
         _syncMonotonicGhosts();
     }
 
-    function _offering_sweepExcessUsdc() internal {
+    function _offering_skimUsdc() internal {
         snapshotBefore();
         vm.prank(admin);
-        try offering.sweepExcessUsdc() returns (uint256 amount) {
+        try offering.skimUsdc() returns (uint256 amount) {
             snapshotAfter();
             ghosts.usdcSkimmed += amount;
             property_skimLeavesExactlyLiability();
@@ -288,24 +288,24 @@ abstract contract OfferingHandler is Properties {
 
     // Ownership rotates between two known keys so voucher signing (live owner)
     // and asAdmin never lose track of the owner seat.
-    function _offering_requestHandover() internal {
+    function _offering_transferOwnership() internal {
         uint256 targetKey = ownerKey == OWNER_KEY ? OWNER_KEY_B : OWNER_KEY;
         address newOwner = vm.addr(targetKey);
         snapshotBefore();
-        vm.prank(newOwner);
-        try offering.requestOwnershipHandover() {
+        vm.prank(admin);
+        try offering.transferOwnership(newOwner) {
             snapshotAfter();
             property_ownershipTransferPostconditions(newOwner);
         } catch {}
         _syncMonotonicGhosts();
     }
 
-    function _offering_completeHandover() internal {
-        address pending = _handoverPending();
+    function _offering_acceptOwnership() internal {
+        address pending = offering.pendingOwner();
         if (pending == address(0)) return;
         snapshotBefore();
-        vm.prank(admin);
-        try offering.completeOwnershipHandover(pending) {
+        vm.prank(pending);
+        try offering.acceptOwnership() {
             snapshotAfter();
             ownerKey = pending == vm.addr(OWNER_KEY) ? OWNER_KEY : OWNER_KEY_B;
             admin = pending;
@@ -439,8 +439,8 @@ abstract contract OfferingHandler is Properties {
         property_claimSignatureIsBuyerBound(reverted);
     }
 
-    /// SP-27: every onlyOwner entry point (including transferOwnership)
-    /// reverts when a random non-owner calls it.
+    /// SP-27: every onlyOwner entry point (and acceptOwnership from a non-pending
+    /// address) reverts when a random non-owner calls it.
     function offering_adminAsRandomActor(uint8 selector, uint256 arg0, address arg1) public {
         address caller = toActor(arg1);
         if (caller == offering.owner()) return;
@@ -460,7 +460,7 @@ abstract contract OfferingHandler is Properties {
             }
         } else if (selector == 2) {
             vm.prank(caller);
-            try offering.sweepExcessUsdc() {}
+            try offering.skimUsdc() {}
             catch {
                 reverted = true;
             }
@@ -491,8 +491,9 @@ abstract contract OfferingHandler is Properties {
                 reverted = true;
             }
         } else {
+            if (caller == offering.pendingOwner()) return;
             vm.prank(caller);
-            try offering.completeOwnershipHandover(vm.addr(OWNER_KEY)) {}
+            try offering.acceptOwnership() {}
             catch {
                 reverted = true;
             }
