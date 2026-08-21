@@ -27,6 +27,14 @@ contract PactToken is ERC1155, LiquidSplit {
     error DistributionWhileFunding();
 
     /*´:°•.°+.*•´.*:˚.°*.˚•´.°:°•.°•.*•´.*:˚.°*.˚•´.°:°•.°+.*•´.*:*/
+    /*                           EVENTS                           */
+    /*.•°:°.´+˚.*°.˚:*.´•*.+°.•°:´*.´•*.•°.•°:°.´:•˚°.*°.˚:*.´+°.•*/
+
+    /// @dev Emitted on every distribution, so pact revenue is watchable on
+    /// this token without filtering SplitMain by payout split.
+    event FundsDistributed(address indexed token, address indexed distributorAddress);
+
+    /*´:°•.°+.*•´.*:˚.°*.˚•´.°:°•.°•.*•´.*:˚.°*.˚•´.°:°•.°+.*•´.*:*/
     /*                         CONSTANTS                          */
     /*.•°:°.´+˚.*°.˚:*.´•*.+°.•°:´*.´•*.•°.•°:°.´:•˚°.*°.˚:*.´+°.•*/
 
@@ -89,6 +97,8 @@ contract PactToken is ERC1155, LiquidSplit {
     /**
      * @notice The offering escrow is a permanent operator, so a failed raise
      * can reclaim purchased units on refund without a per-buyer approval.
+     * @dev The approval stands in every state, but the escrow only exercises
+     * it from `refund`/`refundAll`, both hard-gated to the Failed state.
      */
     function isApprovedForAll(address owner, address operator) public view override returns (bool) {
         return operator == offering || super.isApprovedForAll(owner, operator);
@@ -106,6 +116,7 @@ contract PactToken is ERC1155, LiquidSplit {
     function distributeFunds(address token, address[] calldata accounts, address distributorAddress) public override {
         if (Offering(payable(offering)).state() == Offering.State.Funding) revert DistributionWhileFunding();
         super.distributeFunds(token, accounts, distributorAddress);
+        emit FundsDistributed(token, distributorAddress);
     }
 
     /**

@@ -75,8 +75,10 @@ contract OfferingFactory {
      * @param priceSlope Price increase per unit sold.
      * @param publicUnits Cap on public-tranche sales; the rest of the offering
      * is claimable only via owner-signed allocation vouchers.
-     * @param treasury Treasury and initial owner/admin for the offering.
-     * @param holderAccounts Non-offering token recipients.
+     * @param treasury Receives withdrawals and unsold units.
+     * @param owner Signs vouchers and administers the offering; may equal `treasury`.
+     * @param holderAccounts Non-offering token recipients; may be empty when
+     * the full supply is offered.
      * @param holderAllocations Unit allocations matching `holderAccounts`.
      * @param offeringUnits Units minted directly to the new Offering.
      */
@@ -88,19 +90,20 @@ contract OfferingFactory {
         uint256 priceSlope,
         uint256 publicUnits,
         address treasury,
+        address owner,
         address[] calldata holderAccounts,
         uint32[] calldata holderAllocations,
         uint32 offeringUnits
     ) external returns (address offering, address pactToken) {
-        if (treasury == address(0)) revert InvalidAddress();
+        if (treasury == address(0) || owner == address(0)) revert InvalidAddress();
 
-        if (holderAccounts.length == 0 || holderAccounts.length != holderAllocations.length || offeringUnits == 0) {
+        if (holderAccounts.length != holderAllocations.length || offeringUnits == 0) {
             revert InvalidAllocations();
         }
 
         if (publicUnits > offeringUnits) revert InvalidConfig();
 
-        offering = address(new Offering(raiseMin, closeDate, priceStart, priceSlope, publicUnits, treasury, treasury));
+        offering = address(new Offering(raiseMin, closeDate, priceStart, priceSlope, publicUnits, treasury, owner));
 
         // An impossible raise is undeployable: the minimum must be reachable by
         // selling out the integer curve.

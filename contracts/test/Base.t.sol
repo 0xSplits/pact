@@ -65,6 +65,7 @@ contract BaseTest is Test {
             1000,
             publicUnits,
             treasury,
+            treasury,
             holders,
             allocations,
             200
