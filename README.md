@@ -77,7 +77,7 @@ asked to switch chains and sign.
 Current Base OfferingFactory (see status note above):
 
 ```text
-0xE07b04A47945DC6BEF217660F772b4D411Cd57fC
+0x68DA9a884A6B5758a21490CeA5A1325C5f02eCdD
 ```
 
 Regenerate the contract exports (requires Foundry) with:
