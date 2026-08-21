@@ -1,83 +1,48 @@
-// Reference copy of the PACT template. With no ?offering= param, renders the
-// blank template with bracketed placeholders. With one, loads the offering's
-// live state and fills each blank so buyers can inspect the exact document
-// they are agreeing to. The cap-table exhibit and curve chart are omitted —
-// they belong on the status page.
+// The PACT document. Two modes:
+//
+//   /terms?offering=0x…            → reference template with blanks filled by
+//                                    the offering's live state.
+//   /terms?offering=0x…&tx=0x…     → executed certificate for one buyer's
+//                                    purchase, with SAFE-style preamble and
+//                                    static signature rows.
+//
+// With no offering the page renders the blank template.
 import { useQuery } from "@tanstack/react-query";
 import { useEffect } from "react";
-import type { ReactNode } from "react";
 import type { Address } from "viem";
 import { useAccount } from "wagmi";
 
-import { AddressLink, Notice, SectionTitle } from "#components/ui.tsx";
+import { AddressLink, Notice } from "#components/ui.tsx";
 import { useOfferingState } from "#hooks/use-offering-state.ts";
-import { costForUnits, valuationForUnitIndex } from "#lib/chain/curve.ts";
-import { TOTAL_LIQUID_SPLIT_UNITS } from "#lib/chain/liquid-split.ts";
-import { getProjectName, offeringStateCurve } from "#lib/chain/onchain.ts";
-import type { OfferingState } from "#lib/chain/onchain.ts";
+import { offeringPhase, refundStatuses } from "#lib/chain/offering-status.ts";
+import { listBought, listLifecycle } from "#lib/chain/offerings.ts";
+import { getBlockTimestamp, getProjectName } from "#lib/chain/onchain.ts";
+import { basescanTx, usdcBaseUnitsToDollars } from "#lib/format.ts";
+import { currentOfferingAddress, currentTxHash } from "#lib/routes.ts";
+import { deriveFilledTerms } from "#lib/terms-fields.ts";
 import {
-  fmtDate,
-  fmtPct,
-  fmtUsd,
-  usdcBaseUnitsToDollars,
-} from "#lib/format.ts";
-import { currentOfferingAddress } from "#lib/routes.ts";
+  TermsBody,
+  TermsHeading,
+  TermsLoadNotice,
+} from "#pages/terms-body.tsx";
+import type { ExecutedPurchase } from "#pages/terms-body.tsx";
 
 const offeringAddress = currentOfferingAddress();
+const txHash = currentTxHash();
 
-interface FilledTerms {
-  projectName: string;
-  minUsd: number;
-  maxUsd: number;
-  dilutionPct: number;
-  closeDateMs: number;
-  publicPct: number;
-  treasury: Address;
-  cap: number;
-  floor: number;
-  ceiling: number;
-  discountPct: number;
-}
-
-// Same derivations the create form and status page use, applied to the live
-// state. `remainingUnits + unitsSold` is the escrow's current inventory — the
-// number the curve was priced for — which matches what the buy page displays.
-function deriveFilledTerms(
-  state: OfferingState,
-  projectName: string,
-): FilledTerms {
-  const curve = offeringStateCurve(state);
-  const offeredUnits = state.remainingUnits + state.unitsSold;
-  const maxUsd = usdcBaseUnitsToDollars(costForUnits(curve, 0, offeredUnits));
-  const floor = valuationForUnitIndex(curve, 0, TOTAL_LIQUID_SPLIT_UNITS);
-  const ceiling = valuationForUnitIndex(
-    curve,
-    offeredUnits,
-    TOTAL_LIQUID_SPLIT_UNITS,
+function SignatureRow({ address, role }: { address: Address; role: string }) {
+  return (
+    <div className="signature-row signature-static-row">
+      <div className="signature-inner">
+        <span className="signature-by">{role}:</span>
+        <div className="signature-block">
+          <div className="signature-static">
+            <AddressLink address={address} />
+          </div>
+        </div>
+      </div>
+    </div>
   );
-  const cap = (floor + ceiling) / 2;
-  const discountPct = cap > 0 ? ((cap - floor) / cap) * 100 : 0;
-  return {
-    projectName,
-    minUsd: usdcBaseUnitsToDollars(state.raiseMin),
-    maxUsd,
-    dilutionPct: (offeredUnits / TOTAL_LIQUID_SPLIT_UNITS) * 100,
-    closeDateMs: state.closeDate * 1000,
-    publicPct: offeredUnits > 0 ? (state.publicUnits / offeredUnits) * 100 : 0,
-    treasury: state.treasury,
-    cap,
-    floor,
-    ceiling,
-    discountPct,
-  };
-}
-
-function Placeholder({ label }: { label: string }) {
-  return <span className="t-muted italic">[{label}]</span>;
-}
-
-function Filled({ children }: { children: ReactNode }) {
-  return <span className="font-bold">{children}</span>;
 }
 
 export function TermsApp() {
@@ -95,188 +60,127 @@ export function TermsApp() {
       queryFn: () => getProjectName({ pactToken: pactToken! }).catch(() => ""),
     }).data ?? null;
 
+  // Only the executed mode needs Bought events, block timestamps, and (on a
+  // failed round) lifecycle events. Enable those queries only when tx is set.
+  const boughtQuery = useQuery({
+    queryKey: ["bought", offeringAddress],
+    enabled: !!offeringAddress && !!txHash,
+    queryFn: () => listBought({ offering: offeringAddress! }),
+  });
+  const purchase = (boughtQuery.data || []).find(
+    (p) =>
+      txHash && p.txHash && p.txHash.toLowerCase() === txHash.toLowerCase(),
+  );
+
+  const timestampQuery = useQuery({
+    queryKey: ["block-ts", purchase?.blockNumber ?? null],
+    enabled: !!purchase && purchase.blockNumber != null,
+    queryFn: () => getBlockTimestamp(purchase!.blockNumber!),
+    staleTime: Infinity,
+  });
+  const timestampMs = timestampQuery.data ? timestampQuery.data * 1000 : null;
+
+  const phase =
+    offering && offering.status === "loaded" ? offeringPhase(offering) : "live";
+  const lifecycleQuery = useQuery({
+    queryKey: ["lifecycle", offeringAddress],
+    enabled: !!offeringAddress && !!txHash && phase === "failed",
+    queryFn: () => listLifecycle({ offering: offeringAddress! }),
+  });
+  const refundMap =
+    phase === "failed" && purchase
+      ? refundStatuses([purchase], lifecycleQuery.data || [])
+      : null;
+  const refundStatus =
+    refundMap && purchase
+      ? refundMap.get(purchase.buyer.toLowerCase())
+      : undefined;
+
   useEffect(() => {
-    if (projectName) document.title = `${projectName} | PACT`;
+    if (!projectName) return;
+    document.title = txHash
+      ? `${projectName} — Receipt | PACT`
+      : `${projectName} | PACT`;
   }, [projectName]);
 
-  const filled: FilledTerms | null =
+  const filled =
     offering && offering.status === "loaded"
       ? deriveFilledTerms(offering, projectName || "")
       : null;
+  const executed: ExecutedPurchase | null = purchase
+    ? {
+        buyer: purchase.buyer,
+        buyerName: purchase.buyerName || null,
+        amountUsd: usdcBaseUnitsToDollars(purchase.cost),
+        units: purchase.units,
+        dateMs: timestampMs,
+      }
+    : null;
 
   const loading =
     !!offeringAddress && (!offering || offering.status === "loading");
   const loadError =
     offering && offering.status === "error" ? offering.error : null;
 
-  const nameField = filled?.projectName ? (
-    <Filled>{filled.projectName}</Filled>
-  ) : filled ? (
-    <span className="t-muted italic">Unnamed project</span>
-  ) : (
-    <Placeholder label="Project Name" />
-  );
-  const minField = filled ? (
-    <Filled>{fmtUsd(filled.minUsd, "cents").replace(/^\$/, "")}</Filled>
-  ) : (
-    <Placeholder label="Minimum" />
-  );
-  const maxField = filled ? (
-    <Filled>{fmtUsd(filled.maxUsd, "cents").replace(/^\$/, "")}</Filled>
-  ) : (
-    <Placeholder label="Maximum" />
-  );
-  const dilutionField = filled ? (
-    <Filled>{fmtPct(filled.dilutionPct)}</Filled>
-  ) : (
-    <>
-      <Placeholder label="Dilution" />%
-    </>
-  );
-  const closeField = filled ? (
-    <Filled>{fmtDate(filled.closeDateMs)}</Filled>
-  ) : (
-    <Placeholder label="Close Date" />
-  );
-  const publicField = filled ? (
-    <Filled>{fmtPct(filled.publicPct)}</Filled>
-  ) : (
-    <>
-      <Placeholder label="Public" />%
-    </>
-  );
-  const treasuryField = filled ? (
-    <AddressLink address={filled.treasury} />
-  ) : (
-    <Placeholder label="Treasury Address" />
-  );
-  const capField = filled ? (
-    <Filled>{fmtUsd(filled.cap, "whole").replace(/^\$/, "")}</Filled>
-  ) : (
-    <Placeholder label="Effective Cap" />
-  );
-  const discountField = filled ? (
-    <Filled>{fmtPct(filled.discountPct)}</Filled>
-  ) : (
-    <>
-      <Placeholder label="Discount" />%
-    </>
-  );
-  const floorField = filled ? (
-    <Filled>{fmtUsd(filled.floor, "whole").replace(/^\$/, "")}</Filled>
-  ) : (
-    <Placeholder label="Floor" />
-  );
-  const ceilingField = filled ? (
-    <Filled>{fmtUsd(filled.ceiling, "whole").replace(/^\$/, "")}</Filled>
-  ) : (
-    <Placeholder label="Ceiling" />
-  );
+  const purchaseMissing =
+    !!offeringAddress && !!txHash && !boughtQuery.isLoading && !purchase;
+
+  const refundNote =
+    refundStatus === "refunded"
+      ? "This Purchase was refunded; the Buyer's Units have been returned to the Project."
+      : refundStatus === "skipped"
+        ? "A refund attempt was skipped; the Buyer may reclaim their Purchase Amount directly from the Project."
+        : refundStatus === "pending"
+          ? "The Buyer's refund is pending."
+          : null;
 
   return (
     <>
-      <div className="mb-10 text-center">
-        {filled ? (
-          <p className="text-2xl font-bold mb-2">
-            {projectName || "PACT offering"}
-          </p>
-        ) : null}
-        <h1 className="text-2xl font-bold uppercase tracking-wide">
-          Purchase Agreement for Community Tokens
-        </h1>
-        {!filled ? (
-          <p className="text-sm t-muted mt-2">
-            Reference template — values are filled in for each offering.
-          </p>
-        ) : null}
-      </div>
-
-      {loadError ? (
+      <TermsHeading
+        filled={filled}
+        projectName={projectName}
+        subtitle={
+          !filled
+            ? "Reference template — values are filled in for each offering."
+            : undefined
+        }
+      />
+      <TermsLoadNotice loading={loading} loadError={loadError} />
+      {purchaseMissing ? (
         <Notice className="mb-6">
-          Could not read this offering from Base. Showing the blank template
-          instead. ({loadError})
+          Could not find a purchase in transaction {txHash!.slice(0, 10)}… on
+          this offering.
         </Notice>
-      ) : loading ? (
-        <Notice className="mb-6">Loading offering…</Notice>
       ) : null}
-
-      <p className="text-sm uppercase text-justify mb-9">
-        The Units issued pursuant to this instrument confer no legal rights, but
-        may participate in the Project&rsquo;s future value as its creator
-        expressly provides. They exist solely to align their holders with the
-        Project, and it is for the creator to determine what, if anything, the
-        Units are used for.
-      </p>
-
-      <p className="mb-9 text-justify">
-        This Purchase Agreement for Community Tokens (this &ldquo;PACT&rdquo;)
-        certifies that {nameField} (the &ldquo;Project&rdquo;) shall issue
-        community units (the &ldquo;Units&rdquo;) to those who buy into the
-        Offering described below, upon and subject to the terms set forth
-        herein.
-      </p>
-
-      <SectionTitle>&sect;1. The Offering</SectionTitle>
-      <p className="mb-4 text-justify">
-        The Project intends to raise no less than ${minField} (the
-        &ldquo;Minimum&rdquo;) and no more than ${maxField} (the
-        &ldquo;Maximum&rdquo;) of new capital and, in consideration thereof,
-        shall make available for purchase no more than {dilutionField} of the
-        Units (the &ldquo;Offering&rdquo;). Should the Maximum not be met, any
-        unsold Units may be reclaimed solely by the Treasury.
-      </p>
-      <p className="mb-4 pl-4 text-justify">
-        <span className="font-bold">(a) Close Date.</span>{" "}
-        {filled ? (
-          <>
-            Should the Minimum not be met by {closeField} (the &ldquo;Close
-            Date&rdquo;), buyers shall be entitled to burn their Units and
-            reclaim the full amount of their purchase.
-          </>
-        ) : (
-          <>
-            Should the Minimum not be met by {closeField} (the &ldquo;Close
-            Date&rdquo;), set at issuance, buyers shall be entitled to burn
-            their Units and reclaim the full amount of their purchase.
-          </>
-        )}
-      </p>
-      <p className="mb-9 pl-4 text-justify">
-        <span className="font-bold">(b) Public Portion.</span> Up to{" "}
-        {publicField} of the Offering shall be purchasable publicly; the
-        remainder shall be reserved for private allocations.
-      </p>
-
-      <SectionTitle>&sect;2. Use of Proceeds</SectionTitle>
-      <p className="mb-9 text-justify">
-        The net proceeds of the Offering shall be delivered to the
-        Project&rsquo;s treasury account (the &ldquo;Treasury&rdquo;) at{" "}
-        {treasuryField}.
-      </p>
-
-      <SectionTitle>&sect;3. Capitalization</SectionTitle>
-      <p className="mb-4 text-justify">
-        The capital structure of the Project, before and after the Offering, is
-        set forth in an exhibit fixed at issuance, listing each holder&rsquo;s
-        wallet, pre-Offering percentage, post-Offering percentage, and Unit
-        count, together with the Units reserved for the Offering itself. Upon
-        issuance, each holder receives their Units directly in their wallet(s),
-        as defined in the exhibit.
-      </p>
-
-      <SectionTitle>&sect;4. Resulting Terms</SectionTitle>
-      <p className="mb-4 text-justify">
-        Accordingly, upon full subscription the effective post-money valuation
-        shall be ${capField}.
-      </p>
-      <p className="mb-9 pl-4 text-justify">
-        <span className="font-bold">(a) Discount.</span> The earliest
-        subscriptions shall be priced at a {discountField} discount to the
-        effective post-money valuation. Thereafter, pricing shall progress
-        linearly along the Curve, beginning at a floor of ${floorField} and
-        reaching a ceiling of ${ceilingField}, an equivalent premium at full
-        subscription.
-      </p>
+      <TermsBody filled={filled} executed={executed} />
+      {purchase ? (
+        <>
+          {refundNote ? <Notice className="mt-10">{refundNote}</Notice> : null}
+          <SignatureRow address={purchase.buyer} role="Buyer" />
+          {offering && offering.status === "loaded" ? (
+            <SignatureRow address={offering.owner} role="Issuer" />
+          ) : null}
+          {purchase.txHash ? (
+            <div className="signature-row signature-static-row">
+              <div className="signature-inner">
+                <span className="signature-by">Transaction:</span>
+                <div className="signature-block">
+                  <div className="signature-static">
+                    <a
+                      className="value-link"
+                      href={basescanTx(purchase.txHash)}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      {purchase.txHash.slice(0, 10)}…{purchase.txHash.slice(-8)}
+                    </a>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : null}
+        </>
+      ) : null}
     </>
   );
 }

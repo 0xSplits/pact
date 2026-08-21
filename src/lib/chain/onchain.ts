@@ -97,6 +97,12 @@ export async function getLatestBlockNumber(): Promise<number> {
   return Number(await client().getBlockNumber({ cacheTime: 0 }));
 }
 
+// Block timestamp in seconds — used by the receipt page to date a purchase.
+export async function getBlockTimestamp(blockNumber: number): Promise<number> {
+  const block = await client().getBlock({ blockNumber: BigInt(blockNumber) });
+  return Number(block.timestamp);
+}
+
 // The receipt slice the app consumes — satisfied by both viem transaction
 // receipts and EIP-5792 batch receipts (WalletCallReceipt), whose logs carry
 // only address/data/topics. parseEventLogs declares `(Log | RpcLog)[]` input

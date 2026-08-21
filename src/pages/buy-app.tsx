@@ -62,6 +62,7 @@ import {
 import { debugActive } from "#lib/ui/debug-menu.ts";
 import { showToast } from "#lib/ui/toast.ts";
 import { isSameAddress } from "#lib/validate.ts";
+import { UNITS_DISCLAIMER } from "#pages/pact-copy.tsx";
 
 const offeringAddress = currentOfferingAddress();
 const fragment = currentVoucherFragment();
@@ -571,14 +572,24 @@ export function BuyApp() {
   });
   const txLabel =
     receipt && receipt.txHash ? (
-      <a
-        className="linkbtn"
-        href={basescanTx(receipt.txHash)}
-        target="_blank"
-        rel="noreferrer"
-      >
-        View transaction
-      </a>
+      <>
+        <a
+          className="linkbtn"
+          href={termsPath(offeringAddress!, receipt.txHash)}
+          target="_blank"
+          rel="noreferrer"
+        >
+          View receipt
+        </a>
+        <a
+          className="linkbtn t-muted text-sm"
+          href={basescanTx(receipt.txHash)}
+          target="_blank"
+          rel="noreferrer"
+        >
+          Basescan
+        </a>
+      </>
     ) : null;
 
   const failedRefundCopy = debugRefunded
@@ -872,11 +883,7 @@ export function BuyApp() {
               >
                 &ldquo;PACT&rdquo;
               </a>
-              ), and that the Units confer no legal rights but may participate
-              in the Project&rsquo;s future value as its creator expressly
-              provides. The Units exist solely to align their holders with the
-              Project, and it is for the creator to determine what, if anything,
-              they are used for. My purchase is refundable in full if the
+              ). {UNITS_DISCLAIMER} My purchase is refundable in full if the
               offering does not reach its minimum of {fmtUsd(minUsd, "cents")}{" "}
               by {fmtDate(closeDate)}.
             </span>

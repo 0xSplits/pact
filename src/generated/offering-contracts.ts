@@ -948,7 +948,7 @@ export const OFFERING_ABI = [
     "name": "transferOwnership",
     "inputs": [
       {
-        "name": "",
+        "name": "newOwner",
         "type": "address",
         "internalType": "address"
       }

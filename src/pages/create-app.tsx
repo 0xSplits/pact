@@ -28,6 +28,7 @@ import {
 import { statusPath } from "#lib/routes.ts";
 import { showToast } from "#lib/ui/toast.ts";
 import { isAddress } from "#lib/validate.ts";
+import { UNITS_DISCLAIMER } from "#pages/pact-copy.tsx";
 
 const oneDecimal = (v: string | number) =>
   (Math.round((Number(v) || 0) * 10) / 10).toFixed(1);
@@ -502,11 +503,7 @@ export function CreateApp() {
           Purchase Agreement for Community Tokens
         </h1>
         <p className="text-sm mt-4 uppercase text-justify">
-          The Units issued pursuant to this instrument confer no legal rights,
-          but may participate in the Project&rsquo;s future value as its creator
-          expressly provides. They exist solely to align their holders with the
-          Project, and it is for the creator to determine what, if anything, the
-          Units are used for.
+          {UNITS_DISCLAIMER}
         </p>
       </div>
 
