@@ -4,7 +4,7 @@ Synthesized from the five discovery agents (`fizz_data/discovery/*.md`) after
 deduplication and a feasibility pass against the live harness
 (`contracts/test/fizz/`). **78 properties: 44 global + 34 specific.**
 
-Spec IDs (`GL-NN` / `SP-NN`) match `/Users/rooh/work/pact/PROPERTIES.md` and are
+Spec IDs (`GL-NN` / `SP-NN`) match `PROPERTIES.md` (repo root) and are
 stable — never renumber. Global properties become `public property_*` functions
 in `Properties.sol`; specific properties become `internal property_*` functions
 called at the end of the handler named in *Called After*.

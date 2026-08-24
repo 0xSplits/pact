@@ -1,9 +1,10 @@
 {
-  "name": "splits-pact",
+  "name": "pact",
   "version": "0.1.0",
-  "description": "Raise small onchain rounds by selling a slice of a 0xSplits Liquid Split along a bonding curve.",
+  "description": "Raise small onchain rounds by selling a slice of a project's cap table along a bonding curve, in USDC on Base.",
   "license": "MIT",
   "private": true,
+  "repository": "github:0xSplits/pact",
   "type": "module",
   "engines": {
     "node": ">=22.18.0"
