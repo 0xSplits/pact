@@ -15,3 +15,6 @@ broadcast/
 
 # regenerable /x-ray pre-audit reports
 x-ray/
+
+# local working notes
+.scratch/
