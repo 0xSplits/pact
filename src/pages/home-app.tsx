@@ -5,13 +5,22 @@ import type { ReactNode } from "react";
 import { useAccount } from "wagmi";
 
 import { StatusBadge } from "#components/ui.tsx";
+import { valuationForUnitIndex } from "#lib/chain/curve.ts";
+import { TOTAL_LIQUID_SPLIT_UNITS } from "#lib/chain/liquid-split.ts";
 import { offeringStatus } from "#lib/chain/offering-status.ts";
 import { loadWalletRecords } from "#lib/chain/offerings.ts";
 import type { OfferingLifecycle, WalletRecords } from "#lib/chain/offerings.ts";
-import { fmtTokens, fmtUsd, usdcBaseUnitsToDollars } from "#lib/format.ts";
-import { buyPath, CREATE_PATH, statusPath } from "#lib/routes.ts";
+import { offeringStateCurve } from "#lib/chain/onchain.ts";
+import type { OfferingRecord } from "#lib/chain/onchain.ts";
+import {
+  fmtDate,
+  fmtTokens,
+  fmtUsd,
+  usdcBaseUnitsToDollars,
+} from "#lib/format.ts";
+import { buyPath, CREATE_PATH, statusPath, termsPath } from "#lib/routes.ts";
 
-const PAPER = "paper px-10 py-12 sm:px-14 sm:py-16";
+const PAPER = "paper px-10 py-12 sm:px-16 sm:py-16";
 
 function Explainer() {
   return (
@@ -96,23 +105,60 @@ function DashboardTable({
 }) {
   return (
     <section className="mb-8">
-      <div className="font-bold mb-2">{title}</div>
+      <h2 className="text-lg font-semibold mb-2">{title}</h2>
       {children || <p className="t-muted text-sm">{empty}</p>}
     </section>
   );
 }
 
 // Live reads degrade to no lifecycle; show absence rather than a stale guess.
-function StatusCell({
-  lifecycle,
-  closeDate,
-}: {
-  lifecycle: OfferingLifecycle | undefined;
-  closeDate: number;
-}) {
-  if (!lifecycle) return <span className="t-muted">—</span>;
-  const status = offeringStatus({ ...lifecycle, closeDate });
-  return <StatusBadge status={{ ...status, note: "" }} />;
+// Four dashboard-flavoured states: below minimum, minimum met (open), funded
+// (successfully closed), failed (or past-close limbo below minimum).
+type OfferingState = "loading" | "below-min" | "min-met" | "funded" | "failed";
+
+function offeringDashState(
+  lifecycle: OfferingLifecycle | undefined,
+  closeDate: number,
+): OfferingState {
+  if (!lifecycle) return "loading";
+  const base = offeringStatus({ ...lifecycle, closeDate });
+  if (base.tone === "failed") return "failed";
+  // state 2 is the closed/funded contract state; read it directly rather than
+  // matching user-facing status copy that could be reworded.
+  if (lifecycle.state === 2) return "funded";
+  return lifecycle.minMet ? "min-met" : "below-min";
+}
+
+function OfferingStatusCell({ state }: { state: OfferingState }) {
+  if (state === "loading") return <span className="t-muted">—</span>;
+  const label =
+    state === "failed"
+      ? "Failed"
+      : state === "funded"
+        ? "Funded"
+        : state === "min-met"
+          ? "Minimum met"
+          : "Below minimum";
+  const tone =
+    state === "failed"
+      ? "failed"
+      : state === "below-min"
+        ? "funding"
+        : "secured";
+  return <StatusBadge status={{ tone, label, note: "" }} />;
+}
+
+function finalValuation(
+  record: OfferingRecord,
+  unitsSold: number,
+  remainingUnits: number,
+) {
+  const curve = offeringStateCurve(record);
+  return valuationForUnitIndex(
+    curve,
+    unitsSold + remainingUnits,
+    TOTAL_LIQUID_SPLIT_UNITS,
+  );
 }
 
 function Dashboard({ records }: { records: WalletRecords }) {
@@ -123,7 +169,7 @@ function Dashboard({ records }: { records: WalletRecords }) {
         <div>
           <h1 className="text-2xl font-bold">Your PACTs</h1>
           <p className="mt-1 text-sm t-muted">
-            Issuances and purchase receipts connected to this wallet.
+            Offerings and purchase receipts connected to this wallet.
           </p>
         </div>
         <a
@@ -134,39 +180,44 @@ function Dashboard({ records }: { records: WalletRecords }) {
         </a>
       </div>
 
-      <DashboardTable title="Issuances" empty="No issuances yet.">
+      <DashboardTable title="Offerings" empty="No offerings yet.">
         {pacts.length ? (
           <table className="exhibit">
             <thead>
               <tr>
                 <th>Project</th>
-                <th className="num">Raised</th>
-                <th className="num">Target</th>
+                <th className="num">Round</th>
                 <th className="num">Status</th>
               </tr>
             </thead>
             <tbody>
-              {pacts.map((pact) => (
-                <tr key={pact.offering}>
-                  <td>
-                    <a className="linkbtn" href={statusPath(pact.offering)}>
-                      {pact.projectName || "Untitled issuance"}
-                    </a>
-                  </td>
-                  <td className="num">
-                    {fmtUsd(usdcBaseUnitsToDollars(pact.raised || 0), "cents")}
-                  </td>
-                  <td className="num">
-                    {fmtUsd(usdcBaseUnitsToDollars(pact.target || 0), "cents")}
-                  </td>
-                  <td className="num">
-                    <StatusCell
-                      lifecycle={pact.lifecycle}
-                      closeDate={pact.closeDate}
-                    />
-                  </td>
-                </tr>
-              ))}
+              {pacts.map((pact) => {
+                const target = pact.target ?? 0n;
+                const unitsSold = pact.unitsSold ?? 0;
+                const remainingUnits = pact.remainingUnits ?? 0;
+                const valuation = finalValuation(
+                  pact,
+                  unitsSold,
+                  remainingUnits,
+                );
+                const state = offeringDashState(pact.lifecycle, pact.closeDate);
+                return (
+                  <tr key={pact.offering}>
+                    <td>
+                      <a className="linkbtn" href={statusPath(pact.offering)}>
+                        {pact.projectName || "Untitled offering"}
+                      </a>
+                    </td>
+                    <td className="num">
+                      {fmtUsd(usdcBaseUnitsToDollars(target), "cents")} on{" "}
+                      {fmtUsd(valuation, "whole")}
+                    </td>
+                    <td className="num">
+                      <OfferingStatusCell state={state} />
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         ) : null}
@@ -180,7 +231,8 @@ function Dashboard({ records }: { records: WalletRecords }) {
                 <th>Project</th>
                 <th className="num">Amount</th>
                 <th className="num">Units</th>
-                <th className="num">Status</th>
+                <th className="num">Date</th>
+                <th className="num">Receipt</th>
               </tr>
             </thead>
             <tbody>
@@ -197,10 +249,21 @@ function Dashboard({ records }: { records: WalletRecords }) {
                   </td>
                   <td className="num">{fmtTokens(purchase.units)}</td>
                   <td className="num">
-                    <StatusCell
-                      lifecycle={purchase.lifecycle}
-                      closeDate={purchase.record.closeDate}
-                    />
+                    {purchase.timestamp
+                      ? fmtDate(purchase.timestamp * 1000)
+                      : "—"}
+                  </td>
+                  <td className="num">
+                    {purchase.txHash ? (
+                      <a
+                        className="linkbtn"
+                        href={termsPath(purchase.offering, purchase.txHash)}
+                      >
+                        View
+                      </a>
+                    ) : (
+                      <span className="t-muted">—</span>
+                    )}
                   </td>
                 </tr>
               ))}

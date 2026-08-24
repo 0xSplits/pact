@@ -12,8 +12,10 @@ import type { CurveChartConfig } from "#lib/ui/chart.ts";
 
 export function CurveChart({
   curveState,
+  interactive = true,
 }: {
   curveState: CurveChartConfig | null;
+  interactive?: boolean;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const cfgRef = useRef<CurveChartConfig | null>(null);
@@ -29,7 +31,10 @@ export function CurveChart({
     : null;
 
   useEffect(() => {
-    attachCurveHover(canvasRef.current!, () => cfgRef.current);
+    if (interactive) attachCurveHover(canvasRef.current!, () => cfgRef.current);
+  }, [interactive]);
+
+  useEffect(() => {
     const scheme = window.matchMedia("(prefers-color-scheme: dark)");
     const onScheme = () => setThemeTick((tick) => tick + 1);
     scheme.addEventListener("change", onScheme);

@@ -16,6 +16,7 @@ import {
 import { globalOverride } from "#lib/chain/chain.ts";
 import { costForUnits } from "#lib/chain/curve.ts";
 import {
+  getBlockTimestamp,
   getLatestBlockNumber,
   lifecycleEventFromLog,
   offeringRecordFromLog,
@@ -304,6 +305,8 @@ export interface WalletRecords {
     OfferingRecord & {
       raised?: bigint;
       target?: bigint;
+      unitsSold?: number;
+      remainingUnits?: number;
       lifecycle?: OfferingLifecycle | undefined;
     }
   >;
@@ -311,6 +314,7 @@ export interface WalletRecords {
     Purchase & {
       record: OfferingRecord;
       lifecycle?: OfferingLifecycle | undefined;
+      timestamp?: number | null;
     }
   >;
 }
@@ -350,8 +354,21 @@ export async function loadWalletRecords(
     const lifecycleByOffering = new Map<string, OfferingLifecycle>();
     const totalsByOffering = new Map<
       string,
-      { raised: bigint; target: bigint }
+      {
+        raised: bigint;
+        target: bigint;
+        unitsSold: number;
+        remainingUnits: number;
+      }
     >();
+    const purchaseBlocks = Array.from(
+      new Set(
+        purchases
+          .map((p) => p.blockNumber)
+          .filter((b): b is number => typeof b === "number"),
+      ),
+    );
+    const timestampByBlock = new Map<number, number>();
     await Promise.all([
       ...lifecycleRecords.map(async (record) => {
         try {
@@ -398,8 +415,15 @@ export async function loadWalletRecords(
             target:
               raised +
               costForUnits(curve, Number(unitsSold), Number(remainingUnits)),
+            unitsSold: Number(unitsSold),
+            remainingUnits: Number(remainingUnits),
           });
         } catch {} // row renders without live totals
+      }),
+      ...purchaseBlocks.map(async (block) => {
+        try {
+          timestampByBlock.set(block, await getBlockTimestamp(block));
+        } catch {} // row renders without a date
       }),
     ]);
     const lifecycleOf = (record: OfferingRecord) =>
@@ -415,6 +439,10 @@ export async function loadWalletRecords(
       purchases: purchases.map((purchase) => ({
         ...purchase,
         lifecycle: lifecycleOf(purchase.record),
+        timestamp:
+          purchase.blockNumber != null
+            ? (timestampByBlock.get(purchase.blockNumber) ?? null)
+            : null,
       })),
     };
   } catch {

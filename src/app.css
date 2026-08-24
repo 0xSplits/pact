@@ -633,7 +633,36 @@ body {
   color: var(--muted);
 }
 
-/* top controls */
+/* top chrome: brand on the left, wallet controls on the right */
+/* Stone/mirror wordmark: the ring gradient runs top→bottom light-to-dark
+   (as if lit from above), and the inner "well" is the same gradient inverted
+   so it reads as an inset. The transparent border lets the border-box
+   background layer show through as the ring. */
+.top-brand {
+  position: fixed;
+  top: 16px;
+  left: 16px;
+  z-index: 10;
+  display: inline-flex;
+  align-items: center;
+  height: 36px;
+  padding: 0 12px;
+  border: 3px solid transparent;
+  background:
+    linear-gradient(to top, #c4c4c4 0%, #9a9a9a 100%) padding-box,
+    linear-gradient(to bottom, #c4c4c4 0%, #9a9a9a 100%) border-box;
+  color: #1a1a1a;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.25);
+  font-family: var(--font);
+  font-size: var(--text-base);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-decoration: none;
+  line-height: 1;
+}
+.top-brand[data-inert] {
+  cursor: default;
+}
 .top-controls {
   position: fixed;
   top: 16px;
@@ -725,36 +754,6 @@ body {
 .wallet-menu a:hover {
   background: var(--marker);
   color: #fff;
-}
-.wallet-menu-group + .wallet-menu-group {
-  margin-top: 4px;
-}
-.wallet-menu-label {
-  padding: 5px 10px;
-  color: #8f8f8f;
-  font-size: var(--text-xs);
-  font-weight: 500;
-  line-height: 1.4;
-  letter-spacing: 0;
-}
-.wallet-menu-note {
-  padding: 8px 10px 10px;
-  color: #bdbdbd;
-  font-size: var(--text-sm);
-}
-.wallet-menu a.wallet-menu-action {
-  color: #fff;
-}
-.wallet-menu-check {
-  width: 14px;
-  height: 14px;
-  flex: 0 0 auto;
-  color: #fff;
-}
-.wallet-menu-check svg {
-  width: 14px;
-  height: 14px;
-  display: block;
 }
 
 /* localhost-only debug menu (src/lib/debug-menu.js) */

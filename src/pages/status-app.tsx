@@ -1870,11 +1870,10 @@ export function StatusApp() {
           {finalCurveState ? (
             <figure className="mt-8 mb-2 max-w-[620px] mx-auto">
               <div className="fig-frame">
-                <CurveChart curveState={finalCurveState} />
+                <CurveChart curveState={finalCurveState} interactive={false} />
               </div>
               <figcaption className="text-sm leading-5 t-muted mt-2 italic">
-                Where the raise settled on the bonding curve. Hover to explore
-                effective price.
+                Where the raise settled on the bonding curve.
               </figcaption>
             </figure>
           ) : null}
