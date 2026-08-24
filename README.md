@@ -1,4 +1,4 @@
-# splits-pact
+# pact
 
 PACT (Purchase Agreement for Community Tokens) is a prototype for raising
 small rounds by creating a cap table and selling a slice of the project's
@@ -34,11 +34,8 @@ More detail:
 
 ## Local Development
 
-Use Node 22.18 or newer (`.nvmrc` / `.tool-versions` pin 22.20.0). With `asdf`:
-
-```sh
-asdf install
-```
+Requires Node 22.18+ (`.nvmrc` pins 22.20.0; `nvm use` or `asdf install`
+picks it up).
 
 Install dependencies and start the dev server:
 
@@ -124,3 +121,7 @@ Vercel serves the static build and auto-deploys `main`
   appear; later visits only scan the delta.
 - Lifecycle flows have been manually tested with dust, but still need broader
   real-world testing before public use.
+
+## License
+
+[MIT](LICENSE).
