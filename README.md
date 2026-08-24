@@ -53,13 +53,6 @@ npm run build
 npx vite preview
 ```
 
-## Environment
-
-No environment variables are required. Without them the app uses the
-rate-limited public Base RPC and skips the WalletConnect connector; see
-`.env.example` for the optional build-time Alchemy key and WalletConnect
-project id.
-
 ## Onchain Configuration
 
 The browser code reads contract ABIs and the pinned `OfferingFactory` address
