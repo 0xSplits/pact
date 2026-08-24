@@ -8,7 +8,13 @@
 // uint256 math exactly. The only conversions are at the edges: parseUnits on
 // dollar input (chain.ts), formatUnits at the display boundary (format.ts),
 // and decimal strings inside the JSON localStorage caches.
-import { erc20Abi, getAddress, isAddressEqual, parseEventLogs } from "viem";
+import {
+  erc20Abi,
+  getAddress,
+  isAddressEqual,
+  parseAbi,
+  parseEventLogs,
+} from "viem";
 import type {
   Abi,
   AbiEvent,
@@ -56,6 +62,29 @@ import type { Voucher } from "#lib/chain/voucher.ts";
 import { wagmiConfig } from "#lib/chain/wagmi.ts";
 
 const client = () => getPublicClient(wagmiConfig);
+
+// ERC-165 id of IERC1155Receiver. The token mints to holders with the receiver
+// check and the escrow pushes units to the treasury on close/sweep, so a
+// contract recipient without the hook makes the deploy (holders) or the close
+// (treasury) revert; the create form checks every recipient first.
+const ERC1155_RECEIVER_INTERFACE_ID = "0x4e2312e0";
+const erc165Abi = parseAbi([
+  "function supportsInterface(bytes4 interfaceId) view returns (bool)",
+]);
+export async function canReceiveUnits(address: Address): Promise<boolean> {
+  const code = await client().getCode({ address: getAddress(address) });
+  if (!code || code === "0x") return true;
+  try {
+    return await readContract(wagmiConfig, {
+      abi: erc165Abi,
+      address: getAddress(address),
+      functionName: "supportsInterface",
+      args: [ERC1155_RECEIVER_INTERFACE_ID],
+    });
+  } catch {
+    return false;
+  }
+}
 
 // A block-range log request with the event(s) to decode. Callers chunk
 // ranges themselves — public Base RPC caps a request at 10k blocks (see

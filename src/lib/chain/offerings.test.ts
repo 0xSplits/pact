@@ -179,6 +179,21 @@ test("cachedScan rescans when cached items are not an array", async () => {
   assert.deepEqual(items, [{ id: 1 }]);
 });
 
+test("cachedScan rescans when a cached item has no dedupe key", async () => {
+  const storage = fakeStorage();
+  storage.setItem(
+    "test:scan",
+    JSON.stringify({ lastScannedBlock: 199, items: [{ bogus: 1 }] }),
+  );
+  const getLogs = fakeGetLogs({ 100: [{ id: 1 }] });
+  const items = await cachedScan({
+    ...scanArgs({ getLogs, storage, latestBlock: 150 }),
+    dedupeKey: (item: { id: number }) => item.id.toString(),
+  });
+  assert.deepEqual(getLogs.ranges, [[100, 150]]);
+  assert.deepEqual(items, [{ id: 1 }]);
+});
+
 test("seedOffering serializes bigint curve params to decimal strings", () => {
   const storage = fakeStorage();
   const factory = ("0x" + "fa".repeat(20)) as `0x${string}`;

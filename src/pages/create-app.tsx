@@ -16,7 +16,7 @@ import {
 import type { Pact } from "#lib/chain/curve.ts";
 import { TOTAL_LIQUID_SPLIT_UNITS } from "#lib/chain/liquid-split.ts";
 import { seedOffering } from "#lib/chain/offerings.ts";
-import { createOffering } from "#lib/chain/onchain.ts";
+import { canReceiveUnits, createOffering } from "#lib/chain/onchain.ts";
 import {
   errMsg,
   fmtPct,
@@ -458,6 +458,30 @@ export function CreateApp() {
     }
     setBusy(true);
     try {
+      const recipients = [
+        { key: "proceeds", address: form.proceeds.trim() },
+        ...holders.map((h) => ({ key: "name-" + h.id, address: h.name })),
+      ];
+      const receivable = await Promise.all(
+        recipients.map((r) => canReceiveUnits(r.address as Address)),
+      );
+      const blocked = recipients.filter((_, i) => !receivable[i]);
+      if (blocked.length) {
+        setErrors((e) => ({
+          ...e,
+          ...Object.fromEntries(
+            blocked.map((r) => [
+              r.key,
+              "This contract can't receive ERC-1155 units. Use a wallet address or a Safe.",
+            ]),
+          ),
+        }));
+        setFormError(
+          "Please correct the highlighted fields — hover for details.",
+        );
+        setBusy(false);
+        return;
+      }
       const data = buildPact(form, holders, wallet!);
       // validate() already required a connected wallet, so both are present.
       const deployment = await createOffering({

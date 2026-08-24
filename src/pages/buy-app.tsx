@@ -27,7 +27,11 @@ import {
   valuationForUnitIndex,
 } from "#lib/chain/curve.ts";
 import { TOTAL_LIQUID_SPLIT_UNITS } from "#lib/chain/liquid-split.ts";
-import { listBought } from "#lib/chain/offerings.ts";
+import {
+  findOffering,
+  listBought,
+  listOfferings,
+} from "#lib/chain/offerings.ts";
 import {
   availablePrivateUnits,
   availablePublicUnits,
@@ -394,6 +398,15 @@ export function BuyApp() {
     });
   }, [unitsSoldTick, queryClient]);
 
+  // The URL names the offering; only the factory's creation log proves it is
+  // one. Nothing that approves or pays renders against an unverified address.
+  const knownOffering = useQuery({
+    queryKey: ["offering-record", offeringAddress],
+    enabled: !!offeringAddress,
+    queryFn: async () => findOffering(await listOfferings(), offeringAddress),
+    staleTime: Infinity,
+  });
+
   useErrorTip(signerNameError);
 
   // Self-heal: the receipt lives onchain, not in a local database. A wallet
@@ -524,11 +537,24 @@ export function BuyApp() {
     );
   if (voucherError)
     return <PageNotice title="Link not valid">{voucherError}</PageNotice>;
+  if (knownOffering.isError)
+    return (
+      <PageNotice title="Could not verify offering">
+        Could not check this address against the PACT factory. Refresh to retry.
+      </PageNotice>
+    );
+  if (knownOffering.isSuccess && !knownOffering.data)
+    return (
+      <PageNotice title="Unknown offering">
+        This address was not created by the PACT factory, so this page will not
+        transact with it. Only follow buy links from the PACT listings.
+      </PageNotice>
+    );
 
   const liveOfferingState =
     offering && offering.status === "loaded" ? offering : null;
   const offeringState = debugOfferingSnapshot(liveOfferingState, debugState);
-  if (!offeringState) {
+  if (!offeringState || !knownOffering.isSuccess) {
     return offering && offering.status === "error" ? (
       <PageNotice title="Contract read failed">
         Could not read this offering from Base. Refresh to retry.
