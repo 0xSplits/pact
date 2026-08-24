@@ -472,7 +472,7 @@ export function CreateApp() {
           ...Object.fromEntries(
             blocked.map((r) => [
               r.key,
-              "This contract can't receive ERC-1155 units. Use a wallet address or a Safe.",
+              "This contract can't receive ERC-1155 units.",
             ]),
           ),
         }));
