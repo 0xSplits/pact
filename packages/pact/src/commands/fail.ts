@@ -1,13 +1,13 @@
-import { Cli, z } from "incur";
-
 import {
-  EXAMPLE_OFFERING,
-  OFFERING,
-  offeringCall,
-  VARS,
-} from "#pact/commands/shared.ts";
+  findFactoryChild,
+  scanPurchases,
+} from "@splits/pact-core/chain/reads.ts";
+import { offeringCall } from "@splits/pact-core/chain/writes.ts";
+import { Cli, z } from "incur";
+import type { Address } from "viem";
+
+import { EXAMPLE_OFFERING, OFFERING, VARS } from "#pact/commands/shared.ts";
 import { address } from "#pact/format.ts";
-import { findFactoryChild, scanPurchases } from "#pact/reads.ts";
 import { runWrite, WRITE_OPTIONS, WRITE_OUTPUT } from "#pact/writes.ts";
 
 export const fail = Cli.create("fail", {
@@ -65,7 +65,7 @@ export const fail = Cli.create("fail", {
     ],
     async run(c) {
       const ctx = c.var.pact;
-      let buyers: string[];
+      let buyers: Address[];
       if (c.options.buyers)
         buyers = c.options.buyers
           .split(",")
@@ -80,9 +80,11 @@ export const fail = Cli.create("fail", {
           });
         buyers = [
           ...new Set(
-            (await scanPurchases(ctx, record.offering, record.blockNumber)).map(
-              (p) => p.buyer,
-            ),
+            (
+              await scanPurchases(ctx.client, record.offering, {
+                fromBlock: record.blockNumber,
+              })
+            ).map((p) => p.buyer),
           ),
         ];
       }

@@ -1,7 +1,6 @@
 // Shared display formatting helpers for the React pages.
+import { USDC_DECIMALS } from "@splits/pact-core/chain/chain.ts";
 import { formatUnits } from "viem";
-
-import { USDC_DECIMALS } from "#lib/chain/chain.ts";
 
 export const MS_PER_DAY = 86400000;
 

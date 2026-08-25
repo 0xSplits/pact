@@ -25,3 +25,4 @@ public/.well-known/
 public/docs/
 packages/pact/dist/
 docs/research/
+.audit-*/

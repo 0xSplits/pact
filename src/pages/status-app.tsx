@@ -1,5 +1,52 @@
 import "#pages/status.css";
 
+import { toUsdcBaseUnits } from "@splits/pact-core/chain/chain.ts";
+import {
+  costForUnits,
+  fractionAtRaise,
+  valuationForUnitIndex,
+} from "@splits/pact-core/chain/curve.ts";
+import { TOTAL_LIQUID_SPLIT_UNITS } from "@splits/pact-core/chain/liquid-split.ts";
+import {
+  offeredUnitsTotal,
+  offeringPhase,
+  offeringStatus,
+  refundStatuses,
+} from "@splits/pact-core/chain/offering-status.ts";
+import type {
+  OfferingPhase,
+  RefundStatus,
+  StatusInfo,
+} from "@splits/pact-core/chain/offering-status.ts";
+import {
+  availablePublicUnits,
+  offeringStateCurve,
+} from "@splits/pact-core/chain/reads.ts";
+import type {
+  Holder,
+  LifecycleEvent,
+  OfferingRecord,
+  OfferingState,
+  Purchase,
+} from "@splits/pact-core/chain/reads.ts";
+import {
+  encodeVoucherFragment,
+  listAllocationLedger,
+  markAllocationLedgerRowRevoked,
+  newAllocationKey,
+  saveAllocationLedgerRow,
+} from "@splits/pact-core/chain/voucher.ts";
+import type { AllocationLedgerRow } from "@splits/pact-core/chain/voucher.ts";
+import { offeringCall } from "@splits/pact-core/chain/writes.ts";
+import {
+  absoluteUrl,
+  buyLinkPath,
+  buyPath,
+  CREATE_PATH,
+  currentOfferingAddress,
+  termsPath,
+} from "@splits/pact-core/routes.ts";
+import { isSameAddress } from "@splits/pact-core/validate.ts";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
@@ -22,24 +69,6 @@ import {
 import { useDebugMenu } from "#hooks/use-debug-menu.ts";
 import { useOfferingState } from "#hooks/use-offering-state.ts";
 import type { OfferingSnapshot } from "#hooks/use-offering-state.ts";
-import { toUsdcBaseUnits } from "#lib/chain/chain.ts";
-import {
-  costForUnits,
-  fractionAtRaise,
-  valuationForUnitIndex,
-} from "#lib/chain/curve.ts";
-import { TOTAL_LIQUID_SPLIT_UNITS } from "#lib/chain/liquid-split.ts";
-import {
-  offeredUnitsTotal,
-  offeringPhase,
-  offeringStatus,
-  refundStatuses,
-} from "#lib/chain/offering-status.ts";
-import type {
-  OfferingPhase,
-  RefundStatus,
-  StatusInfo,
-} from "#lib/chain/offering-status.ts";
 import {
   findOffering,
   getPactTokenHolders,
@@ -47,34 +76,7 @@ import {
   listLifecycle,
   listOfferings,
 } from "#lib/chain/offerings.ts";
-import {
-  availablePublicUnits,
-  cancelAllocation,
-  closeAndWithdrawOffering,
-  getOfferingState,
-  markOfferingFailed,
-  offeringStateCurve,
-  refundAllOffering,
-  refundOffering,
-  setPublicUnits,
-  signVoucher,
-  sweepFailedUnits,
-  withdrawOffering,
-} from "#lib/chain/onchain.ts";
-import type {
-  LifecycleEvent,
-  OfferingRecord,
-  OfferingState,
-  Purchase,
-} from "#lib/chain/onchain.ts";
-import {
-  encodeVoucherFragment,
-  listAllocationLedger,
-  markAllocationLedgerRowRevoked,
-  newAllocationKey,
-  saveAllocationLedgerRow,
-} from "#lib/chain/voucher.ts";
-import type { AllocationLedgerRow } from "#lib/chain/voucher.ts";
+import { getOfferingState, sendCall, signVoucher } from "#lib/chain/onchain.ts";
 import {
   basescanAddress,
   basescanTx,
@@ -92,24 +94,18 @@ import {
   splitsExplorerAccount,
   usdcBaseUnitsToDollars,
 } from "#lib/format.ts";
-import {
-  absoluteUrl,
-  buyLinkPath,
-  buyPath,
-  CREATE_PATH,
-  currentOfferingAddress,
-  termsPath,
-} from "#lib/routes.ts";
 import { debugActive } from "#lib/ui/debug-menu.ts";
 import { copyText, showToast } from "#lib/ui/toast.ts";
-import { isSameAddress } from "#lib/validate.ts";
 
 const offeringAddress = currentOfferingAddress();
 
 // The offering fields the page renders. Debug snapshots synthesize them from
 // the listing record without an address; live reads carry the full state.
-type OfferingView = Omit<OfferingState, "offeringAddress" | "pactToken"> &
-  Partial<Pick<OfferingState, "offeringAddress" | "pactToken">>;
+type OfferingView = Omit<
+  OfferingState,
+  "offering" | "pactToken" | "factory" | "phase"
+> &
+  Partial<Pick<OfferingState, "offering" | "pactToken" | "factory" | "phase">>;
 
 function debugOfferingSnapshot(
   record: OfferingRecord,
@@ -513,9 +509,9 @@ interface FundedRow {
   isPublic: boolean;
   buyer: Address;
   units: number;
-  cost: string;
-  txHash: string | null;
-  blockNumber: number | null;
+  cost: bigint;
+  transactionHash: string;
+  blockNumber: number;
 }
 
 interface OpenRow {
@@ -542,14 +538,14 @@ function allocationRows(
     const ledgerRow = ledgerById.get(String(p.allocationId).toLowerCase());
     const isPublic = /^0x0+$/.test(String(p.allocationId));
     return {
-      key: p.txHash + ":" + p.logIndex,
+      key: p.transactionHash + ":" + p.logIndex,
       status: "funded",
       name: p.buyerName || (ledgerRow && ledgerRow.name) || shortAddr(p.buyer),
       isPublic,
       buyer: p.buyer,
       units: p.units,
       cost: p.cost,
-      txHash: p.txHash,
+      transactionHash: p.transactionHash,
       blockNumber: p.blockNumber,
     };
   });
@@ -629,10 +625,10 @@ function AllocationsTable({
                 </td>
                 <td className="num whitespace-nowrap">
                   <span className="alloc-actions">
-                    {row.txHash ? (
+                    {row.transactionHash ? (
                       <AddressLink
                         className="act muted"
-                        href={termsPath(offeringAddress!, row.txHash)}
+                        href={termsPath(offeringAddress!, row.transactionHash)}
                       >
                         View receipt
                       </AddressLink>
@@ -842,10 +838,10 @@ function PurchasesTable({
                           : "Claim refund"}
                       </TextButton>
                     ) : null}
-                    {row.txHash ? (
+                    {row.transactionHash ? (
                       <AddressLink
                         className="act muted"
-                        href={termsPath(offeringAddress!, row.txHash)}
+                        href={termsPath(offeringAddress!, row.transactionHash)}
                       >
                         View receipt
                       </AddressLink>
@@ -863,7 +859,7 @@ function PurchasesTable({
 
 interface CapTableState {
   status: "loading" | "loaded" | "error";
-  holders?: Array<{ address: Address; balance: number }> | undefined;
+  holders?: Holder[] | undefined;
   error?: string | undefined;
 }
 
@@ -887,18 +883,12 @@ function CapTable({
   )
     .slice()
     .sort((a, b) => {
-      const ac = isSameAddress(a.address, offeringAddress) ? 1 : 0;
-      const bc = isSameAddress(b.address, offeringAddress) ? 1 : 0;
+      const ac = isSameAddress(a.holder, offeringAddress) ? 1 : 0;
+      const bc = isSameAddress(b.holder, offeringAddress) ? 1 : 0;
       if (ac !== bc) return ac - bc;
-      return String(a.address || "").toLowerCase() >
-        String(b.address || "").toLowerCase()
-        ? 1
-        : -1;
+      return a.holder.toLowerCase() > b.holder.toLowerCase() ? 1 : -1;
     });
-  const totalTokens = holders.reduce(
-    (sum, holder) => sum + Number(holder.balance || 0),
-    0,
-  );
+  const totalTokens = holders.reduce((sum, holder) => sum + holder.units, 0);
 
   return (
     <>
@@ -925,7 +915,7 @@ function CapTable({
             </tr>
           ) : (
             holders.map((holder) => {
-              const address = holder.address;
+              const address = holder.holder;
               const isCurve = isSameAddress(address, offeringAddress);
               const buyerName = canManage
                 ? buyerNames.get(String(address || "").toLowerCase())
@@ -940,9 +930,9 @@ function CapTable({
                         : ""}
                     <AddressLink className="value-link" address={address} />
                   </td>
-                  <td className="num">{fmtTokens(holder.balance)}</td>
+                  <td className="num">{fmtTokens(holder.units)}</td>
                   <td className="num">
-                    {fmtPct((holder.balance / TOTAL_LIQUID_SPLIT_UNITS) * 100)}
+                    {fmtPct((holder.units / TOTAL_LIQUID_SPLIT_UNITS) * 100)}
                   </td>
                 </tr>
               );
@@ -1369,11 +1359,7 @@ export function StatusApp() {
   const capTableQuery = useQuery({
     queryKey: ["cap-table", record?.offering ?? null],
     enabled: !!record,
-    queryFn: () =>
-      getPactTokenHolders({
-        pactToken: record!.pactToken,
-        deployBlock: record!.blockNumber || undefined,
-      }),
+    queryFn: () => getPactTokenHolders({ record: record! }),
   });
   const capTable: CapTableState | null = !record
     ? null
@@ -1496,25 +1482,26 @@ export function StatusApp() {
     }
     setBusyAction(action);
     try {
-      const base = { offeringAddress: record.offering, from: wallet };
+      const send = (...call: Parameters<typeof offeringCall>) =>
+        sendCall(wallet, offeringCall(...call));
       if (action === "withdraw") {
-        await withdrawOffering(base);
+        await send(record.offering, "withdraw");
         showToast("Proceeds withdrawn to treasury");
       } else if (action === "close") {
-        await closeAndWithdrawOffering(base);
+        await send(record.offering, "closeAndWithdraw");
         showToast("Round closed");
       } else if (action === "mark-failed") {
-        await markOfferingFailed(base);
+        await send(record.offering, "markFailed");
         showToast("Offering marked failed");
       } else if (action === "refund-all") {
         const statuses = refundStatuses(bought, lifecycle);
         const buyers = Array.from(new Set(bought.map((p) => p.buyer))).filter(
           (buyer) => statuses.get(buyer.toLowerCase()) !== "refunded",
         );
-        await refundAllOffering({ ...base, buyers });
+        await send(record.offering, "refundAll", [buyers]);
         showToast("Refunds sent");
       } else if (action === "sweep-failed") {
-        await sweepFailedUnits(base);
+        await send(record.offering, "sweepFailedUnits");
         showToast("Units returned to treasury");
       } else if (action === "set-public-units") {
         const fresh = await getOfferingState({
@@ -1525,10 +1512,9 @@ export function StatusApp() {
             `Only ${fmtTokens(fresh.remainingUnits)} units remain in the offering.`,
           );
         }
-        await setPublicUnits({
-          ...base,
-          publicUnits: fresh.publicUnitsSold + openUnitsInput!,
-        });
+        await send(record.offering, "setPublicUnits", [
+          BigInt(fresh.publicUnitsSold + openUnitsInput!),
+        ]);
         showToast("Public allocation updated");
       }
       await refreshOffering();
@@ -1549,7 +1535,7 @@ export function StatusApp() {
     if (!record || !wallet) return;
     setBusyAction("refund");
     try {
-      await refundOffering({ offeringAddress: record.offering, from: wallet });
+      await sendCall(wallet, offeringCall(record.offering, "refund"));
       showToast("Refund claimed");
       await refreshOffering();
       refreshRecordDetails(record);
@@ -1609,11 +1595,10 @@ export function StatusApp() {
     )
       return;
     try {
-      await cancelAllocation({
-        offeringAddress: record.offering,
-        from: wallet,
-        allocationId: row.allocationId,
-      });
+      await sendCall(
+        wallet,
+        offeringCall(record.offering, "cancelAllocation", [row.allocationId]),
+      );
       markAllocationLedgerRowRevoked(
         record.offering,
         row.allocationId,
@@ -1808,8 +1793,8 @@ export function StatusApp() {
               <StatusBadge
                 status={statusInfo}
                 noteHref={
-                  closedEvent && closedEvent.txHash
-                    ? basescanTx(closedEvent.txHash)
+                  closedEvent
+                    ? basescanTx(closedEvent.transactionHash)
                     : undefined
                 }
               />

@@ -1,15 +1,15 @@
 import "#pages/home.css";
 
+import { offeringStatus } from "@splits/pact-core/chain/offering-status.ts";
+import { buyPath, CREATE_PATH, statusPath } from "@splits/pact-core/routes.ts";
 import { useQuery } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { useAccount } from "wagmi";
 
 import { StatusBadge } from "#components/ui.tsx";
-import { offeringStatus } from "#lib/chain/offering-status.ts";
 import { loadWalletRecords } from "#lib/chain/offerings.ts";
 import type { OfferingLifecycle, WalletRecords } from "#lib/chain/offerings.ts";
 import { fmtTokens, fmtUsd, usdcBaseUnitsToDollars } from "#lib/format.ts";
-import { buyPath, CREATE_PATH, statusPath } from "#lib/routes.ts";
 
 const PAPER = "paper px-10 py-12 sm:px-14 sm:py-16";
 
@@ -185,7 +185,7 @@ function Dashboard({ records }: { records: WalletRecords }) {
             </thead>
             <tbody>
               {purchases.map((purchase) => (
-                <tr key={purchase.txHash + ":" + purchase.logIndex}>
+                <tr key={purchase.transactionHash + ":" + purchase.logIndex}>
                   <td>
                     <a className="linkbtn" href={buyPath(purchase.offering)}>
                       {(purchase.record && purchase.record.projectName) ||

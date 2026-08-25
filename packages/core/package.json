@@ -1,0 +1,17 @@
+{
+  "name": "@splits/pact-core",
+  "version": "0.1.0",
+  "description": "The PACT chain layer: contract shape, event decoding, scans, and the buy plan, shared by the app and the CLI.",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./*": "./src/*"
+  },
+  "imports": {
+    "#core/*": "./src/*"
+  },
+  "dependencies": {
+    "viem": "^2.54.0"
+  }
+}

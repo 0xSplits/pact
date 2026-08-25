@@ -8,15 +8,21 @@
 // one — wagmi uses chain metadata for wallet_addEthereumChain, so a keyed
 // Alchemy URL never enters a wallet; only our own transport uses it. The
 // PACT_RPC_OVERRIDE (e2e) bypasses the fallback entirely so tests always
-// talk to their anvil.
+// talk to their anvil; otherwise Alchemy with the public RPC as fallback.
+import { PACT_RPC_OVERRIDE } from "@splits/pact-core/chain/chain.ts";
 import { base } from "viem/chains";
 import { createConfig, fallback, http } from "wagmi";
 import { injected, walletConnect } from "wagmi/connectors";
 
-import { ALCHEMY_RPC_URL, PACT_RPC_OVERRIDE } from "#lib/chain/chain.ts";
-
 const walletConnectProjectId: string | undefined = import.meta.env
   ?.VITE_WALLETCONNECT_PROJECT_ID;
+
+// The build-time Alchemy key (domain-restrict it, it ships in the bundle);
+// without it the rate-limited public RPC keeps zero-setup dev working.
+const alchemyApiKey: string | undefined = import.meta.env?.VITE_ALCHEMY_API_KEY;
+const ALCHEMY_RPC_URL = alchemyApiKey
+  ? `https://base-mainnet.g.alchemy.com/v2/${alchemyApiKey}`
+  : undefined;
 
 export const wagmiConfig = createConfig({
   chains: [base],

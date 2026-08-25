@@ -1,20 +1,8 @@
-import { Cli, z } from "incur";
-import { OFFERING_FACTORY_ABI } from "splits-pact/generated/offering-contracts.ts";
-import { deriveOfferingCurve } from "splits-pact/lib/chain/curve.ts";
+import { deriveOfferingCurve } from "@splits/pact-core/chain/curve.ts";
 import {
   buildOfferingFactoryInputs,
   TOTAL_LIQUID_SPLIT_UNITS,
-} from "splits-pact/lib/chain/liquid-split.ts";
-import { getAddress } from "viem";
-import type { Address } from "viem";
-
-import {
-  contractCall,
-  EXAMPLE_OFFERING,
-  OFFERING,
-  VARS,
-} from "#pact/commands/shared.ts";
-import { address, parseUsdc, units, usdc, usdcAmount } from "#pact/format.ts";
+} from "@splits/pact-core/chain/liquid-split.ts";
 import {
   capTable,
   findFactoryChild,
@@ -22,8 +10,23 @@ import {
   readOffering,
   scanOfferings,
   scanPurchases,
+} from "@splits/pact-core/chain/reads.ts";
+import { contractCall } from "@splits/pact-core/chain/writes.ts";
+import { OFFERING_FACTORY_ABI } from "@splits/pact-core/generated/offering-contracts.ts";
+import { Cli, z } from "incur";
+import { getAddress } from "viem";
+import type { Abi, Address } from "viem";
+
+import { EXAMPLE_OFFERING, OFFERING, VARS } from "#pact/commands/shared.ts";
+import {
+  address,
+  jsonSafe,
+  parseUsdc,
   serializeOffering,
-} from "#pact/reads.ts";
+  units,
+  usdc,
+  usdcAmount,
+} from "#pact/format.ts";
 import { runWrite, WRITE_OPTIONS, WRITE_OUTPUT } from "#pact/writes.ts";
 
 // "0xabc…:600,0xdef…:150" → founder rows.
@@ -80,7 +83,14 @@ export const offering = Cli.create("offering", {
     async run(c) {
       const offerings = await scanOfferings(c.var.pact);
       return c.ok(
-        { offerings },
+        {
+          offerings: offerings.map((o) => ({
+            ...o,
+            raiseMin: usdc(o.raiseMin),
+            priceStart: usdc(o.priceStart),
+            priceSlope: usdc(o.priceSlope),
+          })),
+        },
         {
           cta: {
             commands: offerings.slice(0, 3).map((o) => ({
@@ -154,16 +164,19 @@ export const offering = Cli.create("offering", {
           code: "NOT_A_PACT_OFFERING",
           message: `${c.args.offering} was not created by the pinned factory`,
         });
+      const range = { fromBlock: record.blockNumber };
       const [holders, purchases] = await Promise.all([
-        capTable(
-          c.var.pact,
-          record.pactToken,
-          record.offering,
-          record.blockNumber,
-        ),
-        scanPurchases(c.var.pact, record.offering, record.blockNumber),
+        capTable(c.var.pact.client, record.pactToken, record.offering, range),
+        scanPurchases(c.var.pact.client, record.offering, range),
       ]);
-      return { pactToken: record.pactToken, holders, purchases };
+      return {
+        pactToken: record.pactToken,
+        holders,
+        purchases: purchases.map((p) => ({
+          ...(jsonSafe(p) as object),
+          cost: usdc(p.cost),
+        })),
+      };
     },
   })
   .command("create", {
@@ -260,7 +273,7 @@ export const offering = Cli.create("offering", {
       );
       const call = contractCall(
         ctx.factory,
-        OFFERING_FACTORY_ABI,
+        OFFERING_FACTORY_ABI as Abi,
         "createOffering",
         [
           c.options.name,

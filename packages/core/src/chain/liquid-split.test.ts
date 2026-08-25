@@ -3,13 +3,13 @@ import assert from "node:assert/strict";
 import { getAddress } from "viem";
 import { test } from "vitest";
 
-import { toUsdcBaseUnits } from "#lib/chain/chain.ts";
+import { toUsdcBaseUnits } from "#core/chain/chain.ts";
 import {
   costForUnits,
   deriveOfferingCurve,
   unitsForBudget,
-} from "#lib/chain/curve.ts";
-import { buildOfferingFactoryInputs } from "#lib/chain/liquid-split.ts";
+} from "#core/chain/curve.ts";
+import { buildOfferingFactoryInputs } from "#core/chain/liquid-split.ts";
 
 const addr = (n: number) => "0x" + String(n).padStart(40, "0");
 

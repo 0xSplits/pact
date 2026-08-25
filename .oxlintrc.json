@@ -3,7 +3,7 @@
   "plugins": ["react", "typescript", "oxc", "import"],
   "ignorePatterns": [
     "contracts/",
-    "src/generated/",
+    "packages/core/src/generated/",
     "dist/",
     "packages/pact/dist/"
   ],

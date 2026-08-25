@@ -9,7 +9,7 @@ import path from "node:path";
 import type {
   AllocationLedgerRow,
   KVStorage,
-} from "splits-pact/lib/chain/voucher.ts";
+} from "@splits/pact-core/chain/voucher.ts";
 
 const KEY_PREFIX = "pact:allocations:";
 

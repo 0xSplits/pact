@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 
 import { test } from "vitest";
 
+import { buildGoldenFixture } from "#core/chain/voucher-golden.ts";
 import {
   decodeVoucherFragment,
   encodeVoucherFragment,
@@ -12,8 +13,7 @@ import {
   markAllocationLedgerRowRevoked,
   newAllocationKey,
   saveAllocationLedgerRow,
-} from "#lib/chain/voucher.ts";
-import { buildGoldenFixture } from "#scripts/generate-voucher-fixture.ts";
+} from "#core/chain/voucher.ts";
 
 const fakeStorage = () => {
   const map = new Map<string, string>();
@@ -150,9 +150,7 @@ test("fragment decode rejects a non-object payload and a non-string name", () =>
 test("golden vector matches the checked-in fixture byte for byte", async () => {
   const root = path.join(
     path.dirname(fileURLToPath(import.meta.url)),
-    "..",
-    "..",
-    "..",
+    "../../../..",
   );
   const checkedIn = JSON.parse(
     fs.readFileSync(

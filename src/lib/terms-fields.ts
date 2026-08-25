@@ -1,12 +1,15 @@
 // Derives the numeric fields that fill in the PACT document from an offering's
 // live onchain state. Kept out of the JSX-rendering module so fast-refresh
 // stays clean (react(only-export-components)).
+import {
+  costForUnits,
+  valuationForUnitIndex,
+} from "@splits/pact-core/chain/curve.ts";
+import { TOTAL_LIQUID_SPLIT_UNITS } from "@splits/pact-core/chain/liquid-split.ts";
+import { offeringStateCurve } from "@splits/pact-core/chain/reads.ts";
+import type { OfferingState } from "@splits/pact-core/chain/reads.ts";
 import type { Address } from "viem";
 
-import { costForUnits, valuationForUnitIndex } from "#lib/chain/curve.ts";
-import { TOTAL_LIQUID_SPLIT_UNITS } from "#lib/chain/liquid-split.ts";
-import { offeringStateCurve } from "#lib/chain/onchain.ts";
-import type { OfferingState } from "#lib/chain/onchain.ts";
 import { usdcBaseUnitsToDollars } from "#lib/format.ts";
 
 export interface FilledTerms {

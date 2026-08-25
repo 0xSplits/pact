@@ -1,19 +1,34 @@
 import assert from "node:assert/strict";
 
+import {
+  encodeLog,
+  fakeChainClient,
+} from "@splits/pact-core/chain/fake-client.ts";
+import { BOUGHT_EVENT as BOUGHT } from "@splits/pact-core/chain/reads.ts";
+import type { OfferingRecord } from "@splits/pact-core/chain/reads.ts";
+import {
+  OFFERING_ABI,
+  OFFERING_FACTORY_ABI,
+} from "@splits/pact-core/generated/offering-contracts.ts";
+import { getAddress } from "viem";
+import type { Address, Hex } from "viem";
 import { test } from "vitest";
 
 import {
   cachedScan,
-  chunkRanges,
   findOffering,
   listBought,
   listLifecycle,
   listOfferings,
   listPurchases,
-  SCAN_CHUNK_BLOCKS,
   seedOffering,
 } from "#lib/chain/offerings.ts";
-import type { OfferingRecord } from "#lib/chain/onchain.ts";
+
+const addr = (byte: string) => getAddress("0x" + byte.repeat(20));
+const FACTORY = addr("fa");
+const OFFERING = addr("aa");
+const BUYER = addr("dd");
+const TX = ("0x" + "cc".repeat(32)) as Hex;
 
 const fakeStorage = () => {
   const map = new Map<string, string>();
@@ -24,389 +39,304 @@ const fakeStorage = () => {
   };
 };
 
-// getLogs stub that records requested ranges and serves canned logs per range.
-function fakeGetLogs(logsByFromBlock: Record<number, any[]> = {}) {
-  const ranges: Array<[number, number]> = [];
-  const fn = async ({
-    fromBlock,
-    toBlock,
-  }: {
-    fromBlock: number;
-    toBlock: number;
-  }) => {
-    ranges.push([fromBlock, toBlock]);
-    return logsByFromBlock[fromBlock] || [];
-  };
-  return Object.assign(fn, { ranges });
-}
+const bought = (address: Address, logIndex = 0, blockNumber = 101) =>
+  encodeLog(
+    OFFERING_ABI,
+    "Bought",
+    {
+      buyer: BUYER,
+      allocationId: ("0x" + "11".repeat(32)) as Hex,
+      units: 5n,
+      cost: 123n,
+      buyerName: "Ada",
+    },
+    { address, blockNumber, transactionHash: TX, logIndex },
+  );
 
-const scanArgs = (overrides: Record<string, unknown> = {}) => ({
+const created = (offering: Address, blockNumber = 5) =>
+  encodeLog(
+    OFFERING_FACTORY_ABI,
+    "OfferingCreated",
+    {
+      issuer: BUYER,
+      treasury: BUYER,
+      offering,
+      pactToken: addr("01"),
+      projectName: "Acme",
+      raiseMin: 5_000_000n,
+      closeDate: 2_000_000_000n,
+      priceStart: 40_000_000n,
+      priceSlope: 100_000n,
+      publicUnits: 50n,
+    },
+    { address: FACTORY, blockNumber, transactionHash: TX },
+  );
+
+const scanArgs = (
+  overrides: Partial<Parameters<typeof cachedScan<any>>[0]>,
+) => ({
   key: "test:scan",
-  filter: { address: "0xabc", topics: ["0xdead"] },
+  filter: { address: OFFERING, event: BOUGHT },
   fromBlock: 100,
-  map: (log: any) => log,
+  map: (log: any) => ({ id: Number(log.logIndex), transactionHash: TX }),
   dedupeKey: (item: any) => String(item.id),
+  revive: (item: any) => item,
   storage: fakeStorage(),
   ...overrides,
 });
 
-test("chunkRanges splits into 10k chunks with exact edges", () => {
-  assert.deepEqual(chunkRanges(0, 25000), [
-    [0, 9999],
-    [10000, 19999],
-    [20000, 25000],
-  ]);
-  assert.deepEqual(chunkRanges(5, 5), [[5, 5]]);
-  assert.deepEqual(chunkRanges(10, 9), []);
-  assert.equal(SCAN_CHUNK_BLOCKS, 10000);
-  // A range ending exactly on a chunk boundary doesn't produce an empty chunk.
-  assert.deepEqual(chunkRanges(0, 9999), [[0, 9999]]);
+test("cachedScan cold-scans from the deploy block to the tip", async () => {
+  const client = fakeChainClient({
+    logs: [bought(OFFERING, 1), bought(OFFERING, 2, 140)],
+  });
+  const storage = fakeStorage();
+  const items = await cachedScan(
+    scanArgs({ client, storage, latestBlock: 150 }),
+  );
+  assert.deepEqual(client.ranges, [[100, 150]]);
+  assert.deepEqual(
+    items.map((i: any) => i.id),
+    [1, 2],
+  );
+  assert.equal(JSON.parse(storage.getItem("test:scan")!).lastScannedBlock, 150);
 });
 
-test("cachedScan cold-scans from the deploy block in chunks", async () => {
-  const getLogs = fakeGetLogs({ 100: [{ id: 1 }], 20100: [{ id: 2 }] });
-  const items = await cachedScan(scanArgs({ getLogs, latestBlock: 25099 }));
-  assert.deepEqual(getLogs.ranges, [
-    [100, 10099],
-    [10100, 20099],
-    [20100, 25099],
-  ]);
-  assert.deepEqual(items, [{ id: 1 }, { id: 2 }]);
-});
-
-test("cachedScan resumes from the high-water mark", async () => {
+test("cachedScan resumes from the high-water mark and dedupes", async () => {
   const storage = fakeStorage();
   storage.setItem(
     "test:scan",
-    JSON.stringify({ lastScannedBlock: 199, items: [{ id: 1 }] }),
+    JSON.stringify({
+      lastScannedBlock: 199,
+      items: [{ id: 1, transactionHash: TX }],
+    }),
   );
-  const getLogs = fakeGetLogs({ 200: [{ id: 2 }] });
+  const client = fakeChainClient({
+    logs: [bought(OFFERING, 1, 210), bought(OFFERING, 2, 210)],
+  });
   const items = await cachedScan(
-    scanArgs({ getLogs, storage, latestBlock: 250 }),
+    scanArgs({ client, storage, latestBlock: 250 }),
   );
-  assert.deepEqual(getLogs.ranges, [[200, 250]]);
-  assert.deepEqual(items, [{ id: 1 }, { id: 2 }]);
+  assert.deepEqual(client.ranges, [[200, 250]]);
+  assert.deepEqual(
+    items.map((i: any) => i.id),
+    [1, 2],
+  );
   assert.equal(JSON.parse(storage.getItem("test:scan")!).lastScannedBlock, 250);
 });
 
-test("cachedScan dedupes scan results against cached items", async () => {
+test("cachedScan does not touch the cache when already at the tip", async () => {
   const storage = fakeStorage();
-  storage.setItem(
-    "test:scan",
-    JSON.stringify({ lastScannedBlock: 199, items: [{ id: 1 }] }),
-  );
-  const getLogs = fakeGetLogs({ 200: [{ id: 1 }, { id: 2 }] });
-  const items = await cachedScan(
-    scanArgs({ getLogs, storage, latestBlock: 250 }),
-  );
-  assert.deepEqual(items, [{ id: 1 }, { id: 2 }]);
+  const cached = JSON.stringify({
+    lastScannedBlock: 250,
+    items: [{ id: 1, transactionHash: TX }],
+  });
+  storage.setItem("test:scan", cached);
+  const client = fakeChainClient();
+  await cachedScan(scanArgs({ client, storage, latestBlock: 250 }));
+  assert.deepEqual(client.ranges, []);
+  assert.equal(storage.getItem("test:scan"), cached);
 });
 
-test("cachedScan falls back to a full rescan on a corrupt cache", async () => {
-  const storage = fakeStorage();
-  storage.setItem("test:scan", "{not json");
-  const getLogs = fakeGetLogs({ 100: [{ id: 1 }] });
-  const items = await cachedScan(
-    scanArgs({ getLogs, storage, latestBlock: 150 }),
-  );
-  assert.deepEqual(getLogs.ranges, [[100, 150]]);
-  assert.deepEqual(items, [{ id: 1 }]);
-});
-
-test("a chunk that throws leaves prior progress cached, then resumes", async () => {
-  const storage = fakeStorage();
-  let calls = 0;
-  const getLogs = async ({ fromBlock }: { fromBlock: number }) => {
-    calls++;
-    if (calls === 2) throw new Error("rpc hiccup");
-    return fromBlock === 100 ? [{ id: 1 }] : [{ id: 2 }];
-  };
-  await assert.rejects(
-    () => cachedScan(scanArgs({ getLogs, storage, latestBlock: 25099 })),
-    /rpc hiccup/,
-  );
-  const cache = JSON.parse(storage.getItem("test:scan")!);
-  assert.equal(cache.lastScannedBlock, 10099, "first chunk committed");
-  assert.deepEqual(cache.items, [{ id: 1 }]);
-
-  // The retry resumes after the committed chunk instead of rescanning.
-  const retryLogs = fakeGetLogs({ 20100: [{ id: 2 }] });
-  const items = await cachedScan(
-    scanArgs({ getLogs: retryLogs, storage, latestBlock: 25099 }),
-  );
-  assert.deepEqual(retryLogs.ranges, [
-    [10100, 20099],
-    [20100, 25099],
-  ]);
-  assert.deepEqual(items, [{ id: 1 }, { id: 2 }]);
-});
-
-test("cachedScan skips logs the map function rejects", async () => {
-  const getLogs = fakeGetLogs({ 100: [{ id: 1, bad: true }, { id: 2 }] });
-  const map = (log: any) => {
-    if (log.bad) throw new Error("foreign log");
-    return log;
-  };
-  const items = await cachedScan(scanArgs({ getLogs, map, latestBlock: 150 }));
-  assert.deepEqual(items, [{ id: 2 }]);
-});
-
-test("cachedScan rescans when the cached high-water mark is not an integer", async () => {
-  const storage = fakeStorage();
-  storage.setItem(
-    "test:scan",
-    JSON.stringify({ lastScannedBlock: 199.5, items: [{ id: 9 }] }),
-  );
-  const getLogs = fakeGetLogs({ 100: [{ id: 1 }] });
-  const items = await cachedScan(
-    scanArgs({ getLogs, storage, latestBlock: 150 }),
-  );
-  assert.deepEqual(getLogs.ranges, [[100, 150]], "full rescan, never a guess");
-  assert.deepEqual(items, [{ id: 1 }]);
-});
-
-test("cachedScan rescans when cached items are not an array", async () => {
-  const storage = fakeStorage();
-  storage.setItem(
-    "test:scan",
-    JSON.stringify({ lastScannedBlock: 199, items: {} }),
-  );
-  const getLogs = fakeGetLogs({ 100: [{ id: 1 }] });
-  const items = await cachedScan(
-    scanArgs({ getLogs, storage, latestBlock: 150 }),
-  );
-  assert.deepEqual(getLogs.ranges, [[100, 150]]);
-  assert.deepEqual(items, [{ id: 1 }]);
-});
-
-test("cachedScan rescans when a cached item has no dedupe key", async () => {
-  const storage = fakeStorage();
-  storage.setItem(
-    "test:scan",
+for (const [name, corrupt] of [
+  ["not json", "{not json"],
+  ["non-integer mark", JSON.stringify({ lastScannedBlock: 199.5, items: [] })],
+  ["items not an array", JSON.stringify({ lastScannedBlock: 199, items: {} })],
+  [
+    "item revive fails",
     JSON.stringify({ lastScannedBlock: 199, items: [{ bogus: 1 }] }),
-  );
-  const getLogs = fakeGetLogs({ 100: [{ id: 1 }] });
-  const items = await cachedScan({
-    ...scanArgs({ getLogs, storage, latestBlock: 150 }),
-    dedupeKey: (item: { id: number }) => item.id.toString(),
+  ],
+] as const) {
+  test(`cachedScan falls back to a full rescan on a corrupt cache (${name})`, async () => {
+    const storage = fakeStorage();
+    storage.setItem("test:scan", corrupt);
+    const client = fakeChainClient({ logs: [bought(OFFERING, 1)] });
+    const items = await cachedScan(
+      scanArgs({
+        client,
+        storage,
+        latestBlock: 150,
+        revive: (item: any) => {
+          if (typeof item.id !== "number") throw new Error("bogus");
+          return item;
+        },
+      }),
+    );
+    assert.deepEqual(client.ranges, [[100, 150]], "full rescan, never a guess");
+    assert.deepEqual(
+      items.map((i: any) => i.id),
+      [1],
+    );
   });
-  assert.deepEqual(getLogs.ranges, [[100, 150]]);
-  assert.deepEqual(items, [{ id: 1 }]);
+}
+
+test("a failing scan leaves the cache untouched, then resumes", async () => {
+  const storage = fakeStorage();
+  const before = JSON.stringify({
+    lastScannedBlock: 199,
+    items: [{ id: 1, transactionHash: TX }],
+  });
+  storage.setItem("test:scan", before);
+  const failing = fakeChainClient({ maxRange: 0 });
+  await assert.rejects(
+    () => cachedScan(scanArgs({ client: failing, storage, latestBlock: 250 })),
+    /max block range/,
+  );
+  assert.equal(storage.getItem("test:scan"), before);
+  const client = fakeChainClient({ logs: [bought(OFFERING, 2, 210)] });
+  const items = await cachedScan(
+    scanArgs({ client, storage, latestBlock: 250 }),
+  );
+  assert.deepEqual(client.ranges, [[200, 250]]);
+  assert.deepEqual(
+    items.map((i: any) => i.id),
+    [1, 2],
+  );
 });
 
-test("seedOffering serializes bigint curve params to decimal strings", () => {
+test("listBought counts a log delivered twice only once and revives bigint cost", async () => {
+  const log = bought(OFFERING);
   const storage = fakeStorage();
-  const factory = ("0x" + "fa".repeat(20)) as `0x${string}`;
-  // What the create flow seeds: createOffering's return carries the derived
-  // curve as bigints, which plain JSON.stringify would throw on.
-  const record = {
-    offering: ("0x" + "aa".repeat(20)) as `0x${string}`,
-    projectName: "Curvy",
-    curve: { priceStart: 40000000n, priceSlope: 100000n },
+  const options = {
+    offering: OFFERING,
+    deployBlock: 100,
+    storage,
+    latestBlock: 150,
   };
-  seedOffering(record, { factory, deployBlock: 100, storage });
-  const cached = JSON.parse(storage.getItem("pact:offerings:" + factory)!);
-  assert.deepEqual(cached.items[0].curve, {
-    priceStart: "40000000",
-    priceSlope: "100000",
-  });
-});
-
-test("seedOffering into a valid cache preserves the scan high-water mark", () => {
-  const storage = fakeStorage();
-  const factory = ("0x" + "fa".repeat(20)) as `0x${string}`;
-  const key = "pact:offerings:" + factory;
-  storage.setItem(key, JSON.stringify({ lastScannedBlock: 555, items: [] }));
-  seedOffering(
-    { offering: ("0x" + "aa".repeat(20)) as `0x${string}` },
-    { factory, deployBlock: 100, storage },
-  );
-  const cached = JSON.parse(storage.getItem(key)!);
-  assert.equal(cached.lastScannedBlock, 555, "seeding never rewinds the scan");
-  assert.equal(cached.items.length, 1);
-});
-
-const boughtLog = (address: string, logIndex = 0) => ({
-  address,
-  args: {
-    buyer: ("0x" + "dd".repeat(20)) as `0x${string}`,
-    allocationId: ("0x" + "11".repeat(32)) as `0x${string}`,
-    units: 5n,
-    cost: 123n,
-    buyerName: "Ada",
-  },
-  blockNumber: 101n,
-  transactionHash: ("0x" + "cc".repeat(32)) as `0x${string}`,
-  logIndex,
-});
-
-test("listBought counts a log delivered twice only once", async () => {
-  const offering = ("0x" + "aa".repeat(20)) as `0x${string}`;
-  const log = boughtLog(offering);
-  const getLogs = fakeGetLogs({ 100: [log, log] });
   const purchases = await listBought({
-    offering,
-    deployBlock: 100,
-    getLogs,
-    storage: fakeStorage(),
-    latestBlock: 150,
+    ...options,
+    client: fakeChainClient({ logs: [log, log] }),
   });
-  assert.equal(purchases.length, 1, "deduped by txHash:logIndex");
-  assert.equal(purchases[0]?.units, 5);
-  assert.equal(purchases[0]?.cost, "123");
+  assert.equal(purchases.length, 1, "deduped by transactionHash:logIndex");
+  assert.equal(purchases[0]?.cost, 123n);
+  assert.equal(
+    JSON.parse(storage.getItem("pact:bought:" + OFFERING.toLowerCase())!)
+      .items[0].cost,
+    "123",
+    "decimal string in the cache",
+  );
+  const again = await listBought({ ...options, client: fakeChainClient() });
+  assert.equal(again[0]?.cost, 123n, "revived on read");
 });
 
-test("listLifecycle decodes the terminal events and skips foreign logs", async () => {
-  const offering = ("0x" + "aa".repeat(20)) as `0x${string}`;
-  const tx = ("0x" + "cc".repeat(32)) as `0x${string}`;
-  const buyer = ("0x" + "dd".repeat(20)) as `0x${string}`;
-  const getLogs = fakeGetLogs({
-    100: [
-      {
-        eventName: "Failed",
-        args: {},
-        blockNumber: 101n,
-        transactionHash: tx,
-        logIndex: 0,
-      },
-      {
-        eventName: "RefundPaid",
-        args: { buyer, amount: 5_010_000n },
-        blockNumber: 102n,
-        transactionHash: tx,
-        logIndex: 1,
-      },
-      {
-        eventName: "RefundSkipped",
-        args: { buyer },
-        blockNumber: 102n,
-        transactionHash: tx,
-        logIndex: 2,
-      },
-      {
-        eventName: "FailedUnitsSwept",
-        args: { treasury: buyer, units: 184n },
-        blockNumber: 103n,
-        transactionHash: tx,
-        logIndex: 3,
-      },
-      {
-        eventName: "Closed",
-        args: { treasury: buyer, usdcAmount: 7n, unsoldUnits: 80n },
-        blockNumber: 104n,
-        transactionHash: tx,
-        logIndex: 4,
-      },
-      // A topic collision from another contract's event: decoded shape the
-      // mapper doesn't recognize is dropped, never guessed at.
-      {
-        eventName: "Transfer",
-        args: {},
-        blockNumber: 104n,
-        transactionHash: tx,
-        logIndex: 5,
-      },
-    ],
+test("listLifecycle round-trips bigint amounts through the cache", async () => {
+  const at = (logIndex: number) => ({
+    address: OFFERING,
+    blockNumber: 102,
+    transactionHash: TX,
+    logIndex,
   });
-  const events = await listLifecycle({
-    offering,
+  const storage = fakeStorage();
+  const options = {
+    offering: OFFERING,
     deployBlock: 100,
-    getLogs,
-    storage: fakeStorage(),
+    storage,
     latestBlock: 150,
+  };
+  const events = await listLifecycle({
+    ...options,
+    client: fakeChainClient({
+      logs: [
+        encodeLog(OFFERING_ABI, "Failed", {}, at(0)),
+        encodeLog(
+          OFFERING_ABI,
+          "RefundPaid",
+          { buyer: BUYER, amount: 5_010_000n },
+          at(1),
+        ),
+        encodeLog(
+          OFFERING_ABI,
+          "Closed",
+          { treasury: BUYER, usdcAmount: 7n, unsoldUnits: 80n },
+          at(2),
+        ),
+      ],
+    }),
   });
   assert.deepEqual(
-    events.map((event) => event.type),
-    ["failed", "refund-paid", "refund-skipped", "swept", "closed"],
+    events.map((e) => e.type),
+    ["failed", "refund-paid", "closed"],
   );
-  assert.deepEqual(events[1], {
-    type: "refund-paid",
-    buyer: "0xDDdDddDdDdddDDddDDddDDDDdDdDDdDDdDDDDDDd",
-    amount: "5010000",
-    txHash: tx,
-    blockNumber: 102,
-    logIndex: 1,
-  });
-  assert.deepEqual(events[4], {
-    type: "closed",
-    usdcAmount: "7",
-    unsoldUnits: 80,
-    txHash: tx,
-    blockNumber: 104,
-    logIndex: 4,
-  });
-});
-
-const offeringRecord = (offering: `0x${string}`): OfferingRecord => ({
-  offering,
-  pactToken: ("0x" + "01".repeat(20)) as `0x${string}`,
-  issuer: ("0x" + "02".repeat(20)) as `0x${string}`,
-  treasury: ("0x" + "03".repeat(20)) as `0x${string}`,
-  projectName: "P",
-  raiseMin: "0",
-  closeDate: 0,
-  priceStart: "0",
-  priceSlope: "0",
-  publicUnits: 0,
-  blockNumber: null,
-  txHash: null,
+  const again = await listLifecycle({ ...options, client: fakeChainClient() });
+  assert.deepEqual(again, events);
+  assert.equal(again[1]?.type === "refund-paid" && again[1].amount, 5_010_000n);
 });
 
 test("listPurchases drops foreign Bought logs and attaches the offering record", async () => {
-  const offering = ("0x" + "aa".repeat(20)) as `0x${string}`;
-  const foreign = ("0x" + "bb".repeat(20)) as `0x${string}`;
-  const record = offeringRecord(offering);
-  const getLogs = fakeGetLogs({
-    100: [boughtLog(offering, 0), boughtLog(foreign, 1)],
-  });
+  const foreign = addr("bb");
+  const record = offeringRecord(OFFERING);
   const purchases = await listPurchases({
-    wallet: ("0x" + "dd".repeat(20)) as `0x${string}`,
+    wallet: BUYER,
     offerings: [record],
     deployBlock: 100,
-    getLogs,
+    client: fakeChainClient({
+      logs: [bought(OFFERING, 0), bought(foreign, 1)],
+    }),
     storage: fakeStorage(),
     latestBlock: 150,
   });
   assert.equal(purchases.length, 1, "the known-offerings join drops foreigns");
-  assert.equal(purchases[0]?.offering.toLowerCase(), offering);
+  assert.equal(purchases[0]?.offering, OFFERING);
   assert.deepEqual(purchases[0]?.record, record);
+});
+
+test("seedOffering writes decimal strings and never rewinds the scan", () => {
+  const storage = fakeStorage();
+  const key = "pact:offerings:" + FACTORY.toLowerCase();
+  storage.setItem(key, JSON.stringify({ lastScannedBlock: 555, items: [] }));
+  seedOffering(offeringRecord(OFFERING), {
+    factory: FACTORY,
+    deployBlock: 100,
+    storage,
+  });
+  const cached = JSON.parse(storage.getItem(key)!);
+  assert.equal(cached.lastScannedBlock, 555);
+  assert.equal(cached.items[0].priceStart, "40000000");
 });
 
 test("create-flow seed survives the next scan and dedupes against it", async () => {
   const storage = fakeStorage();
-  const factory = ("0x" + "fa".repeat(20)) as `0x${string}`;
-  const record = {
-    offering: ("0x" + "aa".repeat(20)) as `0x${string}`,
-    projectName: "Seeded",
-    blockNumber: 123,
-  };
-  seedOffering(record, { factory, deployBlock: 100, storage });
+  const record = offeringRecord(OFFERING);
+  seedOffering(record, { factory: FACTORY, deployBlock: 100, storage });
 
-  const getLogs = fakeGetLogs({}); // scan finds nothing new
+  const client = fakeChainClient({ logs: [created(OFFERING, 120)] });
   const offerings = await listOfferings({
-    factory,
+    factory: FACTORY,
     deployBlock: 100,
     storage,
-    getLogs,
+    client,
     latestBlock: 150,
   });
-  assert.deepEqual(offerings, [record]);
+  assert.deepEqual(offerings, [record], "the scan's copy dedupes by address");
   assert.equal(
-    getLogs.ranges[0]?.[0],
+    client.ranges[0]?.[0],
     100,
     "seeding does not skip unscanned history",
   );
 
-  seedOffering(record, { factory, deployBlock: 100, storage });
+  seedOffering(record, { factory: FACTORY, deployBlock: 100, storage });
   assert.equal(
-    JSON.parse(storage.getItem("pact:offerings:" + factory)!).items.length,
+    JSON.parse(storage.getItem("pact:offerings:" + FACTORY.toLowerCase())!)
+      .items.length,
     1,
     "seed is idempotent",
   );
 
-  assert.deepEqual(
-    findOffering(offerings, record.offering.toUpperCase().replace("0X", "0x")),
-    record,
-  );
-  assert.equal(findOffering(offerings, "0x" + "bb".repeat(20)), null);
+  assert.deepEqual(findOffering(offerings, OFFERING.toLowerCase()), record);
+  assert.equal(findOffering(offerings, addr("bb")), null);
+});
+
+const offeringRecord = (offering: Address): OfferingRecord => ({
+  offering,
+  pactToken: addr("01"),
+  issuer: BUYER,
+  treasury: BUYER,
+  projectName: "Acme",
+  raiseMin: 5_000_000n,
+  closeDate: 2_000_000_000,
+  priceStart: 40_000_000n,
+  priceSlope: 100_000n,
+  publicUnits: 50,
+  blockNumber: 5,
+  transactionHash: TX,
+  logIndex: 0,
 });

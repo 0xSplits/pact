@@ -73,7 +73,7 @@ export function newAllocationKey(): {
 
 // Mirrors Offering.claimDigest: EIP-712 typed data under the offering's own
 // domain, so a claim signature binds to one chain and one contract.
-function claimDigest({
+export function claimDigest({
   offering,
   chainId,
   allocationId,

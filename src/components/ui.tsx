@@ -1,10 +1,10 @@
 // Small reusable UI primitives for React pages. Each maps onto the
 // design-system classes in src/app.css (.cta, .deflist, .notice, .act, ...)
 // so vanilla pages and React pages render identically.
+import type { StatusInfo } from "@splits/pact-core/chain/offering-status.ts";
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 import type { Address } from "viem";
 
-import type { StatusInfo } from "#lib/chain/offering-status.ts";
 import { basescanAddress, shortAddr } from "#lib/format.ts";
 
 const cx = (...parts: Array<string | false | null | undefined>) =>

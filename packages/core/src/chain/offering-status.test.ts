@@ -7,8 +7,8 @@ import {
   offeringPhase,
   offeringStatus,
   refundStatuses,
-} from "#lib/chain/offering-status.ts";
-import type { LifecycleEvent } from "#lib/chain/onchain.ts";
+} from "#core/chain/offering-status.ts";
+import type { LifecycleEvent } from "#core/chain/reads.ts";
 
 const now = 1_700_000_000_000;
 const future = Math.floor(now / 1000) + 3600;
@@ -89,7 +89,12 @@ const event = (
   fields: Partial<LifecycleEvent> & { type: LifecycleEvent["type"] },
   logIndex = 0,
 ): LifecycleEvent =>
-  ({ txHash: "0xabc", blockNumber: 1, logIndex, ...fields }) as LifecycleEvent;
+  ({
+    transactionHash: "0xabc",
+    blockNumber: 1,
+    logIndex,
+    ...fields,
+  }) as LifecycleEvent;
 
 test("offeredUnitsTotal while funding is escrow plus sold", () => {
   assert.equal(
@@ -103,7 +108,7 @@ test("offeredUnitsTotal after close comes from the Closed event", () => {
     offeredUnitsTotal(
       { state: 2, unitsSold: 120, remainingUnits: 0 },
       [],
-      [event({ type: "closed", usdcAmount: "0", unsoldUnits: 80 })],
+      [event({ type: "closed", usdcAmount: 0n, unsoldUnits: 80 })],
     ),
     200,
   );
@@ -122,7 +127,7 @@ test("offeredUnitsTotal after failure backs out refunds and sweeps", () => {
     { buyer: addr("bb"), units: 16 },
   ];
   const lifecycle = [
-    event({ type: "refund-paid", buyer: addr("aa"), amount: "5010000" }, 0),
+    event({ type: "refund-paid", buyer: addr("aa"), amount: 5010000n }, 0),
     event({ type: "swept", units: 184 }, 1),
   ];
   assert.equal(
@@ -143,7 +148,7 @@ test("refundStatuses: paid is terminal, skips stay retryable", () => {
   ];
   const lifecycle = [
     event({ type: "refund-skipped", buyer: addr("aa") }, 0),
-    event({ type: "refund-paid", buyer: addr("aa"), amount: "1" }, 1),
+    event({ type: "refund-paid", buyer: addr("aa"), amount: 1n }, 1),
     event({ type: "refund-skipped", buyer: addr("bb") }, 2),
   ];
   const statuses = refundStatuses(purchases, lifecycle);

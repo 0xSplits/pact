@@ -8,7 +8,7 @@ import {
   currentOfferingAddress,
   currentVoucherFragment,
   statusPath,
-} from "#lib/routes.ts";
+} from "#core/routes.ts";
 
 const OFFERING = "0x692f4B9Fd0940fb5F2Ed2f32435A2DbFDA23b5F8";
 

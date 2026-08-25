@@ -1,5 +1,14 @@
 import "#pages/create.css";
 
+import {
+  costForUnits,
+  deriveOfferingCurve,
+  fractionAtRaise,
+} from "@splits/pact-core/chain/curve.ts";
+import type { Pact } from "@splits/pact-core/chain/curve.ts";
+import { TOTAL_LIQUID_SPLIT_UNITS } from "@splits/pact-core/chain/liquid-split.ts";
+import { statusPath } from "@splits/pact-core/routes.ts";
+import { isAddress } from "@splits/pact-core/validate.ts";
 import { useEffect, useRef, useState } from "react";
 import { BaseError, UserRejectedRequestError } from "viem";
 import type { Address } from "viem";
@@ -8,13 +17,6 @@ import { useAccount } from "wagmi";
 import { CurveChart } from "#components/curve-chart.tsx";
 import { Button, SignatureBlock } from "#components/ui.tsx";
 import { useErrorTip } from "#hooks/use-error-tip.ts";
-import {
-  costForUnits,
-  deriveOfferingCurve,
-  fractionAtRaise,
-} from "#lib/chain/curve.ts";
-import type { Pact } from "#lib/chain/curve.ts";
-import { TOTAL_LIQUID_SPLIT_UNITS } from "#lib/chain/liquid-split.ts";
 import { seedOffering } from "#lib/chain/offerings.ts";
 import { canReceiveUnits, createOffering } from "#lib/chain/onchain.ts";
 import {
@@ -25,9 +27,7 @@ import {
   parseMoney,
   usdcBaseUnitsToDollars,
 } from "#lib/format.ts";
-import { statusPath } from "#lib/routes.ts";
 import { showToast } from "#lib/ui/toast.ts";
-import { isAddress } from "#lib/validate.ts";
 import { UNITS_DISCLAIMER } from "#pages/pact-copy.tsx";
 
 const oneDecimal = (v: string | number) =>

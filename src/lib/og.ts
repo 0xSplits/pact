@@ -1,4 +1,6 @@
-export const OG_SITE_ORIGIN = "https://pact.splits.org";
+import { SITE_ORIGIN } from "@splits/pact-core/routes.ts";
+
+export { SITE_ORIGIN };
 
 export function ogOriginForDeployment({
   vercelEnvironment,
@@ -7,7 +9,7 @@ export function ogOriginForDeployment({
   vercelEnvironment?: string | undefined;
   vercelUrl?: string | undefined;
 }): string {
-  if (vercelEnvironment !== "preview" || !vercelUrl) return OG_SITE_ORIGIN;
+  if (vercelEnvironment !== "preview" || !vercelUrl) return SITE_ORIGIN;
   return `https://${vercelUrl.replace(/^https?:\/\//, "")}`;
 }
 

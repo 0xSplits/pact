@@ -19,7 +19,7 @@ every detected agent harness.
 | Chain                 | Base mainnet, chain id `8453`                                                                                                                                                                       |
 | `OfferingFactory`     | `0x68DA9a884A6B5758a21490CeA5A1325C5f02eCdD` ([verified](https://basescan.org/address/0x68DA9a884A6B5758a21490CeA5A1325C5f02eCdD#code)); listings are `OfferingCreated` scans from block `50274529` |
 | USDC                  | `0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913`, 6 decimals; every amount below is in base units                                                                                                       |
-| ABIs                  | [`src/generated/offering-contracts.ts`](https://github.com/0xSplits/pact/blob/main/src/generated/offering-contracts.ts)                                                                             |
+| ABIs                  | [`packages/core/src/generated/offering-contracts.ts`](https://github.com/0xSplits/pact/blob/main/packages/core/src/generated/offering-contracts.ts)                                                 |
 | Machine-readable copy | [`/.well-known/pact.json`](https://pact.splits.org/.well-known/pact.json)                                                                                                                           |
 
 The generated file is the pin: every copy of an address on every surface is
@@ -127,5 +127,5 @@ amountCapUsdc, address linkKey)` and the throwaway link key signs
 claim URL fragment: `https://pact.splits.org/buy?offering=0x…#<fragment>`.
 Mechanics and the fragment codec are in the
 [contract specification](../contracts/docs/contracts.md#allocations) and
-`src/lib/chain/voucher.ts`; the CLI's `voucher issue` / `buy private`
+`packages/core/src/chain/voucher.ts`; the CLI's `voucher issue` / `buy private`
 implement both sides.

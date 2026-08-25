@@ -1,55 +1,72 @@
-// Chain-only listings: chunked event scans over public Base RPC with an
-// incremental localStorage cache, replacing the server's PACT store. Cold scan
-// on first visit per device, delta chunks after. Takes `getLogs` and `storage`
-// as parameters so tests run against fakes and never hit real RPC.
-import { getAbiItem, getAddress, zeroAddress } from "viem";
-import type { Address } from "viem";
-import { readContract } from "wagmi/actions";
-
+// The browser's cache adapter over core's scans: an incremental localStorage
+// cache per listing (cold scan on first visit per device, delta after), with
+// bigint amounts stored as decimal strings. Takes `client` and `storage` as
+// parameters so tests run against fakes and never hit real RPC.
+import { globalOverride } from "@splits/pact-core/chain/chain.ts";
+import type { ChainClient } from "@splits/pact-core/chain/client.ts";
+import { costForUnits } from "@splits/pact-core/chain/curve.ts";
 import {
-  OFFERING_ABI,
-  OFFERING_FACTORY_ABI,
-  OFFERING_FACTORY_ADDRESS,
-  OFFERING_FACTORY_DEPLOY_BLOCK,
-  PACT_TOKEN_ABI,
-} from "#generated/offering-contracts.ts";
-import { globalOverride } from "#lib/chain/chain.ts";
-import { costForUnits } from "#lib/chain/curve.ts";
-import {
-  getLatestBlockNumber,
+  BOUGHT_EVENT,
+  capTable,
+  LIFECYCLE_EVENTS,
   lifecycleEventFromLog,
+  OFFERING_CREATED_EVENT,
   offeringRecordFromLog,
   offeringStateCurve,
   purchaseFromLog,
-  getLogs as rpcGetLogs,
-} from "#lib/chain/onchain.ts";
+  scan,
+} from "@splits/pact-core/chain/reads.ts";
 import type {
+  DecodedLog,
+  Holder,
   LifecycleEvent,
   OfferingRecord,
   Purchase,
+  ScanFilter,
+} from "@splits/pact-core/chain/reads.ts";
+import type { KVStorage } from "@splits/pact-core/chain/voucher.ts";
+import {
+  OFFERING_ABI,
+  OFFERING_FACTORY_ADDRESS,
+  OFFERING_FACTORY_DEPLOY_BLOCK,
+} from "@splits/pact-core/generated/offering-contracts.ts";
+import { isSameAddress } from "@splits/pact-core/validate.ts";
+import { getAddress } from "viem";
+import type { Address } from "viem";
+
+import {
+  getLatestBlockNumber,
+  client as rpcClient,
 } from "#lib/chain/onchain.ts";
-import type { KVStorage } from "#lib/chain/voucher.ts";
-import { wagmiConfig } from "#lib/chain/wagmi.ts";
-import { isSameAddress } from "#lib/validate.ts";
 
-// Public Base RPC caps eth_getLogs at 10k-block ranges.
-export const SCAN_CHUNK_BLOCKS = 10000;
+// JSON.stringify throws on bigint, so cached items carry decimal strings;
+// `revive` turns them back into the core shape on read.
+const toJson = (value: unknown) =>
+  JSON.stringify(value, (_k, v) => (typeof v === "bigint" ? v.toString() : v));
 
-export function chunkRanges(
-  fromBlock: number,
-  toBlock: number,
-  chunk: number = SCAN_CHUNK_BLOCKS,
-): Array<[number, number]> {
-  const ranges: Array<[number, number]> = [];
-  for (let start = fromBlock; start <= toBlock; start += chunk) {
-    ranges.push([start, Math.min(start + chunk - 1, toBlock)]);
+// Restores the bigint fields of a cached item. Throws on anything that is
+// not a decimal string, which readCache turns into a full rescan; older
+// caches (pre-core shapes) fall out that way too.
+function reviveBigints<T extends object>(item: T, keys: (keyof T)[]): T {
+  const out = { ...item };
+  for (const key of keys) {
+    const value = out[key] as unknown;
+    if (typeof value === "bigint") continue;
+    if (typeof value !== "string" || !/^\d+$/.test(value))
+      throw new Error(`cached ${String(key)} is not a decimal string`);
+    out[key] = BigInt(value) as T[typeof key];
   }
-  return ranges;
+  if (
+    typeof (out as { transactionHash?: unknown }).transactionHash !== "string"
+  )
+    throw new Error("cached item has no transactionHash");
+  return out;
 }
 
 function readCache<T>(
   storage: KVStorage,
   key: string,
+  revive: (item: T) => T,
 ): { lastScannedBlock: number; items: T[] } | null {
   try {
     const parsed = JSON.parse(storage.getItem(key) || "null");
@@ -58,78 +75,60 @@ function readCache<T>(
       Number.isInteger(parsed.lastScannedBlock) &&
       Array.isArray(parsed.items)
     )
-      return parsed;
+      return { ...parsed, items: parsed.items.map(revive) };
   } catch {}
   return null; // corrupt or missing cache falls back to a full rescan
 }
 
-// The scan is transport-agnostic: logs flow straight from getLogs into `map`,
-// so their shape is the fake's business in tests and viem's in production.
 export interface CachedScanOptions<T> {
   key: string;
-  filter: Record<string, unknown>;
+  filter: ScanFilter;
   fromBlock: number;
-  map: (log: any) => T | null;
+  map: (log: DecodedLog) => T | null;
   dedupeKey: (item: T) => string;
-  getLogs?:
-    | ((
-        args: Record<string, unknown> & { fromBlock: number; toBlock: number },
-      ) => Promise<any[]>)
-    | undefined;
+  revive: (item: T) => T;
+  client?: ChainClient | undefined;
   latestBlock?: number | undefined;
   storage?: KVStorage | undefined;
 }
 
-// Incremental log scan: resumes from the cache's high-water mark, decodes and
-// merges new logs, and advances the cache after every chunk so a failing chunk
-// never corrupts or rewinds what was already scanned.
+// Incremental scan: resumes from the cache's high-water mark, merges new logs
+// (deduped by identity), and advances the mark only after the scan succeeds,
+// so a failing scan never corrupts or rewinds what was already cached.
 export async function cachedScan<T>({
   key,
   filter,
   fromBlock,
   map,
   dedupeKey,
-  getLogs = rpcGetLogs,
+  revive,
+  client = rpcClient(),
   latestBlock,
   storage = localStorage,
 }: CachedScanOptions<T>): Promise<T[]> {
-  let cache = readCache<T>(storage, key);
-  let seen = new Set<string>();
-  try {
-    seen = new Set((cache ? cache.items : []).map(dedupeKey));
-  } catch {
-    cache = null; // an item dedupeKey can't read is a corrupt cache, not a wedge
-  }
+  const cache = readCache<T>(storage, key, revive);
   const items = cache ? cache.items : [];
+  const seen = new Set(items.map(dedupeKey));
   const from = cache ? cache.lastScannedBlock + 1 : fromBlock;
-  const to = latestBlock != null ? latestBlock : await getLatestBlockNumber();
-
-  for (const [start, end] of chunkRanges(from, to)) {
-    const logs = await getLogs({ ...filter, fromBlock: start, toBlock: end });
-    for (const log of logs || []) {
-      let item: T | null = null;
-      try {
-        item = map(log);
-      } catch {} // foreign log matching the topic — not ours to decode
+  const to = latestBlock ?? (await getLatestBlockNumber());
+  if (from <= to) {
+    for (const log of await scan(client, filter, {
+      fromBlock: from,
+      toBlock: to,
+    })) {
+      const item = map(log);
       if (!item || seen.has(dedupeKey(item))) continue;
       seen.add(dedupeKey(item));
       items.push(item);
     }
-    storage.setItem(key, JSON.stringify({ lastScannedBlock: end, items }));
   }
-  if (from > to && !cache)
-    storage.setItem(key, JSON.stringify({ lastScannedBlock: to, items }));
+  if (from <= to || !cache)
+    storage.setItem(key, toJson({ lastScannedBlock: to, items }));
   return items;
 }
 
 const offeringsKey = (factory: string) =>
   "pact:offerings:" + String(factory).toLowerCase();
-
-const offeringCreatedEvent = getAbiItem({
-  abi: OFFERING_FACTORY_ABI,
-  name: "OfferingCreated",
-});
-const boughtEvent = getAbiItem({ abi: OFFERING_ABI, name: "Bought" });
 
 // E2E/manual override hooks, same convention as PACT_RPC_URL (chain.ts) and
 // the PACT_OFFERING_FACTORY_ADDRESS global createOffering honors: set on
@@ -146,10 +145,21 @@ const deployBlockDefault = (): number => {
 
 // Options shared by the listing scans; tests inject fakes through these.
 export interface ScanOptions {
-  getLogs?: CachedScanOptions<unknown>["getLogs"];
+  client?: ChainClient | undefined;
   latestBlock?: number | undefined;
   storage?: KVStorage | undefined;
 }
+
+const reviveRecord = (record: OfferingRecord) =>
+  reviveBigints(record, ["raiseMin", "priceStart", "priceSlope"]);
+const revivePurchase = (purchase: Purchase) =>
+  reviveBigints(purchase, ["cost"]);
+const reviveLifecycle = (event: LifecycleEvent): LifecycleEvent =>
+  event.type === "closed"
+    ? reviveBigints(event, ["usdcAmount"])
+    : event.type === "refund-paid" || event.type === "withdrawn"
+      ? reviveBigints(event, ["amount"])
+      : reviveBigints(event, []);
 
 // Every offering ever created by the factory (the listing cache is global;
 // filter by issuer/treasury for "my pacts").
@@ -162,10 +172,11 @@ export async function listOfferings({
 > {
   return cachedScan<OfferingRecord>({
     key: offeringsKey(factory),
-    filter: { address: getAddress(factory), event: offeringCreatedEvent },
+    filter: { address: getAddress(factory), event: OFFERING_CREATED_EVENT },
     fromBlock: deployBlock,
     map: offeringRecordFromLog,
     dedupeKey: (record) => record.offering.toLowerCase(),
+    revive: reviveRecord,
     ...options,
   });
 }
@@ -174,7 +185,7 @@ export async function listOfferings({
 // instantly instead of waiting for the next scan, and the entry is never wrong
 // because the scan would find it anyway (dedupe by address).
 export function seedOffering(
-  record: Pick<OfferingRecord, "offering"> & Partial<OfferingRecord>,
+  record: OfferingRecord,
   {
     factory = factoryDefault(),
     deployBlock = deployBlockDefault(),
@@ -182,25 +193,15 @@ export function seedOffering(
   }: { factory?: Address; deployBlock?: number; storage?: KVStorage } = {},
 ): void {
   const key = offeringsKey(factory);
-  const cache = readCache<
-    Partial<OfferingRecord> & Pick<OfferingRecord, "offering">
-  >(storage, key) || {
+  const cache = readCache<OfferingRecord>(storage, key, reviveRecord) || {
     lastScannedBlock: Math.max(0, deployBlock - 1),
     items: [],
   };
   if (
     !cache.items.some((item) => isSameAddress(item.offering, record.offering))
-  ) {
+  )
     cache.items.push(record);
-  }
-  // Callers pass richer deployment objects (bigint curve params included);
-  // JSON.stringify throws on bigint, so store them as decimal strings.
-  storage.setItem(
-    key,
-    JSON.stringify(cache, (_k, v) =>
-      typeof v === "bigint" ? v.toString() : v,
-    ),
-  );
+  storage.setItem(key, toJson(cache));
 }
 
 // The lookup is deliberately loose: it matches case-insensitively, so any
@@ -216,8 +217,8 @@ export function findOffering(
   );
 }
 
-const boughtDedupeKey = (purchase: Purchase) =>
-  purchase.txHash + ":" + purchase.logIndex;
+const logKey = (item: { transactionHash: string; logIndex: number }) =>
+  item.transactionHash + ":" + item.logIndex;
 
 // All purchases on one offering, public and private alike.
 export async function listBought({
@@ -230,25 +231,17 @@ export async function listBought({
 }): Promise<Purchase[]> {
   return cachedScan<Purchase>({
     key: "pact:bought:" + String(offering).toLowerCase(),
-    filter: { address: getAddress(offering), event: boughtEvent },
+    filter: { address: getAddress(offering), event: BOUGHT_EVENT },
     fromBlock: deployBlock,
     map: purchaseFromLog,
-    dedupeKey: boughtDedupeKey,
+    dedupeKey: logKey,
+    revive: revivePurchase,
     ...options,
   });
 }
 
-const lifecycleAbiEvents = [
-  getAbiItem({ abi: OFFERING_ABI, name: "Failed" }),
-  getAbiItem({ abi: OFFERING_ABI, name: "Closed" }),
-  getAbiItem({ abi: OFFERING_ABI, name: "RefundPaid" }),
-  getAbiItem({ abi: OFFERING_ABI, name: "RefundSkipped" }),
-  getAbiItem({ abi: OFFERING_ABI, name: "FailedUnitsSwept" }),
-];
-
-// The terminal-lifecycle events on one offering: how it ended, refund
-// progress, and escrow sweeps. Scanned only once an offering leaves the live
-// phase.
+// The lifecycle events on one offering: how it ended, refund progress, and
+// escrow sweeps. Scanned only once an offering leaves the live phase.
 export async function listLifecycle({
   offering,
   deployBlock = deployBlockDefault(),
@@ -259,10 +252,11 @@ export async function listLifecycle({
 }): Promise<LifecycleEvent[]> {
   return cachedScan<LifecycleEvent>({
     key: "pact:lifecycle:" + String(offering).toLowerCase(),
-    filter: { address: getAddress(offering), events: lifecycleAbiEvents },
+    filter: { address: getAddress(offering), events: LIFECYCLE_EVENTS },
     fromBlock: deployBlock,
     map: lifecycleEventFromLog,
-    dedupeKey: (event) => event.txHash + ":" + event.logIndex,
+    dedupeKey: logKey,
+    revive: reviveLifecycle,
     ...options,
   });
 }
@@ -285,10 +279,11 @@ export async function listPurchases({
   );
   const items = await cachedScan<Purchase>({
     key: "pact:purchases:" + String(wallet).toLowerCase(),
-    filter: { event: boughtEvent, args: { buyer: getAddress(wallet) } },
+    filter: { event: BOUGHT_EVENT, args: { buyer: getAddress(wallet) } },
     fromBlock: deployBlock,
     map: purchaseFromLog,
-    dedupeKey: boughtDedupeKey,
+    dedupeKey: logKey,
+    revive: revivePurchase,
     ...options,
   });
   return items
@@ -324,10 +319,8 @@ export interface WalletRecords {
 // this wallet's issuances with live totals (target is what the curve yields
 // if every remaining unit sells from the current position), its purchase
 // receipts, and lifecycle state for every offering either group touches.
-// Individual typed reads over the deduped set; the public client batches
-// same-tick calls into one multicall round trip (wagmi's default
-// batch.multicall). Scan failures degrade to empty groups and a failing read
-// to that record's live fields only, never a stuck loader.
+// Scan failures degrade to empty groups and a failing read to that record's
+// live fields only, never a stuck loader.
 export async function loadWalletRecords(
   wallet: Address,
 ): Promise<WalletRecords> {
@@ -352,6 +345,18 @@ export async function loadWalletRecords(
       return true;
     });
 
+    const read = <
+      name extends
+        "state" | "minMet" | "raised" | "unitsSold" | "remainingUnits",
+    >(
+      record: OfferingRecord,
+      functionName: name,
+    ) =>
+      rpcClient().readContract({
+        address: record.offering,
+        abi: OFFERING_ABI,
+        functionName,
+      });
     const lifecycleByOffering = new Map<string, OfferingLifecycle>();
     const totalsByOffering = new Map<
       string,
@@ -361,16 +366,8 @@ export async function loadWalletRecords(
       ...lifecycleRecords.map(async (record) => {
         try {
           const [state, minMet] = await Promise.all([
-            readContract(wagmiConfig, {
-              address: record.offering,
-              abi: OFFERING_ABI,
-              functionName: "state",
-            }),
-            readContract(wagmiConfig, {
-              address: record.offering,
-              abi: OFFERING_ABI,
-              functionName: "minMet",
-            }),
+            read(record, "state"),
+            read(record, "minMet"),
           ]);
           lifecycleByOffering.set(record.offering.toLowerCase(), {
             state: Number(state),
@@ -381,21 +378,9 @@ export async function loadWalletRecords(
       ...mine.map(async (record) => {
         try {
           const [raised, unitsSold, remainingUnits] = await Promise.all([
-            readContract(wagmiConfig, {
-              address: record.offering,
-              abi: OFFERING_ABI,
-              functionName: "raised",
-            }),
-            readContract(wagmiConfig, {
-              address: record.offering,
-              abi: OFFERING_ABI,
-              functionName: "unitsSold",
-            }),
-            readContract(wagmiConfig, {
-              address: record.offering,
-              abi: OFFERING_ABI,
-              functionName: "remainingUnits",
-            }),
+            read(record, "raised"),
+            read(record, "unitsSold"),
+            read(record, "remainingUnits"),
           ]);
           const curve = offeringStateCurve(record);
           totalsByOffering.set(record.offering.toLowerCase(), {
@@ -427,62 +412,15 @@ export async function loadWalletRecords(
   }
 }
 
-const transferEvents = [
-  getAbiItem({ abi: PACT_TOKEN_ABI, name: "TransferSingle" }),
-  getAbiItem({ abi: PACT_TOKEN_ABI, name: "TransferBatch" }),
-];
-
-// Every address currently holding PactToken units, discovered from transfer
-// logs (bounded from the token's deploy block) and confirmed with batched
-// balance reads.
-export async function getPactTokenHolders({
-  pactToken,
-  deployBlock = deployBlockDefault(),
-  tokenId = 0,
-  getLogs = rpcGetLogs,
+// Every address currently holding PactToken units, from the token's deploy
+// block to the latest.
+export function getPactTokenHolders({
+  record,
+  client = rpcClient(),
   latestBlock,
-}: {
-  pactToken: Address;
-  deployBlock?: number | undefined;
-  tokenId?: number | undefined;
-  getLogs?: typeof rpcGetLogs | undefined;
-  latestBlock?: number | undefined;
-}): Promise<Array<{ address: Address; balance: number }>> {
-  const address = getAddress(pactToken);
-  const to = latestBlock != null ? latestBlock : await getLatestBlockNumber();
-
-  const addresses = new Set<Address>();
-  for (const [start, end] of chunkRanges(deployBlock, to)) {
-    const logs = await getLogs({
-      address,
-      events: transferEvents,
-      fromBlock: start,
-      toBlock: end,
-    });
-    for (const log of logs || []) {
-      for (const account of [log.args.from, log.args.to]) {
-        if (account && account !== zeroAddress)
-          addresses.add(getAddress(account));
-      }
-    }
-  }
-
-  const sorted = Array.from(addresses).sort((a, b) =>
-    a.toLowerCase() > b.toLowerCase() ? 1 : -1,
-  );
-  if (!sorted.length) return [];
-  const holders = await Promise.all(
-    sorted.map(async (account) => ({
-      address: account,
-      balance: Number(
-        await readContract(wagmiConfig, {
-          address,
-          abi: PACT_TOKEN_ABI,
-          functionName: "balanceOf",
-          args: [account, BigInt(tokenId)],
-        }),
-      ),
-    })),
-  );
-  return holders.filter((holder) => holder.balance > 0);
+}: ScanOptions & { record: OfferingRecord }): Promise<Holder[]> {
+  return capTable(client, record.pactToken, record.offering, {
+    fromBlock: record.blockNumber,
+    ...(latestBlock != null ? { toBlock: latestBlock } : {}),
+  });
 }

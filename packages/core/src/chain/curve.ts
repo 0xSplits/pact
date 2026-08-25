@@ -6,8 +6,8 @@
 // conversions run in floats.
 import { formatUnits } from "viem";
 
-import { toUsdcBaseUnits, USDC_DECIMALS } from "#lib/chain/chain.ts";
-import { TOTAL_LIQUID_SPLIT_UNITS } from "#lib/chain/liquid-split.ts";
+import { toUsdcBaseUnits, USDC_DECIMALS } from "#core/chain/chain.ts";
+import { TOTAL_LIQUID_SPLIT_UNITS } from "#core/chain/liquid-split.ts";
 
 // Contract curve parameters: USDC base units per whole unit.
 export interface CurveParams {

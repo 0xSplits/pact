@@ -6,11 +6,12 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { BASE_USDC_ADDRESS } from "@splits/pact-core/chain/chain.ts";
 import {
   OFFERING_FACTORY_ADDRESS,
   OFFERING_FACTORY_DEPLOY_BLOCK,
-} from "#generated/offering-contracts.ts";
-import { BASE_USDC_ADDRESS } from "#lib/chain/chain.ts";
+} from "@splits/pact-core/generated/offering-contracts.ts";
+
 import { llmsTxt, wellKnownManifest } from "#lib/discovery.ts";
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -65,10 +66,8 @@ for (const [source, target] of mirrors) {
   if (source === "docs/integrate.md") assertPinned(source, text);
   write(target, text);
 }
-assertPinned(
-  "README.md",
-  fs.readFileSync(path.join(root, "README.md"), "utf8"),
-);
+for (const readme of ["README.md", "contracts/README.md"])
+  assertPinned(readme, fs.readFileSync(path.join(root, readme), "utf8"));
 
 write("llms.txt", llmsTxt(inputs));
 write(

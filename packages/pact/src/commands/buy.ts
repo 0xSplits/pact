@@ -1,19 +1,16 @@
+import { BASE_USDC_ADDRESS } from "@splits/pact-core/chain/chain.ts";
+import { quote } from "@splits/pact-core/chain/reads.ts";
+import { decodeVoucherFragment } from "@splits/pact-core/chain/voucher.ts";
+import { planBuy } from "@splits/pact-core/chain/writes.ts";
+import { OFFERING_ABI } from "@splits/pact-core/generated/offering-contracts.ts";
 import { Cli, z } from "incur";
-import { OFFERING_ABI } from "splits-pact/generated/offering-contracts.ts";
-import { BASE_USDC_ADDRESS } from "splits-pact/lib/chain/chain.ts";
-import {
-  decodeVoucherFragment,
-  signClaim,
-} from "splits-pact/lib/chain/voucher.ts";
 import { erc20Abi } from "viem";
 import type { Address } from "viem";
 
-import { EXAMPLE_OFFERING, offeringCall, VARS } from "#pact/commands/shared.ts";
+import { EXAMPLE_OFFERING, VARS } from "#pact/commands/shared.ts";
 import type { PactContext } from "#pact/context.ts";
 import { address, parseUsdc, units, usdc, usdcAmount } from "#pact/format.ts";
-import { quote } from "#pact/reads.ts";
 import {
-  approveCall,
   assertFactoryChild,
   runWrite,
   WRITE_OPTIONS,
@@ -108,7 +105,7 @@ export const buy = Cli.create("buy", {
       const ctx = c.var.pact;
       // ponytail: runWrite scans again; one extra filtered getLogs beats a
       // confusing read failure on a foreign address.
-      await assertFactoryChild(ctx, c.args.offering);
+      const record = await assertFactoryChild(ctx, c.args.offering);
       const cost = await quote(ctx.client, c.args.offering, c.args.units);
       const maxCost = c.options.maxCost ? parseUsdc(c.options.maxCost) : cost;
       if (cost > maxCost)
@@ -118,20 +115,25 @@ export const buy = Cli.create("buy", {
           exitCode: 1,
         });
       const from = ctx.account?.address ?? c.options.from;
-      if (from) await assertUsdcBalance(ctx, from, maxCost);
+      if (!from)
+        return c.error({
+          code: "NO_SENDER",
+          message:
+            "Set PACT_PRIVATE_KEY to send, or pass --from <address> to simulate and get unsigned transactions",
+          exitCode: 1,
+        });
+      await assertUsdcBalance(ctx, from, maxCost);
+      // No allowance passed: the unsigned relay cannot know the signer's.
       const result = await runWrite(ctx, {
         offering: c.args.offering,
-        calls: [
-          approveCall(c.args.offering, maxCost),
-          {
-            ...offeringCall(c.args.offering, "buyPublic", [
-              BigInt(c.args.units),
-              maxCost,
-              c.options.name,
-            ]),
-            afterApprove: true,
-          },
-        ],
+        calls: await planBuy({
+          record,
+          units: c.args.units,
+          cost,
+          maxCost,
+          buyer: from,
+          buyerName: c.options.name,
+        }),
         options: c.options,
       });
       return c.ok(
@@ -193,7 +195,7 @@ export const buy = Cli.create("buy", {
           message: "The link carries no ?offering=; pass --offering",
         });
       const offeringAddress = address.parse(offering);
-      await assertFactoryChild(ctx, offeringAddress);
+      const record = await assertFactoryChild(ctx, offeringAddress);
       const decoded = decodeVoucherFragment(fragment);
       const buyer = ctx.account?.address ?? c.options.from;
       if (!buyer)
@@ -228,40 +230,17 @@ export const buy = Cli.create("buy", {
           message: `Quote ${usdc(cost)} USDC exceeds --max-cost`,
           exitCode: 1,
         });
-      const claimSig = await signClaim({
-        linkPrivateKey: decoded.linkPrivateKey,
-        offering: offeringAddress,
-        chainId: ctx.chainId,
-        allocationId: decoded.voucher.allocationId,
-        buyer,
-      });
-      const voucher = {
-        allocationId: decoded.voucher.allocationId,
-        buyerName: decoded.voucher.buyerName,
-        amountCapUsdc: decoded.voucher.amountCapUsdc,
-        linkKey: decoded.voucher.linkKey,
-      };
       await assertUsdcBalance(ctx, buyer, maxCost);
       const result = await runWrite(ctx, {
         offering: offeringAddress,
-        calls: [
-          approveCall(offeringAddress, maxCost),
-          {
-            ...offeringCall(
-              offeringAddress,
-              "buyPrivate",
-              [
-                voucher,
-                decoded.ownerSig,
-                claimSig,
-                BigInt(c.args.units),
-                maxCost,
-              ],
-              `Offering.buyPrivate(${voucher.allocationId}, ${c.args.units} units)`,
-            ),
-            afterApprove: true,
-          },
-        ],
+        calls: await planBuy({
+          record,
+          units: c.args.units,
+          cost,
+          maxCost,
+          buyer,
+          claim: { voucher: decoded, chainId: ctx.chainId },
+        }),
         options: c.options,
       });
       return c.ok(
@@ -269,8 +248,8 @@ export const buy = Cli.create("buy", {
           ...result,
           units: c.args.units,
           cost: usdc(cost),
-          allocationId: voucher.allocationId,
-          amountCap: usdc(voucher.amountCapUsdc),
+          allocationId: decoded.voucher.allocationId,
+          amountCap: usdc(decoded.voucher.amountCapUsdc),
         },
         {
           cta: {

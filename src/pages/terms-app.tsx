@@ -7,6 +7,14 @@
 //                                    static signature rows.
 //
 // With no offering the page renders the blank template.
+import {
+  offeringPhase,
+  refundStatuses,
+} from "@splits/pact-core/chain/offering-status.ts";
+import {
+  currentOfferingAddress,
+  currentTxHash,
+} from "@splits/pact-core/routes.ts";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect } from "react";
 import type { Address } from "viem";
@@ -14,11 +22,9 @@ import { useAccount } from "wagmi";
 
 import { AddressLink, Notice } from "#components/ui.tsx";
 import { useOfferingState } from "#hooks/use-offering-state.ts";
-import { offeringPhase, refundStatuses } from "#lib/chain/offering-status.ts";
 import { listBought, listLifecycle } from "#lib/chain/offerings.ts";
 import { getBlockTimestamp, getProjectName } from "#lib/chain/onchain.ts";
 import { basescanTx, usdcBaseUnitsToDollars } from "#lib/format.ts";
-import { currentOfferingAddress, currentTxHash } from "#lib/routes.ts";
 import { deriveFilledTerms } from "#lib/terms-fields.ts";
 import {
   TermsBody,
@@ -68,8 +74,7 @@ export function TermsApp() {
     queryFn: () => listBought({ offering: offeringAddress! }),
   });
   const purchase = (boughtQuery.data || []).find(
-    (p) =>
-      txHash && p.txHash && p.txHash.toLowerCase() === txHash.toLowerCase(),
+    (p) => txHash && p.transactionHash.toLowerCase() === txHash.toLowerCase(),
   );
 
   const timestampQuery = useQuery({
@@ -160,7 +165,7 @@ export function TermsApp() {
           {offering && offering.status === "loaded" ? (
             <SignatureRow address={offering.owner} role="Issuer" />
           ) : null}
-          {purchase.txHash ? (
+          {purchase.transactionHash ? (
             <div className="signature-row signature-static-row">
               <div className="signature-inner">
                 <span className="signature-by">Transaction:</span>
@@ -168,11 +173,12 @@ export function TermsApp() {
                   <div className="signature-static">
                     <a
                       className="value-link"
-                      href={basescanTx(purchase.txHash)}
+                      href={basescanTx(purchase.transactionHash)}
                       target="_blank"
                       rel="noreferrer"
                     >
-                      {purchase.txHash.slice(0, 10)}…{purchase.txHash.slice(-8)}
+                      {purchase.transactionHash.slice(0, 10)}…
+                      {purchase.transactionHash.slice(-8)}
                     </a>
                   </div>
                 </div>

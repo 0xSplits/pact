@@ -5,13 +5,13 @@
 // real Solidity verifier (second coverage of the golden-vector boundary).
 import { expect, test } from "@playwright/test";
 import type { BrowserContext, Page } from "@playwright/test";
-import { encodeFunctionData, getAddress } from "viem";
-import type { Address } from "viem";
-
 import {
   OFFERING_ABI,
   OFFERING_FACTORY_ABI,
-} from "#generated/offering-contracts.ts";
+} from "@splits/pact-core/generated/offering-contracts.ts";
+import { encodeFunctionData, getAddress } from "viem";
+import type { Address } from "viem";
+
 import {
   e2eAccount,
   e2eFactory,

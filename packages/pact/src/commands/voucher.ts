@@ -2,8 +2,7 @@
 // step; unsigned mode splits it into `issue` (typed data + draft) and
 // `complete` (verified signature + persisted link). The ledger file is the
 // only record of an unclaimed link.
-import { Cli, z } from "incur";
-import { OFFERING_ABI } from "splits-pact/generated/offering-contracts.ts";
+import { readOffering } from "@splits/pact-core/chain/reads.ts";
 import {
   encodeVoucherFragment,
   listAllocationLedger,
@@ -11,21 +10,18 @@ import {
   newAllocationKey,
   saveAllocationLedgerRow,
   voucherTypedData,
-} from "splits-pact/lib/chain/voucher.ts";
+} from "@splits/pact-core/chain/voucher.ts";
 import type {
   AllocationLedgerRow,
   Voucher,
-} from "splits-pact/lib/chain/voucher.ts";
-import { OG_SITE_ORIGIN } from "splits-pact/lib/og.ts";
-import { buyLinkPath } from "splits-pact/lib/routes.ts";
+} from "@splits/pact-core/chain/voucher.ts";
+import { offeringCall } from "@splits/pact-core/chain/writes.ts";
+import { OFFERING_ABI } from "@splits/pact-core/generated/offering-contracts.ts";
+import { buyLinkPath, SITE_ORIGIN } from "@splits/pact-core/routes.ts";
+import { Cli, z } from "incur";
 import type { Address, Hex } from "viem";
 
-import {
-  EXAMPLE_OFFERING,
-  OFFERING,
-  offeringCall,
-  VARS,
-} from "#pact/commands/shared.ts";
+import { EXAMPLE_OFFERING, OFFERING, VARS } from "#pact/commands/shared.ts";
 import type { PactContext } from "#pact/context.ts";
 import {
   bytes32,
@@ -34,7 +30,6 @@ import {
   usdc,
   usdcAmount,
 } from "#pact/format.ts";
-import { readOffering } from "#pact/reads.ts";
 import { runWrite, WRITE_OPTIONS, WRITE_OUTPUT } from "#pact/writes.ts";
 
 interface Draft {
@@ -58,7 +53,7 @@ function persistLink(
     ownerSig,
     linkPrivateKey: draft.linkPrivateKey,
   });
-  const url = OG_SITE_ORIGIN + buyLinkPath(draft.offering, fragment);
+  const url = SITE_ORIGIN + buyLinkPath(draft.offering, fragment);
   const row: AllocationLedgerRow = {
     allocationId: draft.voucher.allocationId,
     name: draft.voucher.buyerName,

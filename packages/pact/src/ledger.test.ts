@@ -7,8 +7,8 @@ import {
   listAllocationLedger,
   markAllocationLedgerRowRevoked,
   saveAllocationLedgerRow,
-} from "splits-pact/lib/chain/voucher.ts";
-import type { AllocationLedgerRow } from "splits-pact/lib/chain/voucher.ts";
+} from "@splits/pact-core/chain/voucher.ts";
+import type { AllocationLedgerRow } from "@splits/pact-core/chain/voucher.ts";
 import { test } from "vitest";
 
 import { fileLedgerStorage, mergeLedgerRows } from "#pact/ledger.ts";

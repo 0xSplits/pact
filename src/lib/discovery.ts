@@ -6,8 +6,9 @@ import {
   BASE_CHAIN_ID,
   BASE_USDC_ADDRESS,
   USDC_DECIMALS,
-} from "#lib/chain/chain.ts";
-import { OG_SITE_ORIGIN } from "#lib/og.ts";
+} from "@splits/pact-core/chain/chain.ts";
+
+import { SITE_ORIGIN } from "#lib/og.ts";
 
 export interface DiscoveryInputs {
   factoryAddress: string;
@@ -26,11 +27,11 @@ export function wellKnownManifest({
   factoryDeployBlock,
   cliPackage,
   repository,
-  origin = OG_SITE_ORIGIN,
+  origin = SITE_ORIGIN,
 }: DiscoveryInputs) {
   return {
     $comment:
-      "PACT protocol manifest. Own convention (no standard mandates this shape); schemaVersion bumps on any incompatible change. Stable fetch target for agents: everything here is static and only changes on redeploy. Generated from src/generated/offering-contracts.ts.",
+      "PACT protocol manifest. Own convention (no standard mandates this shape); schemaVersion bumps on any incompatible change. Stable fetch target for agents: everything here is static and only changes on redeploy. Generated from packages/core/src/generated/offering-contracts.ts.",
     schemaVersion: 1,
     name: "PACT",
     description: DESCRIPTION,
@@ -43,7 +44,7 @@ export function wellKnownManifest({
       },
       usdc: { address: BASE_USDC_ADDRESS, decimals: USDC_DECIMALS },
     },
-    abis: `${repository}/blob/main/src/generated/offering-contracts.ts`,
+    abis: `${repository}/blob/main/packages/core/src/generated/offering-contracts.ts`,
     docs: {
       index: `${origin}/llms.txt`,
       architecture: `${origin}/docs/architecture.md`,
@@ -72,7 +73,7 @@ export function llmsTxt({
   factoryDeployBlock,
   cliPackage,
   repository,
-  origin = OG_SITE_ORIGIN,
+  origin = SITE_ORIGIN,
 }: DiscoveryInputs): string {
   return `# PACT
 
@@ -89,7 +90,7 @@ All contract interaction is direct onchain calls; there is no HTTP API. Machine-
 ## Contracts
 
 - [OfferingFactory on Basescan](https://basescan.org/address/${factoryAddress}#code): verified source + ABI; deploys a per-raise Offering + PactToken pair
-- [Source repository](${repository}): contracts (Foundry) and app in one repo; ABIs checked in at src/generated/offering-contracts.ts
+- [Source repository](${repository}): contracts (Foundry) and app in one repo; ABIs checked in at packages/core/src/generated/offering-contracts.ts
 - USDC (Base): ${BASE_USDC_ADDRESS}, ${USDC_DECIMALS} decimals
 
 ## Tools for agents

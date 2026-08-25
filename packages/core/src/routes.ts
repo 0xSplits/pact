@@ -4,8 +4,9 @@
 // Framework-free so the node test runner can exercise it directly.
 import type { Address, Hex } from "viem";
 
-import { isAddress } from "#lib/validate.ts";
+import { isAddress } from "#core/validate.ts";
 
+export const SITE_ORIGIN = "https://pact.splits.org";
 export const CREATE_PATH = "/create";
 export const TERMS_PATH = "/terms";
 export const statusPath = (offering: Address) => "/status?offering=" + offering;

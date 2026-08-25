@@ -8,7 +8,7 @@ import {
   fractionAtRaise,
   unitsForBudget,
   valuationForUnitIndex,
-} from "#lib/chain/curve.ts";
+} from "#core/chain/curve.ts";
 
 const band = { vMin: 40_000, vMax: 60_000, cap: 50_000, F: 0.2, rmax: 10_000 };
 

@@ -3,8 +3,8 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
+import { BASE_USDC_ADDRESS } from "@splits/pact-core/chain/chain.ts";
 import { Cli, z } from "incur";
-import { BASE_USDC_ADDRESS } from "splits-pact/lib/chain/chain.ts";
 
 import { admin } from "#pact/commands/admin.ts";
 import { buy } from "#pact/commands/buy.ts";

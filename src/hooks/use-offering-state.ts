@@ -1,9 +1,9 @@
+import type { OfferingState } from "@splits/pact-core/chain/reads.ts";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback } from "react";
 import type { Address } from "viem";
 
 import { getOfferingState } from "#lib/chain/onchain.ts";
-import type { OfferingState } from "#lib/chain/onchain.ts";
 import { errMsg } from "#lib/format.ts";
 
 const POLL_MS = 15000;

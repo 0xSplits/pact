@@ -1,7 +1,7 @@
 // Configuration is env only, declared as an incur env schema so every
 // variable shows up in `--help` and `--schema`.
+import { BASE_CHAIN_ID } from "@splits/pact-core/chain/chain.ts";
 import { z } from "incur";
-import { BASE_CHAIN_ID } from "splits-pact/lib/chain/chain.ts";
 
 export const ENV = z.object({
   PACT_RPC_URL: z

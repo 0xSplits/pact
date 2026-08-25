@@ -9,10 +9,6 @@
   "workspaces": [
     "packages/*"
   ],
-  "exports": {
-    "./lib/*": "./src/lib/*",
-    "./generated/*": "./src/generated/*"
-  },
   "engines": {
     "node": ">=22.18.0"
   },
@@ -20,7 +16,6 @@
     "#lib/*": "./src/lib/*",
     "#hooks/*": "./src/hooks/*",
     "#components/*": "./src/components/*",
-    "#generated/*": "./src/generated/*",
     "#scripts/*": "./scripts/*",
     "#pages/*": "./src/pages/*",
     "#tests/*": "./tests/*"
@@ -49,7 +44,8 @@
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "viem": "^2.54.0",
-    "wagmi": "^3.7.6"
+    "wagmi": "^3.7.6",
+    "@splits/pact-core": "*"
   },
   "overrides": {
     "ws": "8.21.0"

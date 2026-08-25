@@ -1,11 +1,7 @@
+import { offeringCall } from "@splits/pact-core/chain/writes.ts";
 import { Cli } from "incur";
 
-import {
-  EXAMPLE_OFFERING,
-  OFFERING,
-  offeringCall,
-  VARS,
-} from "#pact/commands/shared.ts";
+import { EXAMPLE_OFFERING, OFFERING, VARS } from "#pact/commands/shared.ts";
 import { address, units } from "#pact/format.ts";
 import { runWrite, WRITE_OPTIONS, WRITE_OUTPUT } from "#pact/writes.ts";
 

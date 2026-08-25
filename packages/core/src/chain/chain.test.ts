@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 
 import { test } from "vitest";
 
-import { toUsdcBaseUnits } from "#lib/chain/chain.ts";
+import { toUsdcBaseUnits } from "#core/chain/chain.ts";
 
 test("toUsdcBaseUnits coerces invalid dollar inputs to zero", () => {
   assert.equal(toUsdcBaseUnits(-5), 0n);

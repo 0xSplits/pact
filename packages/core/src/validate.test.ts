@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 
 import { test } from "vitest";
 
-import { isAddress, isSameAddress } from "#lib/validate.ts";
+import { isAddress, isSameAddress } from "#core/validate.ts";
 
 test("isAddress accepts 40-hex addresses and trims whitespace", () => {
   const address = "0x" + "aB".repeat(20);

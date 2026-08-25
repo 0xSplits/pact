@@ -44,6 +44,16 @@ token id. It is a liquid split, so units are live claims on revenue sent to
 the project. Its metadata is fully onchain — wallets render the project
 without a server.
 
+**The core module** (`packages/core`, `@splits/pact-core`) is the one chain
+layer both clients share: the contract ABIs and factory pin, _reads_ (the
+offering snapshot, event decoding, the scans that stand in for a registry,
+and the factory-child check that proves an address was created by the pinned
+factory), and the _buy plan_ (the approve-then-buy call sequence, computed
+from a quote the caller supplies, never from the chain). It is parameterised
+by a viem public client and touches no wallet. Each client wraps it in a
+_send adapter_: the app's sends calls through the connected wallet, the CLI's
+simulates every call and either relays it or prints it unsigned.
+
 **The app** is four static pages: `/` lists offerings, `/create` is the
 issuer's form, `/status` is the issuer's dashboard, `/buy` is the purchase
 page. Pages read the chain over the app's own Base RPC connection; the

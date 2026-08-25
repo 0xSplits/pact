@@ -2,7 +2,7 @@
 // derived from the contract state enum (0 active, 1 failed, 2 closed), minMet,
 // and the close date (unix seconds). Framework-free so node tests exercise it
 // directly.
-import type { LifecycleEvent, Purchase } from "#lib/chain/onchain.ts";
+import type { LifecycleEvent, Purchase } from "#core/chain/reads.ts";
 
 export interface StatusInfo {
   label: string;

@@ -43,11 +43,11 @@
   },
   "dependencies": {
     "@modelcontextprotocol/server": "2.0.0-alpha.4",
-    "viem": "^2.54.0"
+    "viem": "^2.54.0",
+    "@splits/pact-core": "*"
   },
   "devDependencies": {
     "esbuild": "^0.25.0",
-    "incur": "0.5.1",
-    "splits-pact": "file:../.."
+    "incur": "0.5.1"
   }
 }

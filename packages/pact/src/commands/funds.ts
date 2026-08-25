@@ -1,17 +1,15 @@
+import { capTable, findFactoryChild } from "@splits/pact-core/chain/reads.ts";
+import { offeringCall, pactTokenCall } from "@splits/pact-core/chain/writes.ts";
 import { Cli, z } from "incur";
-import { PACT_TOKEN_ABI } from "splits-pact/generated/offering-contracts.ts";
 
 import {
-  contractCall,
   EXAMPLE_OFFERING,
   OFFERING,
-  offeringCall,
   parseToken,
   VARS,
   ZERO_ADDRESS,
 } from "#pact/commands/shared.ts";
 import { address } from "#pact/format.ts";
-import { capTable, findFactoryChild } from "#pact/reads.ts";
 import { runWrite, WRITE_OPTIONS, WRITE_OUTPUT } from "#pact/writes.ts";
 
 export const funds = Cli.create("funds", {
@@ -80,10 +78,10 @@ export const funds = Cli.create("funds", {
         });
       const token = parseToken(c.options.token);
       const holders = await capTable(
-        ctx,
+        ctx.client,
         record.pactToken,
         record.offering,
-        record.blockNumber,
+        { fromBlock: record.blockNumber },
       );
       // LiquidSplit requires every current holder, ascending, no duplicates.
       const accounts = holders
@@ -97,9 +95,8 @@ export const funds = Cli.create("funds", {
       const result = await runWrite(ctx, {
         offering: c.args.offering,
         calls: [
-          contractCall(
+          pactTokenCall(
             record.pactToken,
-            PACT_TOKEN_ABI,
             "distributeFunds",
             [token, accounts, distributor],
             `PactToken.distributeFunds(${token}, ${accounts.length} holders)`,

@@ -3,7 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
-const generatedDir = path.join(root, "src", "generated");
+const generatedDir = path.join(root, "packages", "core", "src", "generated");
 const outputPath = path.join(generatedDir, "offering-contracts.ts");
 
 function readArtifact(contractPath: string, name: string) {
@@ -41,4 +41,4 @@ export const PACT_TOKEN_ABI = ${JSON.stringify(pactToken.abi, null, 2)} as const
 `,
 );
 
-console.log("Wrote src/generated/offering-contracts.ts");
+console.log("Wrote packages/core/src/generated/offering-contracts.ts");

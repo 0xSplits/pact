@@ -64,10 +64,10 @@ npx vite preview
 
 ## Onchain Configuration
 
-The browser code reads contract ABIs and the pinned `OfferingFactory` address
-and deploy block from `src/generated/offering-contracts.ts`. All contract
-reads go through the app's own Base transport; the connected wallet is only
-asked to switch chains and sign.
+The app and the CLI read contract ABIs and the pinned `OfferingFactory`
+address and deploy block from `packages/core/src/generated/offering-contracts.ts`, the shared chain layer. All contract reads go through the
+app's own Base transport; the connected wallet is only asked to switch chains
+and sign.
 
 Current Base OfferingFactory (see status note above):
 
@@ -105,7 +105,7 @@ must update a Playwright spec or include the template's explicit, concrete
 Vercel serves the static build and auto-deploys `main`
 (`https://pact.splits.org`); contracts redeploy rarely via
 `npm run deploy:factory`, followed by re-pinning the factory address in
-`src/generated/offering-contracts.ts`.
+`packages/core/src/generated/offering-contracts.ts`.
 
 ## Current Limitations
 

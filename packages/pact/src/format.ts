@@ -1,15 +1,35 @@
 // Boundary conversions: USDC is a human decimal string on both sides of the
 // CLI, units are plain integers, and anything else bigint becomes a string
 // so incur can serialize it.
+import { USDC_DECIMALS } from "@splits/pact-core/chain/chain.ts";
+import {
+  availablePrivateUnits,
+  availablePublicUnits,
+} from "@splits/pact-core/chain/reads.ts";
+import type { OfferingState } from "@splits/pact-core/chain/reads.ts";
+import { isAddress } from "@splits/pact-core/validate.ts";
 import { z } from "incur";
-import { USDC_DECIMALS } from "splits-pact/lib/chain/chain.ts";
-import { isAddress } from "splits-pact/lib/validate.ts";
 import { formatUnits, getAddress, parseUnits } from "viem";
 import type { Address } from "viem";
 
 export const usdc = (base: bigint): string => formatUnits(base, USDC_DECIMALS);
 export const parseUsdc = (amount: string): bigint =>
   parseUnits(amount, USDC_DECIMALS);
+
+// The JSON-safe shape `offering get` prints.
+export function serializeOffering(state: OfferingState) {
+  return {
+    ...state,
+    raiseMin: usdc(state.raiseMin),
+    raised: usdc(state.raised),
+    withdrawn: usdc(state.withdrawn),
+    priceStart: usdc(state.priceStart),
+    priceSlope: usdc(state.priceSlope),
+    closeDateIso: new Date(state.closeDate * 1000).toISOString(),
+    availablePublicUnits: availablePublicUnits(state),
+    availablePrivateUnits: availablePrivateUnits(state),
+  };
+}
 
 export function jsonSafe(value: unknown): unknown {
   if (typeof value === "bigint") return value.toString();

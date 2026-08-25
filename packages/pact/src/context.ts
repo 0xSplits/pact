@@ -4,12 +4,13 @@
 import os from "node:os";
 import path from "node:path";
 
+import type { ChainClient } from "@splits/pact-core/chain/client.ts";
+import type { KVStorage } from "@splits/pact-core/chain/voucher.ts";
 import {
   OFFERING_FACTORY_ADDRESS,
   OFFERING_FACTORY_DEPLOY_BLOCK,
-} from "splits-pact/generated/offering-contracts.ts";
-import type { KVStorage } from "splits-pact/lib/chain/voucher.ts";
-import { isAddress } from "splits-pact/lib/validate.ts";
+} from "@splits/pact-core/generated/offering-contracts.ts";
+import { isAddress } from "@splits/pact-core/validate.ts";
 import {
   createPublicClient,
   createWalletClient,
@@ -17,22 +18,13 @@ import {
   getAddress,
   http,
 } from "viem";
-import type { Address, Hex, PrivateKeyAccount, PublicClient } from "viem";
+import type { Address, Hex, PrivateKeyAccount } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 
 import type { Env } from "#pact/env.ts";
 import { fileLedgerStorage } from "#pact/ledger.ts";
 
-export type ChainClient = Pick<
-  PublicClient,
-  | "readContract"
-  | "call"
-  | "getLogs"
-  | "getChainId"
-  | "getBlockNumber"
-  | "waitForTransactionReceipt"
-  | "verifyTypedData"
->;
+export type { ChainClient };
 
 export interface Sender {
   sendTransaction(tx: { to: Address; data: Hex; value: bigint }): Promise<Hex>;

@@ -5,36 +5,20 @@
 // operator key (or with --dry-run) the result is the unsigned transaction
 // list for an external signer; with one, transactions are sent in order,
 // each after one confirmation, and their decoded events come back.
-import { Errors, z } from "incur";
+import { findFactoryChild } from "@splits/pact-core/chain/reads.ts";
+import type { OfferingRecord } from "@splits/pact-core/chain/reads.ts";
+import type { Call } from "@splits/pact-core/chain/writes.ts";
 import {
   OFFERING_ABI,
   OFFERING_FACTORY_ABI,
   PACT_TOKEN_ABI,
-} from "splits-pact/generated/offering-contracts.ts";
-import { BASE_USDC_ADDRESS } from "splits-pact/lib/chain/chain.ts";
-import {
-  decodeErrorResult,
-  encodeFunctionData,
-  erc20Abi,
-  parseAbi,
-  parseEventLogs,
-} from "viem";
+} from "@splits/pact-core/generated/offering-contracts.ts";
+import { Errors, z } from "incur";
+import { decodeErrorResult, erc20Abi, parseAbi, parseEventLogs } from "viem";
 import type { Abi, Address, Hex } from "viem";
 
 import type { PactContext } from "#pact/context.ts";
 import { address, jsonSafe } from "#pact/format.ts";
-import { findFactoryChild } from "#pact/reads.ts";
-
-export interface Call {
-  to: Address;
-  data: Hex;
-  value?: bigint;
-  description: string;
-  // True for the buy that follows an approve in the same sequence: in
-  // unsigned mode the allowance is not there yet, so a bare
-  // TransferFromFailed from USDC is the expected simulation outcome.
-  afterApprove?: boolean;
-}
 
 export const WRITE_OPTIONS = z.object({
   dryRun: z
@@ -140,16 +124,6 @@ export function describeRevert(error: unknown): string {
   return e.shortMessage ?? e.message ?? String(error);
 }
 
-export const approveCall = (offering: Address, amount: bigint): Call => ({
-  to: BASE_USDC_ADDRESS,
-  data: encodeFunctionData({
-    abi: erc20Abi,
-    functionName: "approve",
-    args: [offering, amount],
-  }),
-  description: `USDC.approve(${offering}, ${amount})`,
-});
-
 export interface WriteRequest {
   // The offering the sequence targets; verified against the factory scan
   // before anything else happens. Omit for the factory itself.
@@ -161,12 +135,14 @@ export interface WriteRequest {
 export async function assertFactoryChild(
   ctx: PactContext,
   offering: Address,
-): Promise<void> {
-  if (!(await findFactoryChild(ctx, offering)))
+): Promise<OfferingRecord> {
+  const record = await findFactoryChild(ctx, offering);
+  if (!record)
     throw new WriteError(
       "NOT_A_PACT_OFFERING",
       `${offering} was not created by factory ${ctx.factory} on chain ${ctx.chainId}; refusing to touch it`,
     );
+  return record;
 }
 
 export async function runWrite(

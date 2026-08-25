@@ -2,7 +2,7 @@
 // JS ↔ Solidity voucher boundary. The JS test asserts this module still
 // reproduces the checked-in file byte-for-byte; the Forge test deploys an
 // Offering at the same address and asserts the real verifier accepts the
-// signatures. Run `node scripts/generate-voucher-fixture.ts` to regenerate
+// signatures. Run `node packages/core/src/chain/voucher-golden.ts` to regenerate
 // after an intentional change to the voucher shape (both suites go red until
 // the fixture is refreshed).
 import fs from "node:fs";
@@ -12,7 +12,7 @@ import { fileURLToPath } from "node:url";
 import { getContractAddress, keccak256, numberToHex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 
-import { signClaim, voucherTypedData } from "#lib/chain/voucher.ts";
+import { signClaim, voucherTypedData } from "#core/chain/voucher.ts";
 
 const key = (n: bigint) => numberToHex(n, { size: 32 });
 
@@ -58,7 +58,10 @@ export async function buildGoldenFixture() {
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
+  const root = path.join(
+    path.dirname(fileURLToPath(import.meta.url)),
+    "../../../..",
+  );
   const outPath = path.join(root, "tests", "fixtures", "voucher-golden.json");
   fs.mkdirSync(path.dirname(outPath), { recursive: true });
   fs.writeFileSync(

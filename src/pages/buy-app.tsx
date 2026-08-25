@@ -1,5 +1,27 @@
 import "#pages/buy.css";
 
+import { toUsdcBaseUnits } from "@splits/pact-core/chain/chain.ts";
+import {
+  costForUnits,
+  unitsForBudget,
+  valuationForUnitIndex,
+} from "@splits/pact-core/chain/curve.ts";
+import { TOTAL_LIQUID_SPLIT_UNITS } from "@splits/pact-core/chain/liquid-split.ts";
+import {
+  availablePrivateUnits,
+  availablePublicUnits,
+  offeringStateCurve,
+} from "@splits/pact-core/chain/reads.ts";
+import type { OfferingState } from "@splits/pact-core/chain/reads.ts";
+import type { DecodedVoucherLink } from "@splits/pact-core/chain/voucher.ts";
+import { decodeVoucherFragment } from "@splits/pact-core/chain/voucher.ts";
+import { offeringCall } from "@splits/pact-core/chain/writes.ts";
+import {
+  currentOfferingAddress,
+  currentVoucherFragment,
+  termsPath,
+} from "@splits/pact-core/routes.ts";
+import { isSameAddress } from "@splits/pact-core/validate.ts";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
@@ -20,32 +42,19 @@ import {
 import { useDebugMenu } from "#hooks/use-debug-menu.ts";
 import { useErrorTip } from "#hooks/use-error-tip.ts";
 import { useOfferingState } from "#hooks/use-offering-state.ts";
-import { toUsdcBaseUnits } from "#lib/chain/chain.ts";
-import {
-  costForUnits,
-  unitsForBudget,
-  valuationForUnitIndex,
-} from "#lib/chain/curve.ts";
-import { TOTAL_LIQUID_SPLIT_UNITS } from "#lib/chain/liquid-split.ts";
 import {
   findOffering,
   listBought,
   listOfferings,
 } from "#lib/chain/offerings.ts";
 import {
-  availablePrivateUnits,
-  availablePublicUnits,
   buyPrivateOffering,
   buyPublicOffering,
   getProjectName,
   isAllocationConsumed,
-  offeringStateCurve,
   QuoteChangedError,
-  refundOffering,
+  sendCall,
 } from "#lib/chain/onchain.ts";
-import type { OfferingState } from "#lib/chain/onchain.ts";
-import type { DecodedVoucherLink } from "#lib/chain/voucher.ts";
-import { decodeVoucherFragment } from "#lib/chain/voucher.ts";
 import {
   basescanTx,
   errMsg,
@@ -59,14 +68,8 @@ import {
   relDays,
   usdcBaseUnitsToDollars,
 } from "#lib/format.ts";
-import {
-  currentOfferingAddress,
-  currentVoucherFragment,
-  termsPath,
-} from "#lib/routes.ts";
 import { debugActive } from "#lib/ui/debug-menu.ts";
 import { showToast } from "#lib/ui/toast.ts";
-import { isSameAddress } from "#lib/validate.ts";
 import { UNITS_DISCLAIMER } from "#pages/pact-copy.tsx";
 
 const offeringAddress = currentOfferingAddress();
@@ -93,10 +96,13 @@ const { voucher: voucherPayload, voucherError } = parseFragment();
 // without an address/owner/treasury; live reads carry the full state.
 type OfferingView = Omit<
   OfferingState,
-  "offeringAddress" | "owner" | "treasury" | "pactToken"
+  "offering" | "owner" | "treasury" | "pactToken" | "factory" | "phase"
 > &
   Partial<
-    Pick<OfferingState, "offeringAddress" | "owner" | "treasury" | "pactToken">
+    Pick<
+      OfferingState,
+      "offering" | "owner" | "treasury" | "pactToken" | "factory" | "phase"
+    >
   >;
 
 function debugOfferingSnapshot(
@@ -441,7 +447,7 @@ export function BuyApp() {
           setReceipt({
             units: mine.reduce((s, p) => s + p.units, 0),
             cost: mine.reduce((s, p) => s + BigInt(p.cost), 0n),
-            txHash: last.txHash,
+            txHash: last.transactionHash,
           });
         }
       } catch (err) {
@@ -464,7 +470,10 @@ export function BuyApp() {
     }
     setBusy("refund");
     try {
-      await refundOffering({ offeringAddress: offeringAddress!, from: wallet });
+      await sendCall(
+        wallet,
+        offeringCall(knownOffering.data!.offering, "refund"),
+      );
       await refreshOffering();
     } catch (err) {
       showToast(errMsg(err, "Could not complete refund."));
@@ -491,25 +500,23 @@ export function BuyApp() {
       if (voucherPayload) {
         purchase = await buyPrivateOffering({
           buyer: wallet,
-          offeringAddress: offeringAddress!,
-          voucher: voucherPayload.voucher,
-          ownerSig: voucherPayload.ownerSig,
-          linkPrivateKey: voucherPayload.linkPrivateKey,
+          record: knownOffering.data!,
+          link: voucherPayload,
           expected,
         });
       } else {
         purchase = await buyPublicOffering({
           buyer: wallet,
-          offeringAddress: offeringAddress!,
+          record: knownOffering.data!,
           budgetUsdc,
           expected,
           buyerName: buyerName.trim(),
         });
       }
       setReceipt((prev) => ({
-        units: (prev ? prev.units : 0) + (purchase.units || 0),
-        cost: (prev ? prev.cost : 0n) + BigInt(purchase.cost || 0),
-        txHash: purchase.buyTxHash,
+        units: (prev ? prev.units : 0) + purchase.units,
+        cost: (prev ? prev.cost : 0n) + purchase.cost,
+        txHash: purchase.txHash,
       }));
       refreshOffering();
     } catch (err) {

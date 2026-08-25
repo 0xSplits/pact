@@ -139,7 +139,7 @@ stateDiagram-v2
     }
 
     state "Closed<br/>unsold units to treasury<br/>distribution unlocked" as Closed
-    state "Failed<br/>refund · batchRefund · sweepFailedUnits<br/>distribution unlocked" as Failed
+    state "Failed<br/>refund · refundAll · sweepFailedUnits<br/>distribution unlocked" as Failed
 
     Succeeded --> Closed : closeAndWithdraw (owner)
     Expired --> Failed : markFailed (anyone)

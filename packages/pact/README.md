@@ -48,7 +48,7 @@ Protocol understanding lives in the repo docs: [architecture](https://pact.split
 
 ## Development
 
-The published bundle runs on Node 20+; running from source (`npm run dev -w packages/pact`) needs Node 22.18+ for native type stripping. From the repo root: `npm test` runs the unit tests (`src/**/*.test.ts`),
+The published bundle runs on Node 20+; running from source (`npm run dev -w packages/pact`) needs Node 22.18+ for native type stripping. The chain layer (reads, event decoding, the buy plan) comes from the workspace package `@splits/pact-core` (`packages/core`), which esbuild inlines into the bundle. From the repo root: `npm test` runs the unit tests (`src/**/*.test.ts`),
 `npm run test:e2e` packs this package and drives the built binary against
 a local anvil. `npm run dev -w packages/pact -- --help` runs from source.
 

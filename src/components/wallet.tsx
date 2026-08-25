@@ -2,6 +2,13 @@
 // lives in wagmi; this component renders it into the same #walletToggle /
 // .wallet-menu markup the CSS and e2e selectors already target. mount.tsx
 // portals <WalletButton /> into every page.
+import {
+  buyPath,
+  CREATE_PATH,
+  currentOfferingAddress,
+  statusPath,
+} from "@splits/pact-core/routes.ts";
+import { isSameAddress } from "@splits/pact-core/validate.ts";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { useAccount, useConnect, useDisconnect } from "wagmi";
@@ -10,14 +17,7 @@ import type { Connector } from "wagmi";
 import { CheckIcon } from "#components/ui.tsx";
 import { loadWalletRecords } from "#lib/chain/offerings.ts";
 import { shortAddr } from "#lib/format.ts";
-import {
-  buyPath,
-  CREATE_PATH,
-  currentOfferingAddress,
-  statusPath,
-} from "#lib/routes.ts";
 import { showToast } from "#lib/ui/toast.ts";
-import { isSameAddress } from "#lib/validate.ts";
 
 // The Splits Connect extension, keyed by its EIP-6963 rdns: pinned first when
 // installed, offered as a Chrome Web Store link when not.

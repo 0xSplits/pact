@@ -34,7 +34,7 @@ root, pass `--root contracts`.
 `forge build`
 
 From the repo root, `npm run build:contracts` builds and regenerates the
-frontend export (`src/generated/offering-contracts.ts`).
+shared export (`packages/core/src/generated/offering-contracts.ts`).
 
 ## Test
 
@@ -64,6 +64,6 @@ via [foundry.toml](foundry.toml) and are never reformatted or edited.
 Deploys the factory via CREATE2; requires a funded key and
 `ETHERSCAN_API_KEY`. The live pin is the v2 `OfferingFactory` at
 `0x68DA9a884A6B5758a21490CeA5A1325C5f02eCdD` on Base (deploy block
-50274529), mirrored in `src/generated/offering-contracts.ts`. The frontend
+50274529), mirrored in `packages/core/src/generated/offering-contracts.ts`. The frontend
 only scans the factory it pins, so a new factory deployment orphans every
 offering created through the old one from listings.

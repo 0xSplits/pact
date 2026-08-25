@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import {
   OFFERING_ABI,
   OFFERING_FACTORY_ABI,
-} from "splits-pact/generated/offering-contracts.ts";
+} from "@splits/pact-core/generated/offering-contracts.ts";
 import {
   decodeFunctionData,
   encodeAbiParameters,
