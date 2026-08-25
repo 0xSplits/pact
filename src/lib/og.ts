@@ -31,28 +31,32 @@ export const OG_PAGES: OgPage[] = [
     path: "/create",
     label: "Create",
     title: "PACT: New offering",
-    description: "Raise a friends & family round without the paperwork.",
+    description:
+      "Deploy an offering: set the raise, the valuation band, and the public tranche, then sign once.",
     image: "/og/pact.png",
   },
   {
     path: "/status",
     label: "Offering status",
     title: "PACT: Offering status",
-    description: "Raise a friends & family round without the paperwork.",
+    description:
+      "Issuer dashboard: allocations, raise progress, lifecycle actions, and the cap table.",
     image: "/og/pact.png",
   },
   {
     path: "/buy",
     label: "Buy",
     title: "PACT: Allocation details",
-    description: "Raise a friends & family round without the paperwork.",
+    description:
+      "Buy units along the bonding curve in USDC on Base, or claim a private allocation link.",
     image: "/og/pact.png",
   },
   {
     path: "/terms",
     label: "Terms",
     title: "PACT: Terms",
-    description: "Raise a friends & family round without the paperwork.",
+    description:
+      "The offering's terms and, per purchase, the executed receipt.",
     image: "/og/pact.png",
   },
 ];

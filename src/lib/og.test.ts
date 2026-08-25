@@ -27,7 +27,7 @@ test("Vercel previews use their deployment origin", () => {
   assert.equal(ogOriginForDeployment({}), OG_SITE_ORIGIN);
 });
 
-test("every OG page has a unique route and shares the document image", () => {
+test("every OG page has a unique route and description and shares the document image", () => {
   assert.equal(
     new Set(OG_PAGES.map((page) => page.path)).size,
     OG_PAGES.length,
@@ -40,9 +40,9 @@ test("every OG page has a unique route and shares the document image", () => {
     new Set(OG_PAGES.map((page) => page.title)).size,
     OG_PAGES.length,
   );
-  assert.deepEqual(
-    new Set(OG_PAGES.map((page) => page.description)),
-    new Set(["Raise a friends & family round without the paperwork."]),
+  assert.equal(
+    new Set(OG_PAGES.map((page) => page.description)).size,
+    OG_PAGES.length,
   );
 });
 

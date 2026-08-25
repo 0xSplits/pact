@@ -1,0 +1,20 @@
+{
+  "name": "@splits/pact",
+  "version": "0.1.0",
+  "description": "CLI, MCP server, and agent skill for PACT: raise small onchain rounds in USDC on Base.",
+  "license": "MIT",
+  "type": "module",
+  "repository": "github:0xSplits/pact",
+  "bin": {
+    "pact": "dist/pact.js"
+  },
+  "files": [
+    "dist",
+    "skills",
+    "server.json"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "mcpName": "org.splits/pact-mcp"
+}
