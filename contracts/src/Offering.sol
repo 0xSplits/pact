@@ -201,71 +201,82 @@ contract Offering is IERC1155Receiver, EIP712, Ownable, ReentrancyGuard {
     /*                         IMMUTABLES                         */
     /*.•°:°.´+˚.*°.˚:*.´•*.+°.•°:´*.´•*.•°.•°:°.´:•˚°.*°.˚:*.´+°.•*/
 
-    /// @dev Minimum successful raise in USDC base units.
+    /// @notice Minimum successful raise in USDC base units.
     uint256 public immutable raiseMin;
 
-    /// @dev Buyer-protection deadline for the raise.
+    /// @notice Buyer-protection deadline (unix seconds); past it, an unmet minimum can be marked failed.
     uint64 public immutable closeDate;
 
-    /// @dev Price of the first unit.
+    /// @notice Price of the first unit in USDC base units.
     uint256 public immutable priceStart;
 
-    /// @dev Price increase per unit sold.
+    /// @notice Price increase per unit sold, in USDC base units.
     uint256 public immutable priceSlope;
 
-    /// @dev The deploying OfferingFactory.
+    /// @notice The deploying OfferingFactory.
     address public immutable factory;
 
     /*´:°•.°+.*•´.*:˚.°*.˚•´.°:°•.°•.*•´.*:˚.°*.˚•´.°:°•.°+.*•´.*:*/
     /*                          STORAGE                           */
     /*.•°:°.´+˚.*°.˚:*.´•*.+°.•°:´*.´•*.•°.•°:°.´:•˚°.*°.˚:*.´+°.•*/
 
-    /// @dev The cap table this escrow sells; bound once by the factory.
+    /// @notice The PactToken cap table this escrow sells; bound once by the factory.
     address public pactToken;
 
-    /// @dev Receives withdrawals and unsold units.
+    /// @notice Receives withdrawals and unsold units.
     address public treasury;
 
     /**
-     * @dev `raised` decrements on refund, so the buyer liability is always
+     * @notice USDC deposited by buyers and not yet refunded, in base units.
+     * @dev Decrements on refund, so the buyer liability is always
      * `raised - withdrawn`.
      */
     uint256 public raised;
 
-    /// @dev Proceeds already sent to treasury.
+    /// @notice Proceeds already sent to treasury, in USDC base units.
     uint256 public withdrawn;
 
-    /// @dev Units sold across both tranches; the curve position.
+    /// @notice Units sold across both tranches; the curve position the next buy prices from.
     uint256 public unitsSold;
 
     /**
-     * @dev Cap on public-tranche sales; owner-adjustable but never below
-     * what the public tranche already sold.
+     * @notice Cap on public-tranche sales; `publicUnits - publicUnitsSold`
+     * is what `buyPublic` can still deliver.
+     * @dev Owner-adjustable but never below what the public tranche already sold.
      */
     uint256 public publicUnits;
 
-    /// @dev Units sold through the public tranche.
+    /// @notice Units sold through the public tranche.
     uint256 public publicUnitsSold;
 
-    /// @dev Latches true once `raised` first reaches `raiseMin`.
+    /// @notice True once the minimum raise was met; latches and never clears (refunds are then impossible).
     bool public minMet;
 
-    /// @dev Current lifecycle state.
+    /// @notice Current lifecycle state: 0 Funding, 1 Failed, 2 Closed.
     State public state;
 
-    /// @dev USDC deposited per buyer, refundable on failure.
+    /// @notice USDC deposited per buyer (base units), refundable on failure.
     mapping(address => uint256) public deposits;
 
-    /// @dev Units purchased per buyer, reclaimed on refund.
+    /// @notice Units purchased per buyer, reclaimed on refund.
     mapping(address => uint256) public unitsBought;
 
-    /// @dev Claimed or cancelled allocation ids.
+    /// @notice True for allocation ids already claimed or cancelled; such vouchers can never be used.
     mapping(bytes32 => bool) public allocationConsumed;
 
     /*´:°•.°+.*•´.*:˚.°*.˚•´.°:°•.°•.*•´.*:˚.°*.˚•´.°:°•.°+.*•´.*:*/
     /*                        CONSTRUCTOR                         */
     /*.•°:°.´+˚.*°.˚:*.´•*.+°.•°:´*.´•*.•°.•°:°.´:•˚°.*°.˚:*.´+°.•*/
 
+    /**
+     * @param raiseMin_ Minimum successful raise in USDC base units.
+     * @param closeDate_ Buyer-protection deadline (unix seconds); must be in the future.
+     * @param priceStart_ Price of the first unit in USDC base units; must be nonzero.
+     * @param priceSlope_ Price increase per unit sold, in USDC base units.
+     * @param publicUnits_ Initial cap on public-tranche sales.
+     * @param treasury_ Receives withdrawals and unsold units.
+     * @param owner_ Signs vouchers and administers the offering.
+     */
     constructor(
         uint256 raiseMin_,
         uint64 closeDate_,
@@ -303,6 +314,7 @@ contract Offering is IERC1155Receiver, EIP712, Ownable, ReentrancyGuard {
     /**
      * @notice Binds this escrow to the PactToken created for this offering.
      * @dev Callable once by the deploying factory.
+     * @param pactToken_ The PactToken minted for this offering.
      */
     function initialize(address pactToken_) external {
         if (msg.sender != factory) revert NotFactory();
@@ -312,15 +324,24 @@ contract Offering is IERC1155Receiver, EIP712, Ownable, ReentrancyGuard {
         emit Initialized(pactToken_);
     }
 
-    /// @notice Cost in USDC base units to buy `units` from the current curve position.
+    /**
+     * @notice Cost in USDC base units to buy `units` from the current curve position.
+     * @param units Whole units to price.
+     * @return Total cost in USDC base units; what a buy needs approved.
+     */
     function quote(uint256 units) external view returns (uint256) {
         return costFor(unitsSold, units);
     }
 
     /**
      * @notice Buys from the public tranche. Permissionless up to `publicUnits`.
+     * @dev Pulls `cost` USDC via `transferFrom`, so the caller must have
+     * approved this contract for at least `maxCost` beforehand.
+     * @param unitsWanted Whole units to buy; must be nonzero.
+     * @param maxCost Slippage bound in USDC base units; reverts if the live cost exceeds it.
      * @param buyerName Emitted, never stored; empty when unused. Names land in
      * public permanent logs.
+     * @return cost USDC base units actually charged.
      */
     function buyPublic(uint256 unitsWanted, uint256 maxCost, string calldata buyerName)
         external
@@ -339,6 +360,12 @@ contract Offering is IERC1155Receiver, EIP712, Ownable, ReentrancyGuard {
      * @dev Verifies against the live `owner()`, so rotating ownership
      * mass-revokes outstanding allocation links (the right default under key
      * compromise; re-issuing links is free).
+     * @param voucher The owner-signed allocation.
+     * @param ownerSig Owner signature over `voucherDigest(voucher)` (EOA or ERC-1271).
+     * @param claimSig Link-key signature over `claimDigest(voucher.allocationId, msg.sender)`.
+     * @param unitsWanted Whole units to buy; must fit the private tranche.
+     * @param maxCost Slippage bound in USDC base units.
+     * @return cost USDC base units actually charged; must not exceed `voucher.amountCapUsdc`.
      */
     function buyPrivate(
         Voucher calldata voucher,
@@ -365,7 +392,10 @@ contract Offering is IERC1155Receiver, EIP712, Ownable, ReentrancyGuard {
         if (cost > voucher.amountCapUsdc) revert AllocationCapExceeded();
     }
 
-    /// @notice Revokes an unclaimed allocation link.
+    /**
+     * @notice Revokes an unclaimed allocation link.
+     * @param allocationId The allocation to consume without a purchase.
+     */
     function cancelAllocation(bytes32 allocationId) external onlyOwner {
         allocationConsumed[allocationId] = true;
         emit AllocationCancelled(allocationId);
@@ -375,6 +405,8 @@ contract Offering is IERC1155Receiver, EIP712, Ownable, ReentrancyGuard {
      * @notice Moves supply between the tranches. Raising it shifts private
      * supply public; it can never undercut units the public tranche already sold,
      * nor advertise more units than the escrow can still deliver.
+     * @param publicUnits_ New public-tranche cap, between `publicUnitsSold`
+     * and `remainingUnits() + publicUnitsSold`.
      */
     function setPublicUnits(uint256 publicUnits_) external onlyOwner {
         if (publicUnits_ < publicUnitsSold) revert InvalidConfig();
@@ -421,6 +453,7 @@ contract Offering is IERC1155Receiver, EIP712, Ownable, ReentrancyGuard {
      * failing USDC transfer (e.g. blocklist) reverts the whole batch — the
      * owner retries without that buyer, who keeps the pull `refund()` path
      * either way.
+     * @param buyers Buyer addresses to refund; those with no deposit are skipped.
      */
     function refundAll(address[] calldata buyers) external onlyOwner nonReentrant {
         if (state != State.Failed) revert NotFailed();
@@ -445,6 +478,7 @@ contract Offering is IERC1155Receiver, EIP712, Ownable, ReentrancyGuard {
     /**
      * @notice Sweeps escrow-held units (unsold + reclaimed) to treasury after
      * failure: the cap table reverts to the founders.
+     * @return units Units swept.
      */
     function sweepFailedUnits() external nonReentrant returns (uint256 units) {
         if (state != State.Failed) revert NotFailed();
@@ -478,6 +512,8 @@ contract Offering is IERC1155Receiver, EIP712, Ownable, ReentrancyGuard {
      * @notice Recovers tokens that are not the payment token or the cap table,
      * and ETH via `token == address(0)`. ETH is never buyer liability — all
      * deposits are USDC — so the full balance is safe to sweep.
+     * @param token ERC-20 to rescue, or the zero address for ETH.
+     * @param to Recipient of the full balance.
      */
     function rescue(address token, address to) external onlyOwner nonReentrant {
         if (token == USDC || token == pactToken || to == address(0)) revert InvalidAddress();
@@ -498,6 +534,7 @@ contract Offering is IERC1155Receiver, EIP712, Ownable, ReentrancyGuard {
      * @notice Sweeps USDC in excess of the buyer liability to treasury —
      * e.g. split revenue earned on escrowed units and pushed here by
      * SplitMain's permissionless withdraw.
+     * @return amount USDC base units swept.
      */
     function sweepExcessUsdc() external onlyOwner nonReentrant returns (uint256 amount) {
         uint256 liability = raised - withdrawn;
@@ -508,7 +545,10 @@ contract Offering is IERC1155Receiver, EIP712, Ownable, ReentrancyGuard {
         emit ExcessSwept(amount);
     }
 
-    /// @notice Updates the treasury address that receives withdrawals and unsold units.
+    /**
+     * @notice Updates the treasury address that receives withdrawals and unsold units.
+     * @param treasury_ The new treasury; must be nonzero.
+     */
     function setTreasury(address treasury_) external onlyOwner {
         if (treasury_ == address(0)) revert InvalidAddress();
         treasury = treasury_;
@@ -519,6 +559,9 @@ contract Offering is IERC1155Receiver, EIP712, Ownable, ReentrancyGuard {
      * @notice Accepts cap-table units only while the raise is live: refund
      * reclaims (self-operated) always land; anything else must be a top-up of
      * this offering's own token id during Funding.
+     * @param operator The address that initiated the transfer.
+     * @param id Token id received; must be `TOKEN_ID`.
+     * @return The ERC-1155 receiver selector.
      */
     function onERC1155Received(address operator, address, uint256 id, uint256, bytes calldata)
         external
@@ -538,6 +581,13 @@ contract Offering is IERC1155Receiver, EIP712, Ownable, ReentrancyGuard {
         return IERC1155Receiver.onERC1155Received.selector;
     }
 
+    /**
+     * @notice Batch form of `onERC1155Received` under the same rules; every
+     * id must be `TOKEN_ID`.
+     * @param operator The address that initiated the transfer.
+     * @param ids Token ids received.
+     * @return The ERC-1155 batch receiver selector.
+     */
     function onERC1155BatchReceived(
         address operator,
         address,
@@ -556,6 +606,11 @@ contract Offering is IERC1155Receiver, EIP712, Ownable, ReentrancyGuard {
         return IERC1155Receiver.onERC1155BatchReceived.selector;
     }
 
+    /**
+     * @notice ERC-165: supports `IERC1155Receiver` and ERC-165 itself.
+     * @param interfaceId The interface id to query.
+     * @return True for the supported interface ids.
+     */
     function supportsInterface(bytes4 interfaceId) external pure returns (bool) {
         // 0x01ffc9a7 is the ERC-165 interface id itself (EIP-165).
         return interfaceId == type(IERC1155Receiver).interfaceId || interfaceId == 0x01ffc9a7;
@@ -565,7 +620,11 @@ contract Offering is IERC1155Receiver, EIP712, Ownable, ReentrancyGuard {
     /*                      PUBLIC FUNCTIONS                      */
     /*.•°:°.´+˚.*°.˚:*.´•*.+°.•°:´*.´•*.•°.•°:°.´:•˚°.*°.˚:*.´+°.•*/
 
-    /// @notice Current unsold units held by this contract.
+    /**
+     * @notice Current units held by the escrow; unsold while Funding,
+     * unsold plus reclaimed after failure.
+     * @return The escrow's `TOKEN_ID` balance, or zero before initialization.
+     */
     function remainingUnits() public view returns (uint256) {
         if (pactToken == address(0)) return 0;
         return IERC1155(pactToken).balanceOf(address(this), TOKEN_ID);
@@ -576,13 +635,20 @@ contract Offering is IERC1155Receiver, EIP712, Ownable, ReentrancyGuard {
      * @dev Unit n costs `priceStart + priceSlope * n`, so a batch is the sum of
      * consecutive unit prices. E.g. priceStart 10e6, priceSlope 1e6, sold 5,
      * units 3 buys units 5,6,7 for 15e6 + 16e6 + 17e6 = 48e6.
+     * @param sold Curve position to price from.
+     * @param units Whole units to price.
+     * @return Total cost in USDC base units.
      */
     function costFor(uint256 sold, uint256 units) public view returns (uint256) {
         if (units == 0) return 0;
         return units * priceStart + priceSlope * (sold * units + (units * (units - 1)) / 2);
     }
 
-    /// @notice EIP-712 digest the owner signs to endorse an allocation link key.
+    /**
+     * @notice EIP-712 digest the owner signs to endorse an allocation link key.
+     * @param voucher The allocation being endorsed.
+     * @return The typed-data hash under this contract's domain (`PACT`, `1`).
+     */
     function voucherDigest(Voucher calldata voucher) public view returns (bytes32) {
         bytes32 structHash = keccak256(
             abi.encode(
@@ -601,6 +667,9 @@ contract Offering is IERC1155Receiver, EIP712, Ownable, ReentrancyGuard {
      * @dev Typed like `voucherDigest` so the domain binds chain id and
      * verifying contract — a CREATE2 twin on another chain can't replay a
      * claim signature even if the owner re-issues the same allocation there.
+     * @param allocationId The allocation being claimed.
+     * @param buyer The claiming buyer the link key endorses.
+     * @return The typed-data hash under this contract's domain.
      */
     function claimDigest(bytes32 allocationId, address buyer) public view returns (bytes32) {
         return _hashTypedData(keccak256(abi.encode(CLAIM_TYPEHASH, allocationId, buyer)));
@@ -609,6 +678,7 @@ contract Offering is IERC1155Receiver, EIP712, Ownable, ReentrancyGuard {
     /**
      * @notice Sends newly claimable USDC proceeds to treasury after the minimum is met.
      * @dev Permissionless, but funds always go to treasury.
+     * @return amount USDC base units sent.
      */
     function withdraw() public nonReentrant returns (uint256 amount) {
         if (!minMet) revert MinimumNotMet();

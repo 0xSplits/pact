@@ -12,6 +12,15 @@ serverless: a static site whose only backend is the chain.
 > the lifecycle flows have only been exercised with small amounts. Use at your
 > own risk and with caution.
 
+## Integration
+
+Base mainnet (chain id `8453`). `OfferingFactory`:
+[`0x68DA9a884A6B5758a21490CeA5A1325C5f02eCdD`](https://basescan.org/address/0x68DA9a884A6B5758a21490CeA5A1325C5f02eCdD#code).
+
+- [`docs/integrate.md`](docs/integrate.md) — create, read status, approve + buy, withdraw/refund, by direct contract call
+- [`/llms.txt`](https://pact.splits.org/llms.txt) — index for agents; [`/.well-known/pact.json`](https://pact.splits.org/.well-known/pact.json) — machine-readable addresses and pointers
+- [`skills/pact`](skills/pact) — agent skill: protocol model and `cast` recipes for every read and write; `npx skills add 0xSplits/pact`
+
 ## App Surfaces
 
 - `/` — connected-wallet dashboard, or a short explainer for what PACT is and how it works.
