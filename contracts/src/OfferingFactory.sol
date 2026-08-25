@@ -49,7 +49,7 @@ contract OfferingFactory {
     /*                         IMMUTABLES                         */
     /*.•°:°.´+˚.*°.˚:*.´•*.+°.•°:´*.´•*.•°.•°:°.´:•˚°.*°.˚:*.´+°.•*/
 
-    /// @dev Canonical 0xSplits SplitMain v1.
+    /// @notice Canonical 0xSplits SplitMain v1 every PactToken pays through.
     address public immutable splitMain;
 
     /*´:°•.°+.*•´.*:˚.°*.˚•´.°:°•.°•.*•´.*:˚.°*.˚•´.°:°•.°+.*•´.*:*/
@@ -81,6 +81,8 @@ contract OfferingFactory {
      * the full supply is offered.
      * @param holderAllocations Unit allocations matching `holderAccounts`.
      * @param offeringUnits Units minted directly to the new Offering.
+     * @return offering The new Offering escrow; the id every app route and tool takes.
+     * @return pactToken The new PactToken cap table bound to `offering`.
      */
     function createOffering(
         string calldata projectName,
