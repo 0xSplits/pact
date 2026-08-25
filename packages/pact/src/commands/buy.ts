@@ -1,19 +1,24 @@
 import { Cli, z } from "incur";
 import { OFFERING_ABI } from "splits-pact/generated/offering-contracts.ts";
+import { BASE_USDC_ADDRESS } from "splits-pact/lib/chain/chain.ts";
 import {
   decodeVoucherFragment,
   signClaim,
 } from "splits-pact/lib/chain/voucher.ts";
+import { erc20Abi } from "viem";
+import type { Address } from "viem";
 
-import { offeringCall, VARS } from "#pact/commands/shared.ts";
+import { EXAMPLE_OFFERING, offeringCall, VARS } from "#pact/commands/shared.ts";
+import type { PactContext } from "#pact/context.ts";
 import { address, parseUsdc, units, usdc, usdcAmount } from "#pact/format.ts";
-import { quote, readOffering } from "#pact/reads.ts";
+import { quote } from "#pact/reads.ts";
 import {
   approveCall,
   assertFactoryChild,
   runWrite,
   WRITE_OPTIONS,
   WRITE_OUTPUT,
+  WriteError,
 } from "#pact/writes.ts";
 
 const BUY_OPTIONS = WRITE_OPTIONS.extend({
@@ -32,8 +37,32 @@ const BUY_OPTIONS = WRITE_OPTIONS.extend({
 
 const BUY_OUTPUT = WRITE_OUTPUT.extend({
   units: z.number(),
-  cost: z.string().describe("Quoted USDC cost, also the exact approve amount"),
+  cost: z
+    .string()
+    .describe(
+      "Quoted USDC cost; the approve is for --max-cost, which defaults to this",
+    ),
 });
+
+// The unsigned-mode preflight cannot see the allowance the approve will grant,
+// so a missing USDC balance would hide behind the same TransferFromFailed.
+async function assertUsdcBalance(
+  ctx: PactContext,
+  from: Address,
+  cost: bigint,
+) {
+  const balance = await ctx.client.readContract({
+    address: BASE_USDC_ADDRESS,
+    abi: erc20Abi,
+    functionName: "balanceOf",
+    args: [from],
+  });
+  if (balance < cost)
+    throw new WriteError(
+      "INSUFFICIENT_USDC",
+      `${from} holds ${usdc(balance)} USDC, below the ${usdc(cost)} quote; nothing sent`,
+    );
+}
 
 // Claim links are passed whole: https://pact.splits.org/buy?offering=0x…#<fragment>.
 // A bare fragment needs --offering.
@@ -69,7 +98,7 @@ export const buy = Cli.create("buy", {
     examples: [
       {
         args: {
-          offering: "0x1234567890abcdef1234567890abcdef12345678",
+          offering: EXAMPLE_OFFERING,
           units: 5,
         },
         options: { maxCost: "1250" },
@@ -88,6 +117,8 @@ export const buy = Cli.create("buy", {
           message: `Quote ${usdc(cost)} USDC exceeds --max-cost ${usdc(maxCost)}; nothing sent`,
           exitCode: 1,
         });
+      const from = ctx.account?.address ?? c.options.from;
+      if (from) await assertUsdcBalance(ctx, from, maxCost);
       const result = await runWrite(ctx, {
         offering: c.args.offering,
         calls: [
@@ -141,6 +172,15 @@ export const buy = Cli.create("buy", {
       amountCap: z.string(),
     }),
     destructive: true,
+    examples: [
+      {
+        args: {
+          link: "https://pact.splits.org/buy?offering=0x…#<fragment>",
+          units: 3,
+        },
+        description: "Claim 3 units with the link the issuer shared",
+      },
+    ],
     async run(c) {
       const ctx = c.var.pact;
       const { fragment, offering } = parseClaimLink(
@@ -201,6 +241,7 @@ export const buy = Cli.create("buy", {
         amountCapUsdc: decoded.voucher.amountCapUsdc,
         linkKey: decoded.voucher.linkKey,
       };
+      await assertUsdcBalance(ctx, buyer, maxCost);
       const result = await runWrite(ctx, {
         offering: offeringAddress,
         calls: [
@@ -223,7 +264,6 @@ export const buy = Cli.create("buy", {
         ],
         options: c.options,
       });
-      const state = await readOffering(ctx.client, offeringAddress);
       return c.ok(
         {
           ...result,
@@ -236,7 +276,7 @@ export const buy = Cli.create("buy", {
           cta: {
             commands: [
               {
-                command: `offering get ${state.offering}`,
+                command: `offering get ${offeringAddress}`,
                 description: "Confirm the claim landed",
               },
             ],

@@ -56,8 +56,8 @@ Details and the ledger merge rule: `references/vouchers.md`.
 ## Safety rails (always)
 
 1. `offering quote` before any buy; pass `--max-cost` from that quote.
-2. Buys are two transactions: exact-amount `USDC.approve(offering, cost)`
-   then the buy. Never approve more, never approve an address that
+2. Buys are two transactions: `USDC.approve(offering, maxCost)` where
+   `maxCost` defaults to the quote, then the buy. Never approve more, never approve an address that
    `pact` refuses (it verifies the factory scan first).
 3. Check `phase` before writes; the table above says what can succeed.
 4. Every write simulates first and returns the decoded revert instead of

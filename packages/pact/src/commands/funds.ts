@@ -1,18 +1,18 @@
 import { Cli, z } from "incur";
 import { PACT_TOKEN_ABI } from "splits-pact/generated/offering-contracts.ts";
-import { BASE_USDC_ADDRESS } from "splits-pact/lib/chain/chain.ts";
 
 import {
   contractCall,
+  EXAMPLE_OFFERING,
+  OFFERING,
   offeringCall,
+  parseToken,
   VARS,
   ZERO_ADDRESS,
 } from "#pact/commands/shared.ts";
 import { address } from "#pact/format.ts";
 import { capTable, findFactoryChild } from "#pact/reads.ts";
 import { runWrite, WRITE_OPTIONS, WRITE_OUTPUT } from "#pact/writes.ts";
-
-const OFFERING = z.object({ offering: address });
 
 export const funds = Cli.create("funds", {
   description:
@@ -26,6 +26,7 @@ export const funds = Cli.create("funds", {
     options: WRITE_OPTIONS,
     output: WRITE_OUTPUT,
     destructive: true,
+    examples: [{ args: { offering: EXAMPLE_OFFERING } }],
     run: (c) =>
       runWrite(c.var.pact, {
         offering: c.args.offering,
@@ -40,6 +41,7 @@ export const funds = Cli.create("funds", {
     options: WRITE_OPTIONS,
     output: WRITE_OUTPUT,
     destructive: true,
+    examples: [{ args: { offering: EXAMPLE_OFFERING } }],
     run: (c) =>
       runWrite(c.var.pact, {
         offering: c.args.offering,
@@ -64,6 +66,9 @@ export const funds = Cli.create("funds", {
     }),
     output: WRITE_OUTPUT.extend({ accounts: z.array(z.string()) }),
     destructive: true,
+    examples: [
+      { args: { offering: EXAMPLE_OFFERING }, options: { token: "usdc" } },
+    ],
     async run(c) {
       const ctx = c.var.pact;
       const record = await findFactoryChild(ctx, c.args.offering);
@@ -73,12 +78,7 @@ export const funds = Cli.create("funds", {
           message: `${c.args.offering} was not created by the pinned factory`,
           exitCode: 1,
         });
-      const token =
-        c.options.token === "usdc"
-          ? BASE_USDC_ADDRESS
-          : c.options.token === "eth"
-            ? ZERO_ADDRESS
-            : address.parse(c.options.token);
+      const token = parseToken(c.options.token);
       const holders = await capTable(
         ctx,
         record.pactToken,
@@ -117,6 +117,7 @@ export const funds = Cli.create("funds", {
     options: WRITE_OPTIONS,
     output: WRITE_OUTPUT,
     destructive: true,
+    examples: [{ args: { offering: EXAMPLE_OFFERING } }],
     run: (c) =>
       runWrite(c.var.pact, {
         offering: c.args.offering,
@@ -134,11 +135,17 @@ export const funds = Cli.create("funds", {
     }),
     output: WRITE_OUTPUT,
     destructive: true,
+    examples: [
+      {
+        args: { offering: EXAMPLE_OFFERING },
+        options: {
+          token: "eth",
+          to: "0x1234567890abcdef1234567890abcdef12345678",
+        },
+      },
+    ],
     run: (c) => {
-      const token =
-        c.options.token === "eth"
-          ? ZERO_ADDRESS
-          : address.parse(c.options.token);
+      const token = parseToken(c.options.token);
       return runWrite(c.var.pact, {
         offering: c.args.offering,
         calls: [offeringCall(c.args.offering, "rescue", [token, c.options.to])],

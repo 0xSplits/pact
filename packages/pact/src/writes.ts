@@ -150,30 +150,6 @@ export const approveCall = (offering: Address, amount: bigint): Call => ({
   description: `USDC.approve(${offering}, ${amount})`,
 });
 
-export function offeringCall<
-  name extends Extract<
-    (typeof OFFERING_ABI)[number],
-    { type: "function" }
-  >["name"],
->(
-  offering: Address,
-  functionName: name,
-  args: Parameters<
-    typeof encodeFunctionData<typeof OFFERING_ABI, name>
-  >[0]["args"],
-  description = `Offering.${functionName}`,
-): Call {
-  return {
-    to: offering,
-    data: encodeFunctionData({
-      abi: OFFERING_ABI,
-      functionName,
-      args,
-    } as Parameters<typeof encodeFunctionData>[0]),
-    description,
-  };
-}
-
 export interface WriteRequest {
   // The offering the sequence targets; verified against the factory scan
   // before anything else happens. Omit for the factory itself.

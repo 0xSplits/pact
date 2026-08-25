@@ -31,7 +31,7 @@ Every write runs the same guardrails, none optional: the target must be a
 child of the pinned factory (verified by `OfferingCreated` scan, before any
 USDC approve), every transaction is `eth_call`-simulated first, a failing
 simulation aborts with the decoded revert, and the exit code is non-zero
-whenever nothing was sent. Buys approve the exact quoted amount.
+whenever nothing was sent. Buys approve exactly `--max-cost`, which defaults to the quote.
 
 - Unsigned (no key, or `--dry-run`): `{ mode: "unsigned", preflight, transactions: [{to, data, value, chainId, description}] }`; pass `--from` so the simulation runs as the eventual signer. Use `--format json` when relaying.
 - Key mode: sends in order, waits one confirmation each, returns decoded events.
@@ -48,7 +48,7 @@ Protocol understanding lives in the repo docs: [architecture](https://pact.split
 
 ## Development
 
-From the repo root: `npm test` runs the unit tests (`src/**/*.test.ts`),
+The published bundle runs on Node 20+; running from source (`npm run dev -w packages/pact`) needs Node 22.18+ for native type stripping. From the repo root: `npm test` runs the unit tests (`src/**/*.test.ts`),
 `npm run test:e2e` packs this package and drives the built binary against
 a local anvil. `npm run dev -w packages/pact -- --help` runs from source.
 

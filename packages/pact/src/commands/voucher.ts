@@ -20,9 +20,14 @@ import { OG_SITE_ORIGIN } from "splits-pact/lib/og.ts";
 import { buyLinkPath } from "splits-pact/lib/routes.ts";
 import type { Address, Hex } from "viem";
 
-import { offeringCall, VARS } from "#pact/commands/shared.ts";
 import {
-  address,
+  EXAMPLE_OFFERING,
+  OFFERING,
+  offeringCall,
+  VARS,
+} from "#pact/commands/shared.ts";
+import type { PactContext } from "#pact/context.ts";
+import {
   bytes32,
   jsonSafe,
   parseUsdc,
@@ -31,8 +36,6 @@ import {
 } from "#pact/format.ts";
 import { readOffering } from "#pact/reads.ts";
 import { runWrite, WRITE_OPTIONS, WRITE_OUTPUT } from "#pact/writes.ts";
-
-const OFFERING = z.object({ offering: address });
 
 interface Draft {
   offering: Address;
@@ -46,7 +49,7 @@ const decodeDraft = (text: string): Draft =>
   JSON.parse(Buffer.from(text, "base64url").toString("utf8"));
 
 function persistLink(
-  ctx: { ledger: Parameters<typeof saveAllocationLedgerRow>[2] },
+  ctx: Pick<PactContext, "ledger">,
   draft: Draft,
   ownerSig: Hex,
 ) {
@@ -112,7 +115,7 @@ export const voucher = Cli.create("voucher", {
     destructive: true,
     examples: [
       {
-        args: { offering: "0x1234567890abcdef1234567890abcdef12345678" },
+        args: { offering: EXAMPLE_OFFERING },
         options: { name: "Ada", cap: "2500" },
       },
     ],
@@ -182,6 +185,7 @@ export const voucher = Cli.create("voucher", {
     }),
     output: ISSUED,
     destructive: true,
+    examples: [{ args: { draft: "<draft>", signature: "0x…" } }],
     async run(c) {
       const ctx = c.var.pact;
       const draft = decodeDraft(c.args.draft);
@@ -220,6 +224,14 @@ export const voucher = Cli.create("voucher", {
       ledger: z.record(z.string(), z.any()).nullable(),
     }),
     mcp: { annotations: { readOnlyHint: true } },
+    examples: [
+      {
+        args: {
+          offering: EXAMPLE_OFFERING,
+          allocationId: "0x" + "ab".repeat(32),
+        },
+      },
+    ],
     async run(c) {
       const consumed = await c.var.pact.client.readContract({
         address: c.args.offering,
@@ -250,6 +262,7 @@ export const voucher = Cli.create("voucher", {
       allocations: z.array(z.record(z.string(), z.any())),
     }),
     mcp: { annotations: { readOnlyHint: true } },
+    examples: [{ args: { offering: EXAMPLE_OFFERING } }],
     async run(c) {
       const ctx = c.var.pact;
       const rows = listAllocationLedger(c.args.offering, ctx.ledger);
@@ -271,11 +284,19 @@ export const voucher = Cli.create("voucher", {
   })
   .command("cancel", {
     description:
-      "Owner: revoke an unclaimed allocation onchain (cancelAllocation) and mark it in the ledger",
+      "Owner: revoke an unclaimed allocation onchain (cancelAllocation). The ledger row is marked revoked only in key mode; after an unsigned relay, `voucher list` still shows the onchain consumed flag",
     args: OFFERING.extend({ allocationId: bytes32 }),
     options: WRITE_OPTIONS,
     output: WRITE_OUTPUT,
     destructive: true,
+    examples: [
+      {
+        args: {
+          offering: EXAMPLE_OFFERING,
+          allocationId: "0x" + "ab".repeat(32),
+        },
+      },
+    ],
     async run(c) {
       const ctx = c.var.pact;
       const result = await runWrite(ctx, {

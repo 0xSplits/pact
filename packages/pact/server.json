@@ -42,7 +42,7 @@
         },
         {
           "name": "PACT_CHAIN_ID",
-          "description": "Expected chain id; defaults to 8453",
+          "description": "Expected chain id; the CLI refuses to run if the RPC disagrees",
           "isRequired": false
         },
         {
@@ -51,8 +51,13 @@
           "isRequired": false
         },
         {
+          "name": "PACT_FACTORY_DEPLOY_BLOCK",
+          "description": "Lower bound for OfferingCreated scans; defaults to the pin's block, or 0 when the factory is overridden",
+          "isRequired": false
+        },
+        {
           "name": "PACT_PRIVATE_KEY",
-          "description": "Operator key enabling signed sends; omit for unsigned transactions",
+          "description": "Operator key (0x-hex). When set, writes are signed and sent; otherwise they return unsigned transactions",
           "isRequired": false,
           "isSecret": true
         },

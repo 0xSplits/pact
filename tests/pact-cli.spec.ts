@@ -302,6 +302,16 @@ test("config, create, quote, buy in both modes, vouchers, withdraw", async () =>
 test("failure path: mark, refund, sweep", async () => {
   const offering = await createOffering("5000");
   expect((await pact(["buy", "public", offering, "1"], asKey(1))).code).toBe(0);
+  const buyerB = e2eAccount(2);
+  const unsignedBuy = await pact([
+    "buy",
+    "public",
+    offering,
+    "1",
+    "--from",
+    buyerB,
+  ]);
+  await relay(buyerB, unsignedBuy.data.transactions);
   const snapshot = await rpc("evm_snapshot");
   try {
     await rpc("evm_increaseTime", [2 * 86400]);
@@ -314,6 +324,17 @@ test("failure path: mark, refund, sweep", async () => {
     expect(refunded.data.sent[0].events.map((e: any) => e.name)).toContain(
       "RefundPaid",
     );
+    const unsignedRefund = await pact([
+      "fail",
+      "refund",
+      offering,
+      "--from",
+      buyerB,
+    ]);
+    expect(unsignedRefund.code, unsignedRefund.stderr).toBe(0);
+    expect(unsignedRefund.data.mode).toBe("unsigned");
+    await relay(buyerB, unsignedRefund.data.transactions);
+    expect((await readOffering(offering)).data.raised).toBe("0");
     const swept = await pact(["fail", "sweep", offering], asKey(2));
     expect(swept.code, swept.stderr).toBe(0);
     expect((await readOffering(offering)).data.remainingUnits).toBe(0);

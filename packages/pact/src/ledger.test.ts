@@ -51,7 +51,6 @@ test("file storage keeps one bare row array per chain and offering", () => {
   assert.equal(onDisk.length, 2);
   assert.equal(onDisk[0].revokedAt, 9);
   assert.equal(listAllocationLedger(OFFERING, storage).length, 2);
-  // A stale writer re-saving the pre-revocation row cannot undo the mark.
   saveAllocationLedgerRow(OFFERING, row("1"), storage);
   assert.equal(listAllocationLedger(OFFERING, storage)[0]?.revokedAt, 9);
   assert.equal(storage.getItem("unrelated"), null);

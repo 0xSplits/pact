@@ -8,7 +8,12 @@ import {
 import { getAddress } from "viem";
 import type { Address } from "viem";
 
-import { contractCall, VARS } from "#pact/commands/shared.ts";
+import {
+  contractCall,
+  EXAMPLE_OFFERING,
+  OFFERING,
+  VARS,
+} from "#pact/commands/shared.ts";
 import { address, parseUsdc, units, usdc, usdcAmount } from "#pact/format.ts";
 import {
   capTable,
@@ -20,8 +25,6 @@ import {
   serializeOffering,
 } from "#pact/reads.ts";
 import { runWrite, WRITE_OPTIONS, WRITE_OUTPUT } from "#pact/writes.ts";
-
-const OFFERING = z.object({ offering: address.describe("Offering address") });
 
 // "0xabc…:600,0xdef…:150" → founder rows.
 function parseHolders(
@@ -49,9 +52,7 @@ export const offering = Cli.create("offering", {
     args: OFFERING,
     output: z.record(z.string(), z.any()),
     mcp: { annotations: { readOnlyHint: true } },
-    examples: [
-      { args: { offering: "0x1234567890abcdef1234567890abcdef12345678" } },
-    ],
+    examples: [{ args: { offering: EXAMPLE_OFFERING } }],
     async run(c) {
       const state = await readOffering(c.var.pact.client, c.args.offering);
       return c.ok(serializeOffering(state), {
@@ -75,6 +76,7 @@ export const offering = Cli.create("offering", {
       "Every offering the pinned factory created (OfferingCreated scan)",
     output: z.object({ offerings: z.array(z.record(z.string(), z.any())) }),
     mcp: { annotations: { readOnlyHint: true } },
+    examples: [{ description: "Every offering the factory created" }],
     async run(c) {
       const offerings = await scanOfferings(c.var.pact);
       return c.ok(
@@ -102,6 +104,7 @@ export const offering = Cli.create("offering", {
       phase: z.string(),
     }),
     mcp: { annotations: { readOnlyHint: true } },
+    examples: [{ args: { offering: EXAMPLE_OFFERING, units: 10 } }],
     async run(c) {
       const state = serializeOffering(
         await readOffering(c.var.pact.client, c.args.offering),
@@ -143,6 +146,7 @@ export const offering = Cli.create("offering", {
       purchases: z.array(z.record(z.string(), z.any())),
     }),
     mcp: { annotations: { readOnlyHint: true } },
+    examples: [{ args: { offering: EXAMPLE_OFFERING } }],
     async run(c) {
       const record = await findFactoryChild(c.var.pact, c.args.offering);
       if (!record)

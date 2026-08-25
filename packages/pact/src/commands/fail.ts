@@ -1,11 +1,14 @@
 import { Cli, z } from "incur";
 
-import { offeringCall, VARS } from "#pact/commands/shared.ts";
+import {
+  EXAMPLE_OFFERING,
+  OFFERING,
+  offeringCall,
+  VARS,
+} from "#pact/commands/shared.ts";
 import { address } from "#pact/format.ts";
 import { findFactoryChild, scanPurchases } from "#pact/reads.ts";
 import { runWrite, WRITE_OPTIONS, WRITE_OUTPUT } from "#pact/writes.ts";
-
-const OFFERING = z.object({ offering: address });
 
 export const fail = Cli.create("fail", {
   description:
@@ -19,6 +22,7 @@ export const fail = Cli.create("fail", {
     options: WRITE_OPTIONS,
     output: WRITE_OUTPUT,
     destructive: true,
+    examples: [{ args: { offering: EXAMPLE_OFFERING } }],
     run: (c) =>
       runWrite(c.var.pact, {
         offering: c.args.offering,
@@ -33,6 +37,7 @@ export const fail = Cli.create("fail", {
     options: WRITE_OPTIONS,
     output: WRITE_OUTPUT,
     destructive: true,
+    examples: [{ args: { offering: EXAMPLE_OFFERING } }],
     run: (c) =>
       runWrite(c.var.pact, {
         offering: c.args.offering,
@@ -52,6 +57,12 @@ export const fail = Cli.create("fail", {
     }),
     output: WRITE_OUTPUT.extend({ buyers: z.array(z.string()) }),
     destructive: true,
+    examples: [
+      {
+        args: { offering: EXAMPLE_OFFERING },
+        description: "Refund every buyer",
+      },
+    ],
     async run(c) {
       const ctx = c.var.pact;
       let buyers: string[];
@@ -97,6 +108,7 @@ export const fail = Cli.create("fail", {
     options: WRITE_OPTIONS,
     output: WRITE_OUTPUT,
     destructive: true,
+    examples: [{ args: { offering: EXAMPLE_OFFERING } }],
     run: (c) =>
       runWrite(c.var.pact, {
         offering: c.args.offering,

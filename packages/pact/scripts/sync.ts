@@ -5,6 +5,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { ENV } from "#pact/env.ts";
+
 const packageRoot = path.join(
   path.dirname(fileURLToPath(import.meta.url)),
   "..",
@@ -14,12 +16,14 @@ const pkg = JSON.parse(
   fs.readFileSync(path.join(packageRoot, "package.json"), "utf8"),
 );
 
-const env = (name: string, description: string, isSecret = false) => ({
-  name,
-  description,
-  isRequired: false,
-  ...(isSecret ? { isSecret: true } : {}),
-});
+const environmentVariables = Object.entries(ENV.shape).map(
+  ([name, schema]) => ({
+    name,
+    description: schema.description ?? "",
+    isRequired: false,
+    ...(name === "PACT_PRIVATE_KEY" ? { isSecret: true } : {}),
+  }),
+);
 
 const serverJson = {
   $schema:
@@ -46,26 +50,7 @@ const serverJson = {
         { type: "positional", value: "--mcp", valueHint: "--mcp" },
       ],
       transport: { type: "stdio" },
-      environmentVariables: [
-        env(
-          "PACT_RPC_URL",
-          "JSON-RPC endpoint; defaults to the public Base RPC",
-        ),
-        env("PACT_CHAIN_ID", "Expected chain id; defaults to 8453"),
-        env(
-          "PACT_FACTORY_ADDRESS",
-          "OfferingFactory address; defaults to the pinned Base deployment",
-        ),
-        env(
-          "PACT_PRIVATE_KEY",
-          "Operator key enabling signed sends; omit for unsigned transactions",
-          true,
-        ),
-        env(
-          "PACT_LEDGER_DIR",
-          "Voucher ledger directory; defaults to ~/.pact/ledger",
-        ),
-      ],
+      environmentVariables,
     },
   ],
 };

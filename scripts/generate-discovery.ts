@@ -44,6 +44,11 @@ function assertPinned(relative: string, text: string) {
   }
   if (!text.includes(OFFERING_FACTORY_ADDRESS))
     throw new Error(`${relative}: missing the pinned factory address`);
+  if (
+    relative === "docs/integrate.md" &&
+    !text.includes(String(OFFERING_FACTORY_DEPLOY_BLOCK))
+  )
+    throw new Error(`${relative}: deploy block does not match the pin`);
 }
 
 const mirrors: Array<[source: string, target: string]> = [

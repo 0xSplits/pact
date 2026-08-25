@@ -1,10 +1,13 @@
-import { Cli, z } from "incur";
+import { Cli } from "incur";
 
-import { offeringCall, VARS } from "#pact/commands/shared.ts";
+import {
+  EXAMPLE_OFFERING,
+  OFFERING,
+  offeringCall,
+  VARS,
+} from "#pact/commands/shared.ts";
 import { address, units } from "#pact/format.ts";
 import { runWrite, WRITE_OPTIONS, WRITE_OUTPUT } from "#pact/writes.ts";
-
-const OFFERING = z.object({ offering: address });
 
 export const admin = Cli.create("admin", {
   description: "Owner settings: tranche cap, treasury, ownership",
@@ -17,6 +20,7 @@ export const admin = Cli.create("admin", {
     options: WRITE_OPTIONS,
     output: WRITE_OUTPUT,
     destructive: true,
+    examples: [{ args: { offering: EXAMPLE_OFFERING, units: 100 } }],
     run: (c) =>
       runWrite(c.var.pact, {
         offering: c.args.offering,
@@ -34,6 +38,14 @@ export const admin = Cli.create("admin", {
     options: WRITE_OPTIONS,
     output: WRITE_OUTPUT,
     destructive: true,
+    examples: [
+      {
+        args: {
+          offering: EXAMPLE_OFFERING,
+          treasury: "0x1234567890abcdef1234567890abcdef12345678",
+        },
+      },
+    ],
     run: (c) =>
       runWrite(c.var.pact, {
         offering: c.args.offering,
@@ -50,6 +62,14 @@ export const admin = Cli.create("admin", {
     options: WRITE_OPTIONS,
     output: WRITE_OUTPUT,
     destructive: true,
+    examples: [
+      {
+        args: {
+          offering: EXAMPLE_OFFERING,
+          newOwner: "0x1234567890abcdef1234567890abcdef12345678",
+        },
+      },
+    ],
     run: (c) =>
       runWrite(c.var.pact, {
         offering: c.args.offering,
@@ -70,6 +90,17 @@ export const admin = Cli.create("admin", {
     }),
     output: WRITE_OUTPUT,
     destructive: true,
+    examples: [
+      {
+        args: { offering: EXAMPLE_OFFERING },
+        description: "Request a handover as the future owner",
+      },
+      {
+        args: { offering: EXAMPLE_OFFERING },
+        options: { pending: "0x1234567890abcdef1234567890abcdef12345678" },
+        description: "Complete it as the current owner",
+      },
+    ],
     run: (c) =>
       runWrite(c.var.pact, {
         offering: c.args.offering,

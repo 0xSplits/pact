@@ -78,6 +78,7 @@ export function createCli({
         ledgerDir: z.string(),
       }),
       mcp: { annotations: { readOnlyHint: true } },
+      examples: [{ description: "Show the effective configuration" }],
       hint: [
         "Environment:",
         ...Object.entries(ENV.shape).map(

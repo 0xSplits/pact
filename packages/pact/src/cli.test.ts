@@ -141,7 +141,6 @@ function fake({
       call: async ({ to, data }: { to: Address; data: Hex }) => {
         calls.push({ to, data });
         const fn = functionOf(to, data);
-        // Without an allowance USDC.transferFrom fails inside every buy.
         const allowanceMissing =
           fn.startsWith("buy") && !sent.some((s) => s.to !== OFFERING);
         const revertData =

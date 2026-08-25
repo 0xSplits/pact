@@ -38,7 +38,7 @@
   "scripts": {
     "dev": "node src/bin.ts",
     "sync": "node scripts/sync.ts",
-    "build": "npm run sync && esbuild src/bin.ts --bundle --platform=node --target=node20 --format=esm --external:viem --banner:js=\"import { createRequire as __createRequire } from 'node:module'; const require = __createRequire(import.meta.url);\" --outfile=dist/pact.js --log-level=warning",
+    "build": "npm run sync && esbuild src/bin.ts --bundle --platform=node --target=node20 --format=esm --external:viem --external:@modelcontextprotocol/server --banner:js=\"import { createRequire as __createRequire } from 'node:module'; const require = __createRequire(import.meta.url);\" --outfile=dist/pact.js --log-level=warning",
     "prepack": "npm run build"
   },
   "dependencies": {
