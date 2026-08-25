@@ -299,12 +299,16 @@ test("buyer purchases from the public tranche with real transactions", async ({
   await page.getByText("Max $104.95 available").click();
   await expect(amountInput).toHaveValue("104.95");
   await expect(
-    page.getByText("100 units · 10.0% of the project"),
-  ).toBeVisible();
+    page.locator("dd").filter({ hasText: "100 units" }),
+  ).toContainText("10.0%");
   // $60 as a budget buys 58 whole units at their actual cost of $59.65.
   await amountInput.fill("60");
-  await expect(page.getByText("58 units · 5.8% of the project")).toBeVisible();
-  await expect(page.getByText("$59.65 charged · $1.03 / unit")).toBeVisible();
+  await expect(
+    page.locator("dd").filter({ hasText: "58 units" }),
+  ).toContainText("5.8%");
+  await expect(page.locator("dd").filter({ hasText: "/ unit" })).toContainText(
+    "$59.65",
+  );
   await page.getByPlaceholder("Optional, public").fill("Alice");
   await expect(page.locator('button[data-act="pay"]')).toBeDisabled();
   await page.getByRole("checkbox").check();

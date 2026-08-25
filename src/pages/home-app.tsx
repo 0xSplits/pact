@@ -14,6 +14,7 @@ import { offeringStateCurve } from "#lib/chain/onchain.ts";
 import type { OfferingRecord } from "#lib/chain/onchain.ts";
 import {
   fmtDate,
+  fmtPct,
   fmtTokens,
   fmtUsd,
   usdcBaseUnitsToDollars,
@@ -230,7 +231,7 @@ function Dashboard({ records }: { records: WalletRecords }) {
               <tr>
                 <th>Project</th>
                 <th className="num">Amount</th>
-                <th className="num">Units</th>
+                <th className="num">Ownership</th>
                 <th className="num">Date</th>
                 <th className="num">Receipt</th>
               </tr>
@@ -247,7 +248,13 @@ function Dashboard({ records }: { records: WalletRecords }) {
                   <td className="num">
                     {fmtUsd(usdcBaseUnitsToDollars(purchase.cost), "cents")}
                   </td>
-                  <td className="num">{fmtTokens(purchase.units)}</td>
+                  <td className="num">
+                    {fmtPct((purchase.units / TOTAL_LIQUID_SPLIT_UNITS) * 100)}
+                    <span className="t-muted">
+                      {" "}
+                      ({fmtTokens(purchase.units)} units)
+                    </span>
+                  </td>
                   <td className="num">
                     {purchase.timestamp
                       ? fmtDate(purchase.timestamp * 1000)

@@ -634,10 +634,8 @@ body {
 }
 
 /* top chrome: brand on the left, wallet controls on the right */
-/* Stone/mirror wordmark: the ring gradient runs top→bottom light-to-dark
-   (as if lit from above), and the inner "well" is the same gradient inverted
-   so it reads as an inset. The transparent border lets the border-box
-   background layer show through as the ring. */
+/* Plain wordmark — just the name, no chrome, so it reads as branding rather
+   than a control sitting opposite the wallet button. */
 .top-brand {
   position: fixed;
   top: 16px;
@@ -646,17 +644,11 @@ body {
   display: inline-flex;
   align-items: center;
   height: 36px;
-  padding: 0 12px;
-  border: 3px solid transparent;
-  background:
-    linear-gradient(to top, #c4c4c4 0%, #9a9a9a 100%) padding-box,
-    linear-gradient(to bottom, #c4c4c4 0%, #9a9a9a 100%) border-box;
-  color: #1a1a1a;
-  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.25);
+  color: var(--ink);
   font-family: var(--font);
-  font-size: var(--text-base);
+  font-size: var(--text-lg);
   font-weight: 700;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.14em;
   text-decoration: none;
   line-height: 1;
 }

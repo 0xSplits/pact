@@ -612,20 +612,23 @@ function AllocationsTable({
             const cost = usdcBaseUnitsToDollars(row.cost);
             return (
               <tr key={row.key}>
-                <td>{row.name}</td>
-                <td className="num">{fmtUsd(cost)}</td>
+                <td>
+                  {row.name}
+                  {row.isPublic ? (
+                    <span className="t-muted"> (public)</span>
+                  ) : null}
+                </td>
+                <td className="num">{fmtUsd(cost, "cents")}</td>
                 <td>
                   Purchased{" "}
+                  {fmtPct((row.units / TOTAL_LIQUID_SPLIT_UNITS) * 100)}{" "}
                   <span className="tokencell">
-                    {fmtTokens(row.units)} units
+                    ({fmtTokens(row.units)} units)
                     <span className="tip2">
                       {row.units > 0 ? fmtUsd(cost / row.units, "cents") : "—"}{" "}
                       / unit
                     </span>
                   </span>
-                  {row.isPublic ? (
-                    <span className="t-muted"> (public)</span>
-                  ) : null}
                 </td>
                 <td className="num whitespace-nowrap">
                   <span className="alloc-actions">
@@ -646,7 +649,7 @@ function AllocationsTable({
             <td>Public allocation</td>
             <td className="num">
               {offeringOpen && publicUnitsAvailable > 0
-                ? `~${fmtUsd(publicOpenUsd)}`
+                ? `~${fmtUsd(publicOpenUsd, "cents")}`
                 : "—"}
             </td>
             <td>
@@ -698,7 +701,7 @@ function AllocationsTable({
           {open.map((row) => (
             <tr key={row.key}>
               <td>{row.name}</td>
-              <td className="num">{fmtUsd(row.amountUsd)}</td>
+              <td className="num">{fmtUsd(row.amountUsd, "cents")}</td>
               <td>
                 {row.status === "revoked" ? (
                   <span className="badge revoked">Revoked</span>
@@ -802,19 +805,22 @@ function PurchasesTable({
               isSameAddress(wallet, row.buyer);
             return (
               <tr key={row.key}>
-                <td>{row.name}</td>
-                <td className="num">{fmtUsd(cost)}</td>
                 <td>
+                  {row.name}
+                  {row.isPublic ? (
+                    <span className="t-muted"> (public)</span>
+                  ) : null}
+                </td>
+                <td className="num">{fmtUsd(cost, "cents")}</td>
+                <td>
+                  {fmtPct((row.units / TOTAL_LIQUID_SPLIT_UNITS) * 100)}{" "}
                   <span className="tokencell">
-                    {fmtTokens(row.units)} units
+                    ({fmtTokens(row.units)} units)
                     <span className="tip2">
                       {row.units > 0 ? fmtUsd(cost / row.units, "cents") : "—"}{" "}
                       / unit
                     </span>
                   </span>
-                  {row.isPublic ? (
-                    <span className="t-muted"> (public sale)</span>
-                  ) : null}
                   {refund === "refunded" ? (
                     <>
                       {" "}
@@ -1714,12 +1720,6 @@ export function StatusApp() {
           <p className="text-sm t-muted mt-1">
             <AddressLink address={record.offering} />
           </p>
-          {!canManage && !ended ? (
-            <Notice className="no-print mt-4 text-sm t-muted">
-              Connect with the treasury or creator wallet to manage the
-              offering.
-            </Notice>
-          ) : null}
         </div>
         {readFailed ? (
           <button
@@ -1763,6 +1763,12 @@ export function StatusApp() {
           />
         )}
       </div>
+
+      {!canManage && !ended ? (
+        <Notice className="no-print mt-4 text-sm t-muted">
+          Connect with the treasury or creator wallet to manage the offering.
+        </Notice>
+      ) : null}
 
       {ended ? (
         <>
