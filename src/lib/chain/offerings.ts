@@ -94,9 +94,14 @@ export async function cachedScan<T>({
   latestBlock,
   storage = localStorage,
 }: CachedScanOptions<T>): Promise<T[]> {
-  const cache = readCache<T>(storage, key);
+  let cache = readCache<T>(storage, key);
+  let seen = new Set<string>();
+  try {
+    seen = new Set((cache ? cache.items : []).map(dedupeKey));
+  } catch {
+    cache = null; // an item dedupeKey can't read is a corrupt cache, not a wedge
+  }
   const items = cache ? cache.items : [];
-  const seen = new Set(items.map(dedupeKey));
   const from = cache ? cache.lastScannedBlock + 1 : fromBlock;
   const to = latestBlock != null ? latestBlock : await getLatestBlockNumber();
 

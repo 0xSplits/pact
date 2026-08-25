@@ -8,7 +8,13 @@
 // uint256 math exactly. The only conversions are at the edges: parseUnits on
 // dollar input (chain.ts), formatUnits at the display boundary (format.ts),
 // and decimal strings inside the JSON localStorage caches.
-import { erc20Abi, getAddress, isAddressEqual, parseEventLogs } from "viem";
+import {
+  erc20Abi,
+  getAddress,
+  isAddressEqual,
+  parseAbi,
+  parseEventLogs,
+} from "viem";
 import type {
   Abi,
   AbiEvent,
@@ -56,6 +62,33 @@ import type { Voucher } from "#lib/chain/voucher.ts";
 import { wagmiConfig } from "#lib/chain/wagmi.ts";
 
 const client = () => getPublicClient(wagmiConfig);
+
+// The token mints to holders and the escrow pushes units to the treasury on
+// close/sweep, and both revert on a contract recipient whose
+// onERC1155Received doesn't answer with its selector. The create form runs
+// the same call the transfer would, so a bad recipient fails in the form,
+// not at mint or close. ERC-165 is deliberately not consulted: receivers
+// that skip or revert on supportsInterface still take transfers fine.
+const erc1155ReceiverAbi = parseAbi([
+  "function onERC1155Received(address operator, address from, uint256 id, uint256 value, bytes data) returns (bytes4)",
+]);
+const ON_ERC1155_RECEIVED = "0xf23a6e61";
+export async function canReceiveUnits(address: Address): Promise<boolean> {
+  const to = getAddress(address);
+  const code = await client().getCode({ address: to });
+  if (!code || code === "0x") return true;
+  try {
+    const { result } = await client().simulateContract({
+      abi: erc1155ReceiverAbi,
+      address: to,
+      functionName: "onERC1155Received",
+      args: [to, to, 0n, 1n, "0x"],
+    });
+    return result === ON_ERC1155_RECEIVED;
+  } catch {
+    return false;
+  }
+}
 
 // A block-range log request with the event(s) to decode. Callers chunk
 // ranges themselves — public Base RPC caps a request at 10k blocks (see

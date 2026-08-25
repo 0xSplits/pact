@@ -28,6 +28,15 @@ is distributable to holders in proportion to their units via [Splits](https://sp
   permissionless as usual. Accepted residual: after a failure, revenue
   accrued before the failure stays distributable by holders who have not
   yet refunded.
+- **Revenue goes to the token, never to `payoutSplit`.** The LiquidSplit
+  base creates the payout split with placeholder recipients
+  (`address(0)` and `address(1)`, 50/50) that only the first
+  `distributeFunds` rewrites; upstream that happens moments later, here the
+  Funding lock keeps the placeholder live for the whole raise. SplitMain's
+  own `distributeETH`/`distributeERC20` are permissionless against the
+  stored recipients, so anything sent straight to `payoutSplit` before the
+  first distribution can be pushed to the placeholders and lost. The same
+  holds between distributions for the last-written holder set.
 - **Distribution takes the holder list from the caller**, and the split
   update requires the percentages to sum to 100% — an incomplete list
   fails to update the split and the pushed funds wait in the payout split

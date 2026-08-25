@@ -18,6 +18,7 @@ serverless: a static site whose only backend is the chain.
 - `/create` — issuer form for creating a PACT and deploying the onchain offering.
 - `/status?offering=0x…` — issuer dashboard for allocations, offering state, lifecycle actions, and cap table.
 - `/buy?offering=0x…` — buyer-facing purchase and receipt page; private allocation links append `#<fragment>`.
+- `/terms?offering=0x…` — the PACT document, filled in with the offering's live state. Append `&tx=0x…` to render an executed certificate for a specific purchase.
 
 Under the hood:
 
