@@ -38,7 +38,7 @@ The share link the web app understands:
 
 ```sh
 FRAG=$(printf '{"v":1,"a":"%s","n":"%s","c":"%s","s":"%s","k":"%s"}' "$ID" "$NAME" "$CAP" "$OWNER_SIG" "$LINK_PK" \
-  | base64 | tr -d '\n=' | tr '+/' '-_')
+  | base64 | tr -d '\n=' | tr -- '+/' '-_')
 echo "https://pact.splits.org/buy?offering=$OFF#$FRAG"
 ```
 
@@ -48,8 +48,15 @@ share it privately.
 
 ## Claim (buyer side)
 
-Decode a link: `echo "$FRAG" | tr '-_' '+/' | base64 -d` (pad with `=` to a
-multiple of 4 if `base64` complains). Then:
+Decode a link (`base64 -d` silently drops the tail without padding):
+
+```sh
+printf '%s' "$FRAG" | tr -- '-_' '+/' \
+  | awk '{p=(4-length%4)%4; printf "%s%s",$0,substr("===",1,p)}' | base64 -d
+```
+
+Then, with `ID`, `NAME`, `CAP`, `OWNER_SIG`, `LINK_PK` from the payload and
+`LINK_KEY=$(cast wallet address $LINK_PK)`:
 
 ```sh
 cat > claim.json <<JSON
@@ -64,7 +71,7 @@ cat > claim.json <<JSON
 }
 JSON
 CLAIM_SIG=$(cast wallet sign --private-key $LINK_PK --data --from-file claim.json)
-MAX=$(cast call $OFF 'quote(uint256)(uint256)' $UNITS)     # must be <= CAP
+MAX=$(cast --to-dec $(cast call $OFF 'quote(uint256)' $UNITS))   # must be <= CAP
 SIG='buyPrivate((bytes32,string,uint256,address),bytes,bytes,uint256,uint256)'
 cast call --from $ME $OFF "$SIG" "($ID,\"$NAME\",$CAP,$LINK_KEY)" $OWNER_SIG $CLAIM_SIG $UNITS $MAX
 cast send --account $ACCT $USDC 'approve(address,uint256)' $OFF $MAX

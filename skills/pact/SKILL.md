@@ -55,8 +55,9 @@ contract specification, and integration guide (every signature and revert).
    whether the call can succeed.
 3. **Quote.** `maxCost = quote(units)`; approve exactly that amount.
 4. **Simulate.** `cast call --from $SENDER` with the exact `cast send`
-   args; the decoded custom error names the missing precondition. Done
-   when the simulation returns without reverting.
+   args. A revert prints a 4-byte selector; `cast decode-error <selector>`
+   names the missing precondition. Done when the simulation returns
+   without reverting.
 5. **Sign.** With a keystore, `cast send --account`. Without one, stop
    here and hand the user `to`, `data`, `value: 0`, chain 8453 (recipe
    below); the user signs.
@@ -81,23 +82,26 @@ by 10k blocks.
 ### Read status
 
 ```sh
-for f in state minMet raised withdrawn raiseMin closeDate unitsSold remainingUnits \
-         publicUnits publicUnitsSold priceStart priceSlope owner treasury pactToken; do
-  printf '%-16s %s\n' $f "$(cast call $OFF "$f()")"
+for f in 'state()(uint8)' 'minMet()(bool)' 'raised()(uint256)' 'withdrawn()(uint256)' \
+         'raiseMin()(uint256)' 'closeDate()(uint64)' 'unitsSold()(uint256)' 'remainingUnits()(uint256)' \
+         'publicUnits()(uint256)' 'publicUnitsSold()(uint256)' 'priceStart()(uint256)' 'priceSlope()(uint256)' \
+         'owner()(address)' 'treasury()(address)' 'pactToken()(address)'; do
+  printf '%-18s %s\n' "${f%%\(*}" "$(cast call $OFF "$f")"
 done
 cast call $OFF 'quote(uint256)(uint256)' 10          # cost of the next 10 units
 cast call $OFF 'deposits(address)(uint256)' $ME       # refundable deposit
 cast call $OFF 'unitsBought(address)(uint256)' $ME
 ```
 
-Raw words come back as hex; append the return type (`'state()(uint8)'`)
-to decode, or pipe through `cast --to-dec`.
+Decoded `uint256` values print as `219000000 [2.19e8]`; to reuse one as
+an argument, take the raw word and convert:
+`MAX=$(cast --to-dec $(cast call $OFF 'quote(uint256)' $UNITS))`.
 
 ### Buy publicly
 
 ```sh
 UNITS=10
-MAX=$(cast call $OFF 'quote(uint256)(uint256)' $UNITS)
+MAX=$(cast --to-dec $(cast call $OFF 'quote(uint256)' $UNITS))
 cast send --account $ACCT $USDC 'approve(address,uint256)' $OFF $MAX
 cast call --from $ME $OFF 'buyPublic(uint256,uint256,string)' $UNITS $MAX ''   # simulate, after the approve lands
 cast send --account $ACCT $OFF 'buyPublic(uint256,uint256,string)' $UNITS $MAX ''
@@ -131,8 +135,13 @@ allocation nonzero, `publicUnits <= offeringUnits`, `raiseMin` reachable by
 selling every offered unit, `closeDate` in the future, `priceStart > 0`.
 Valuation band → curve: `priceStart = floor / 1000`,
 `priceSlope = (ceiling - floor) / 1000 / offeringUnits`. The new
-`offering` address is topic 3 of `OfferingCreated` in the receipt
-(`cast receipt <tx> --json | jq`).
+`offering` address is topic 3 of `OfferingCreated` in the receipt:
+
+```sh
+cast receipt $TX --json \
+  | jq -r --arg f "$(echo $FACTORY | tr A-F a-f)" '.logs[] | select(.address==$f) | .topics[3]' \
+  | cast parse-bytes32-address
+```
 
 ### Withdraw, close, fail, refund
 
