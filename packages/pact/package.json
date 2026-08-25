@@ -4,7 +4,22 @@
   "description": "CLI, MCP server, and agent skill for PACT: raise small onchain rounds in USDC on Base.",
   "license": "MIT",
   "type": "module",
-  "repository": "github:0xSplits/pact",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/0xSplits/pact.git",
+    "directory": "packages/pact"
+  },
+  "homepage": "https://pact.splits.org",
+  "keywords": [
+    "pact",
+    "splits",
+    "base",
+    "usdc",
+    "bonding-curve",
+    "mcp",
+    "cli",
+    "agent"
+  ],
   "bin": {
     "pact": "dist/pact.js"
   },
@@ -16,5 +31,23 @@
   "engines": {
     "node": ">=20"
   },
-  "mcpName": "org.splits/pact-mcp"
+  "mcpName": "org.splits/pact-mcp",
+  "imports": {
+    "#pact/*": "./src/*"
+  },
+  "scripts": {
+    "dev": "node src/bin.ts",
+    "sync": "node scripts/sync.ts",
+    "build": "npm run sync && esbuild src/bin.ts --bundle --platform=node --target=node20 --format=esm --external:viem --banner:js=\"import { createRequire as __createRequire } from 'node:module'; const require = __createRequire(import.meta.url);\" --outfile=dist/pact.js --log-level=warning",
+    "prepack": "npm run build"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/server": "2.0.0-alpha.4",
+    "viem": "^2.54.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0",
+    "incur": "0.5.1",
+    "splits-pact": "file:../.."
+  }
 }

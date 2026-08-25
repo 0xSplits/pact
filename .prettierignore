@@ -7,3 +7,5 @@ package-lock.json
 .scratch/
 # conductor workspace scratch dir (gitignored)
 .context/
+# bundled cli
+packages/pact/dist/

@@ -28,7 +28,7 @@ Inferences are marked as such.
   external services**: "CLI tools are the most context-efficient way to
   interact with external services… Claude is also effective at learning CLI
   tools it doesn't already know. Try prompts like `Use 'foo-cli-tool --help'
-  to learn about foo tool`"
+to learn about foo tool`"
   ([Claude Code best practices, "Use CLI tools"](https://code.claude.com/docs/en/best-practices#use-cli-tools)).
   MCP's stated role is "connect to external services" where "the connection
   and authentication [are] handled by the server"
@@ -36,7 +36,7 @@ Inferences are marked as such.
 - **Host support is the deciding constraint, and it cuts both ways**: every
   terminal harness that can spawn a stdio MCP server can also run a shell
   command (Claude Code, Codex CLI, Gemini CLI, Cursor, opencode). Browser
-  hosts (claude.ai, ChatGPT) can do *neither* — they only reach remote HTTP
+  hosts (claude.ai, ChatGPT) can do _neither_ — they only reach remote HTTP
   MCP — so PACT's serverless posture already excludes them regardless of
   CLI-vs-MCP (§4).
 - **Recommendation**: build the package as a CLI (`pact <command>`) whose
@@ -89,7 +89,7 @@ derives:
   imported so plain runs don't pay for the SDK
   ([src/Mcp.ts](https://github.com/wevm/incur/blob/main/src/Mcp.ts),
   [package.json](https://github.com/wevm/incur/blob/main/package.json)).
-- OpenAPI is an *input* option: mount any fetch handler and pass a spec to
+- OpenAPI is an _input_ option: mount any fetch handler and pass a spec to
   generate typed subcommands ([OpenAPI](https://github.com/wevm/incur#openapi));
   remote MCP endpoints can likewise be mounted as command groups
   ([MCP command sources](https://github.com/wevm/incur#mcp-command-sources)).
@@ -124,13 +124,13 @@ skills "recommended – lighter on tokens" and offers `mcp add` as the
 alternative ([Quickprompt](https://github.com/wevm/incur#quickprompt)). The
 session model (20-command CLI, 5 calls):
 
-| | MCP + JSON | One Skill + JSON | incur |
-|---|---|---|---|
-| Session start | 6,747 | 624 | 805 |
-| Discovery | 0 | 11,489 | 387 |
-| Invocation x5 | 110 | 65 | 65 |
-| Response x5 | 10,940 | 10,800 | 5,790 |
-| Cost | $0.0325 | $0.0410 | $0.0131 |
+|               | MCP + JSON | One Skill + JSON | incur   |
+| ------------- | ---------- | ---------------- | ------- |
+| Session start | 6,747      | 624              | 805     |
+| Discovery     | 0          | 11,489           | 387     |
+| Invocation x5 | 110        | 65               | 65      |
+| Response x5   | 10,940     | 10,800           | 5,790   |
+| Cost          | $0.0325    | $0.0410          | $0.0131 |
 
 ([Session savings](https://github.com/wevm/incur#session-savings); method in
 [bench/measure.ts](https://github.com/wevm/incur/blob/main/bench/measure.ts),
@@ -208,7 +208,7 @@ be, so expect the gap to be smaller (inference).
 arguing CLI-over-MCP or vice versa. OpenAI's docs treat Codex MCP and skills
 as separate features ([Codex MCP](https://learn.chatgpt.com/docs/extend/mcp?surface=cli)).
 Vercel's `vercel mcp` command only configures local clients to point at
-their *remote* MCP; it does not expose the CLI's commands as tools
+their _remote_ MCP; it does not expose the CLI's commands as tools
 ([vercel.com/docs/cli/mcp](https://vercel.com/docs/cli/mcp)).
 
 ---
@@ -253,7 +253,7 @@ their *remote* MCP; it does not expose the CLI's commands as tools
   ([agents.ts](https://github.com/wevm/incur/blob/main/src/internal/agents.ts)).
   Claude Code's own advice for unknown CLIs is `--help`
   ([best practices](https://code.claude.com/docs/en/best-practices#use-cli-tools)).
-- Net: the registry is the only *catalog* that agents' host UIs browse; a
+- Net: the registry is the only _catalog_ that agents' host UIs browse; a
   CLI needs the skill (already planned) to be found. Keeping the MCP entry
   costs one `server.json` whose `args` point at the same package.
 
@@ -283,7 +283,7 @@ their *remote* MCP; it does not expose the CLI's commands as tools
   either way. The one thing MCP has that a CLI lacks is **elicitation**
   (server-initiated user prompts, [spec](https://modelcontextprotocol.io/specification/2026-07-28)),
   which could ask "confirm sending 12.5 USDC?" — but the spec already
-  decided unsigned mode *is* the confirmation affordance (§4.3), so this is
+  decided unsigned mode _is_ the confirmation affordance (§4.3), so this is
   unused.
 - Secrets: both read `PACT_PRIVATE_KEY` from env; a CLI additionally can
   take `--dry-run` per call from a permission rule (`Bash(pact * --dry-run)`)
@@ -302,16 +302,16 @@ their *remote* MCP; it does not expose the CLI's commands as tools
 
 ### 3.6 Host support
 
-| Host | Shell / local binary | stdio MCP | Remote HTTP MCP | Source |
-|---|---|---|---|---|
-| Claude Code | yes (Bash tool) | yes | yes | [mcp docs](https://code.claude.com/docs/en/mcp) |
-| Codex CLI | yes | yes (`codex mcp add … -- npx …`) | yes | [Codex MCP](https://learn.chatgpt.com/docs/extend/mcp?surface=cli) |
-| Gemini CLI | yes ("Execute shell commands") | yes | yes (SSE/HTTP) | [Gemini CLI](https://geminicli.com/docs/tools/mcp-server/) |
-| Cursor | yes (agent terminal) | yes | yes | [Cursor](https://cursor.com/docs/context/mcp) |
-| opencode | yes | yes (`type: local`) | yes (`type: remote`) | [opencode](https://opencode.ai/docs/mcp-servers/) |
-| Claude Desktop | no | yes (`claude_desktop_config.json`, desktop extensions) | yes | [support article](https://support.claude.com/en/articles/11175166-getting-started-with-custom-connectors-using-remote-mcp) |
-| claude.ai / Cowork / mobile | sandbox code only, package-manager egress by default | no ("aren't available in Cowork or claude.ai") | yes | [same](https://support.claude.com/en/articles/11175166-getting-started-with-custom-connectors-using-remote-mcp), [sandbox](https://support.claude.com/en/articles/12111783-create-and-edit-files-with-claude) |
-| ChatGPT web | no | no ("remote MCP-backed tools supplied by plugins") | yes | [ChatGPT MCP](https://learn.chatgpt.com/docs/extend/mcp) |
+| Host                        | Shell / local binary                                 | stdio MCP                                              | Remote HTTP MCP      | Source                                                                                                                                                                                                        |
+| --------------------------- | ---------------------------------------------------- | ------------------------------------------------------ | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Claude Code                 | yes (Bash tool)                                      | yes                                                    | yes                  | [mcp docs](https://code.claude.com/docs/en/mcp)                                                                                                                                                               |
+| Codex CLI                   | yes                                                  | yes (`codex mcp add … -- npx …`)                       | yes                  | [Codex MCP](https://learn.chatgpt.com/docs/extend/mcp?surface=cli)                                                                                                                                            |
+| Gemini CLI                  | yes ("Execute shell commands")                       | yes                                                    | yes (SSE/HTTP)       | [Gemini CLI](https://geminicli.com/docs/tools/mcp-server/)                                                                                                                                                    |
+| Cursor                      | yes (agent terminal)                                 | yes                                                    | yes                  | [Cursor](https://cursor.com/docs/context/mcp)                                                                                                                                                                 |
+| opencode                    | yes                                                  | yes (`type: local`)                                    | yes (`type: remote`) | [opencode](https://opencode.ai/docs/mcp-servers/)                                                                                                                                                             |
+| Claude Desktop              | no                                                   | yes (`claude_desktop_config.json`, desktop extensions) | yes                  | [support article](https://support.claude.com/en/articles/11175166-getting-started-with-custom-connectors-using-remote-mcp)                                                                                    |
+| claude.ai / Cowork / mobile | sandbox code only, package-manager egress by default | no ("aren't available in Cowork or claude.ai")         | yes                  | [same](https://support.claude.com/en/articles/11175166-getting-started-with-custom-connectors-using-remote-mcp), [sandbox](https://support.claude.com/en/articles/12111783-create-and-edit-files-with-claude) |
+| ChatGPT web                 | no                                                   | no ("remote MCP-backed tools supplied by plugins")     | yes                  | [ChatGPT MCP](https://learn.chatgpt.com/docs/extend/mcp)                                                                                                                                                      |
 
 Reading: every host that can run a stdio MCP server from npm can also run
 `npx pact …` in a shell, except Claude Desktop, which has no shell tool but
@@ -353,7 +353,7 @@ Cost of doing both, from the incur design: one schema table (already
 required for MCP), plus an argv adapter. Node's `util.parseArgs` covers
 flags; the tool `inputSchema` (Zod) validates the parsed object either way.
 The MCP adapter is the ~40 lines `registerTools` in incur's `Mcp.ts`. The
-real cost is *discipline*: tool names, option names, and output envelopes
+real cost is _discipline_: tool names, option names, and output envelopes
 must stay identical across both, so the skill and README describe one
 contract. Adopting incur itself would buy the skill generator, TOON, CTAs,
 and 13-agent install for free but pins `@modelcontextprotocol/server`

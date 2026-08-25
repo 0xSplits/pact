@@ -1,0 +1,67 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "org.splits/pact-mcp",
+  "description": "CLI, MCP server, and agent skill for PACT: raise small onchain rounds in USDC on Base.",
+  "title": "PACT",
+  "repository": {
+    "url": "https://github.com/0xSplits/pact",
+    "source": "github",
+    "subfolder": "packages/pact"
+  },
+  "version": "0.1.0",
+  "websiteUrl": "https://pact.splits.org",
+  "packages": [
+    {
+      "registryType": "npm",
+      "registryBaseUrl": "https://registry.npmjs.org",
+      "identifier": "@splits/pact",
+      "version": "0.1.0",
+      "runtimeHint": "npx",
+      "runtimeArguments": [
+        {
+          "type": "positional",
+          "value": "-y",
+          "valueHint": "-y"
+        }
+      ],
+      "packageArguments": [
+        {
+          "type": "positional",
+          "value": "--mcp",
+          "valueHint": "--mcp"
+        }
+      ],
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "PACT_RPC_URL",
+          "description": "JSON-RPC endpoint; defaults to the public Base RPC",
+          "isRequired": false
+        },
+        {
+          "name": "PACT_CHAIN_ID",
+          "description": "Expected chain id; defaults to 8453",
+          "isRequired": false
+        },
+        {
+          "name": "PACT_FACTORY_ADDRESS",
+          "description": "OfferingFactory address; defaults to the pinned Base deployment",
+          "isRequired": false
+        },
+        {
+          "name": "PACT_PRIVATE_KEY",
+          "description": "Operator key enabling signed sends; omit for unsigned transactions",
+          "isRequired": false,
+          "isSecret": true
+        },
+        {
+          "name": "PACT_LEDGER_DIR",
+          "description": "Voucher ledger directory; defaults to ~/.pact/ledger",
+          "isRequired": false
+        }
+      ]
+    }
+  ]
+}

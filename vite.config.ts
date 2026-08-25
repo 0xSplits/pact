@@ -104,7 +104,7 @@ export default defineConfig(({ isPreview }) => ({
   plugins: [react(), tailwindcss(), cleanRoutes, openGraphMetadata],
   server: !isPreview && localHttps ? { https: localHttps } : {},
   // Playwright owns tests/*.spec.ts; vitest only runs the colocated unit tests.
-  test: { include: ["src/**/*.test.ts"] },
+  test: { include: ["src/**/*.test.ts", "packages/*/src/**/*.test.ts"] },
   // Playwright targets a stable HTTP preview URL. A developer's trusted
   // localhost certificate must not silently change the E2E server protocol.
   build: {

@@ -29,7 +29,8 @@ const affectsBrowserFlow = changedFiles.some(
     file.startsWith("src/pages/") ||
     file.startsWith("src/components/") ||
     file.startsWith("src/lib/chain/") ||
-    file === "src/lib/routes.ts",
+    file === "src/lib/routes.ts" ||
+    (file.startsWith("packages/pact/") && !file.endsWith(".md")),
 );
 
 if (!affectsBrowserFlow) {
