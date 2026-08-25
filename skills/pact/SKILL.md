@@ -1,6 +1,6 @@
 ---
 name: pact
-description: What PACT is and how to act on it safely with cast (Foundry). Raise or buy into small onchain rounds that sell cap-table units along a USDC bonding curve on Base, reading and writing the Offering contract directly.
+description: PACT onchain rounds on Base, driven with cast. Use when the user mentions PACT, a pact.splits.org link, an Offering or PactToken address, or wants to create, quote, buy into, withdraw from, fail, refund, or issue vouchers for a cap-table raise.
 ---
 
 # PACT
@@ -12,17 +12,17 @@ whole backend, and `cast` is the whole toolchain.
 
 ## Hard facts
 
-- Chain: Base mainnet, chain id 8453. `export ETH_RPC_URL=https://mainnet.base.org`
-  (or any Base RPC) so every `cast` call below picks it up.
-- USDC: `0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913`, 6 decimals. All
-  amounts are base units (`1 USDC = 1000000`).
-- Factory: `0x68DA9a884A6B5758a21490CeA5A1325C5f02eCdD`, deployed at block
-  `50274529`. Every offering is a child of that factory; nothing else is a
-  PACT offering. Re-check the pin at
-  https://pact.splits.org/.well-known/pact.json before trusting it.
-- Docs: https://pact.splits.org/llms.txt indexes the architecture, contract
-  specification, and integration guide (all function signatures and
-  reverts live there).
+```sh
+export ETH_RPC_URL=https://mainnet.base.org        # chain id 8453
+FACTORY=0x68DA9a884A6B5758a21490CeA5A1325C5f02eCdD # deployed at block 50274529
+USDC=0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913    # 6 decimals; every amount below is base units
+OFF=<offering>
+```
+
+Every offering is a child of `FACTORY`; nothing else is a PACT offering.
+https://pact.splits.org/.well-known/pact.json is the pin if these ever
+look stale; https://pact.splits.org/llms.txt indexes the architecture,
+contract specification, and integration guide (every signature and revert).
 
 ## Model
 
@@ -46,25 +46,24 @@ whole backend, and `cast` is the whole toolchain.
 | closed | `state == 2` (owner `closeAndWithdraw`, needs `minMet`) | `withdraw` if anything is left                                                |
 | failed | `state == 1`                                            | `refund` (buyer), `refundAll(address[])` (owner), `sweepFailedUnits` (anyone) |
 
-## Safety rails (always)
+## Before any write
 
-1. **Verify the address is a factory child before anything else**, and
-   especially before any USDC approve. A contract that merely returns
-   `factory()` is not proof.
-2. `quote(units)` first; pass that number as `maxCost`. Approve exactly
-   `maxCost`, never more, never infinite.
-3. Check the phase table before writes.
-4. Simulate every write with `cast call` (same args, from the sender)
-   before `cast send`; a revert there costs nothing and names the reason.
-5. Without a key, stop at the simulated calldata and hand it to the user
-   to sign; never ask for a private key. With a key, prefer a keystore
-   (`--account`) over `--private-key` in the shell.
-6. `buyerName` and `projectName` are emitted onchain forever.
+1. **Factory child.** `OFF` appears as `offering` in an `OfferingCreated`
+   log of `FACTORY` (recipe below). A contract that merely returns
+   `factory()` proves nothing. Done when the log is in hand.
+2. **Phase.** Read `state`, `minMet`, `closeDate`; the table above says
+   whether the call can succeed.
+3. **Quote.** `maxCost = quote(units)`; approve exactly that amount.
+4. **Simulate.** `cast call --from $SENDER` with the exact `cast send`
+   args; the decoded custom error names the missing precondition. Done
+   when the simulation returns without reverting.
+5. **Sign.** With a keystore, `cast send --account`. Without one, stop
+   here and hand the user `to`, `data`, `value: 0`, chain 8453 (recipe
+   below); the user signs.
+
+`buyerName` and `projectName` are emitted onchain forever.
 
 ## Recipes
-
-Set `OFF=<offering>`, `USDC=0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913`,
-`FACTORY=0x68DA9a884A6B5758a21490CeA5A1325C5f02eCdD`.
 
 ### Is this a PACT offering?
 
@@ -91,27 +90,20 @@ cast call $OFF 'deposits(address)(uint256)' $ME       # refundable deposit
 cast call $OFF 'unitsBought(address)(uint256)' $ME
 ```
 
-Raw words come back as hex; `cast --to-dec` converts, or append the return
-type (`'state()(uint8)'`) to get it decoded. To read everything in one RPC
-round trip, batch through Multicall3 (`0xcA11bde05977b3631167028862bE2a173976CA11`,
-`aggregate3`); the `cast-batched-reads` skill, if installed, has the idiom.
-
-Phase from the reads: `state` 1 → failed, 2 → closed, 0 with `minMet`
-true or `closeDate >= now` → live, otherwise limbo.
+Raw words come back as hex; append the return type (`'state()(uint8)'`)
+to decode, or pipe through `cast --to-dec`.
 
 ### Buy publicly
 
 ```sh
 UNITS=10
 MAX=$(cast call $OFF 'quote(uint256)(uint256)' $UNITS)
-cast call --from $ME $OFF 'buyPublic(uint256,uint256,string)' $UNITS $MAX ''   # simulate
 cast send --account $ACCT $USDC 'approve(address,uint256)' $OFF $MAX
+cast call --from $ME $OFF 'buyPublic(uint256,uint256,string)' $UNITS $MAX ''   # simulate, after the approve lands
 cast send --account $ACCT $OFF 'buyPublic(uint256,uint256,string)' $UNITS $MAX ''
 ```
 
-The simulate step will revert `ERC20: transfer amount exceeds allowance`
-style until the approve lands; that is expected. `Slippage()` means the
-cost moved above `MAX`, re-quote. `PublicAllocationExceeded()` means the
+`Slippage()` means the cost moved above `MAX`: re-quote, re-approve. `PublicAllocationExceeded()` means the
 public tranche is exhausted. Units arrive in the buyer's wallet as
 `PactToken` id 0 in the same transaction:
 `cast call $(cast call $OFF 'pactToken()(address)') 'balanceOf(address,uint256)(uint256)' $ME 0`.
@@ -123,7 +115,7 @@ cast calldata 'approve(address,uint256)' $OFF $MAX
 cast calldata 'buyPublic(uint256,uint256,string)' $UNITS $MAX ''
 ```
 
-Give the user `to`, `data`, `value: 0`, chain 8453, in that order.
+Two transactions, in that order; the approve must land first.
 
 ### Create an offering
 
