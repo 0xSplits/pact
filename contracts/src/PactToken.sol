@@ -51,20 +51,28 @@ contract PactToken is ERC1155, LiquidSplit {
     /*                         IMMUTABLES                         */
     /*.•°:°.´+˚.*°.˚:*.´•*.+°.•°:´*.´•*.•°.•°:°.´:•˚°.*°.˚:*.´+°.•*/
 
-    /// @dev The escrow selling this token; a permanent operator.
+    /// @notice The Offering escrow selling this token; a permanent operator.
     address public immutable offering;
 
     /*´:°•.°+.*•´.*:˚.°*.˚•´.°:°•.°•.*•´.*:˚.°*.˚•´.°:°•.°+.*•´.*:*/
     /*                          STORAGE                           */
     /*.•°:°.´+˚.*°.˚:*.´•*.+°.•°:´*.´•*.•°.•°:°.´:•˚°.*°.˚:*.´+°.•*/
 
-    /// @dev Display name rendered in the onchain metadata.
+    /// @notice Display name rendered in the onchain metadata.
     string public projectName;
 
     /*´:°•.°+.*•´.*:˚.°*.˚•´.°:°•.°•.*•´.*:˚.°*.˚•´.°:°•.°+.*•´.*:*/
     /*                        CONSTRUCTOR                         */
     /*.•°:°.´+˚.*°.˚:*.´•*.+°.•°:´*.´•*.•°.•°:°.´:•˚°.*°.˚:*.´+°.•*/
 
+    /**
+     * @param splitMain_ Address of 0xSplits SplitMain.
+     * @param projectName_ Display name rendered in the onchain metadata.
+     * @param holderAccounts Founder recipients of the units not offered for sale.
+     * @param holderAllocations Units per founder, matching `holderAccounts`.
+     * @param offering_ The Offering escrow; receives `offeringUnits`.
+     * @param offeringUnits Units minted to the escrow for sale.
+     */
     constructor(
         address splitMain_,
         string memory projectName_,
@@ -99,6 +107,9 @@ contract PactToken is ERC1155, LiquidSplit {
      * can reclaim purchased units on refund without a per-buyer approval.
      * @dev The approval stands in every state, but the escrow only exercises
      * it from `refund`/`refundAll`, both hard-gated to the Failed state.
+     * @param owner The token holder.
+     * @param operator The would-be operator.
+     * @return True for the offering escrow or any explicitly approved operator.
      */
     function isApprovedForAll(address owner, address operator) public view override returns (bool) {
         return operator == offering || super.isApprovedForAll(owner, operator);
@@ -112,6 +123,9 @@ contract PactToken is ERC1155, LiquidSplit {
      * the curve is dead and distribution is permissionless as usual. Residual
      * accepted: in Failed, revenue accrued before the failure stays
      * distributable by not-yet-refunded holders.
+     * @param token ERC-20 to distribute, or the zero address for ETH.
+     * @param accounts Every current holder, sorted ascending with no duplicates.
+     * @param distributorAddress Receives the distributor fee, if any.
      */
     function distributeFunds(address token, address[] calldata accounts, address distributorAddress) public override {
         if (Offering(payable(offering)).state() == Offering.State.Funding) revert DistributionWhileFunding();
@@ -122,6 +136,8 @@ contract PactToken is ERC1155, LiquidSplit {
     /**
      * @notice Unit balance as a 0xSplits percentage (1 unit = 0.1% = 1000 on
      * the 1e6 scale).
+     * @param account The holder to read.
+     * @return The holder's share on the 1e6 scale.
      */
     function scaledPercentBalanceOf(address account) public view override returns (uint32) {
         unchecked {
@@ -132,6 +148,7 @@ contract PactToken is ERC1155, LiquidSplit {
     /**
      * @notice Fully onchain metadata: a base64 JSON data URI whose image is an
      * inline SVG of the project name.
+     * @return The data URI; identical for every token id.
      */
     function uri(uint256) public view override returns (string memory) {
         string memory svg = string.concat(
