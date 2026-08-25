@@ -7,13 +7,11 @@ import { useAccount } from "wagmi";
 import { StatusBadge } from "#components/ui.tsx";
 import { valuationForUnitIndex } from "#lib/chain/curve.ts";
 import { TOTAL_LIQUID_SPLIT_UNITS } from "#lib/chain/liquid-split.ts";
-import { offeringStatus } from "#lib/chain/offering-status.ts";
 import { loadWalletRecords } from "#lib/chain/offerings.ts";
 import type { OfferingLifecycle, WalletRecords } from "#lib/chain/offerings.ts";
 import { offeringStateCurve } from "#lib/chain/onchain.ts";
 import type { OfferingRecord } from "#lib/chain/onchain.ts";
 import {
-  fmtDate,
   fmtPct,
   fmtTokens,
   fmtUsd,
@@ -113,39 +111,40 @@ function DashboardTable({
 }
 
 // Live reads degrade to no lifecycle; show absence rather than a stale guess.
-// Four dashboard-flavoured states: below minimum, minimum met (open), funded
-// (successfully closed), failed (or past-close limbo below minimum).
-type OfferingState = "loading" | "below-min" | "min-met" | "funded" | "failed";
+// Dashboard-flavoured states derived from the contract state enum (0 active,
+// 1 failed, 2 closed), minMet, and the close date.
+type OfferingState = "loading" | "open" | "funded" | "failed" | "expired";
 
 function offeringDashState(
   lifecycle: OfferingLifecycle | undefined,
   closeDate: number,
 ): OfferingState {
   if (!lifecycle) return "loading";
-  const base = offeringStatus({ ...lifecycle, closeDate });
-  if (base.tone === "failed") return "failed";
-  // state 2 is the closed/funded contract state; read it directly rather than
-  // matching user-facing status copy that could be reworded.
+  if (lifecycle.state === 1) return "failed";
   if (lifecycle.state === 2) return "funded";
-  return lifecycle.minMet ? "min-met" : "below-min";
+  // Still active onchain: open until the close date passes without the
+  // minimum — then it can no longer succeed, but nobody has finalized it yet.
+  if (!lifecycle.minMet && Date.now() > closeDate * 1000) return "expired";
+  return "open";
 }
 
-function OfferingStatusCell({ state }: { state: OfferingState }) {
+function OfferingStatusCell({
+  state,
+  raised,
+}: {
+  state: OfferingState;
+  raised: bigint;
+}) {
   if (state === "loading") return <span className="t-muted">—</span>;
-  const label =
-    state === "failed"
-      ? "Failed"
+  const raisedText = fmtUsd(usdcBaseUnitsToDollars(raised), "cents");
+  const { tone, label } =
+    state === "open"
+      ? { tone: "funding", label: `Open: ${raisedText} raised` }
       : state === "funded"
-        ? "Funded"
-        : state === "min-met"
-          ? "Minimum met"
-          : "Below minimum";
-  const tone =
-    state === "failed"
-      ? "failed"
-      : state === "below-min"
-        ? "funding"
-        : "secured";
+        ? { tone: "secured", label: `Closed: ${raisedText} raised` }
+        : state === "failed"
+          ? { tone: "failed", label: "Closed: failed minimum" }
+          : { tone: "failed", label: "Expired: close date passed" };
   return <StatusBadge status={{ tone, label, note: "" }} />;
 }
 
@@ -187,8 +186,8 @@ function Dashboard({ records }: { records: WalletRecords }) {
             <thead>
               <tr>
                 <th>Project</th>
-                <th className="num">Round</th>
-                <th className="num">Status</th>
+                <th>Round</th>
+                <th>Status</th>
               </tr>
             </thead>
             <tbody>
@@ -209,12 +208,15 @@ function Dashboard({ records }: { records: WalletRecords }) {
                         {pact.projectName || "Untitled offering"}
                       </a>
                     </td>
-                    <td className="num">
+                    <td>
                       {fmtUsd(usdcBaseUnitsToDollars(target), "cents")} on{" "}
                       {fmtUsd(valuation, "whole")}
                     </td>
-                    <td className="num">
-                      <OfferingStatusCell state={state} />
+                    <td>
+                      <OfferingStatusCell
+                        state={state}
+                        raised={pact.raised ?? 0n}
+                      />
                     </td>
                   </tr>
                 );
@@ -230,9 +232,8 @@ function Dashboard({ records }: { records: WalletRecords }) {
             <thead>
               <tr>
                 <th>Project</th>
-                <th className="num">Amount</th>
-                <th className="num">Ownership</th>
-                <th className="num">Date</th>
+                <th className="num">Purchased</th>
+                <th>Ownership</th>
                 <th className="num">Receipt</th>
               </tr>
             </thead>
@@ -248,17 +249,12 @@ function Dashboard({ records }: { records: WalletRecords }) {
                   <td className="num">
                     {fmtUsd(usdcBaseUnitsToDollars(purchase.cost), "cents")}
                   </td>
-                  <td className="num">
+                  <td>
                     {fmtPct((purchase.units / TOTAL_LIQUID_SPLIT_UNITS) * 100)}
                     <span className="t-muted">
                       {" "}
                       ({fmtTokens(purchase.units)} units)
                     </span>
-                  </td>
-                  <td className="num">
-                    {purchase.timestamp
-                      ? fmtDate(purchase.timestamp * 1000)
-                      : "—"}
                   </td>
                   <td className="num">
                     {purchase.txHash ? (
