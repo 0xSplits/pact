@@ -823,14 +823,18 @@ export function BuyApp() {
               <Field label="You receive">
                 <span>
                   {quoteUnits > 0
-                    ? `${fmtTokens(quoteUnits)} units · ${fmtPct((quoteUnits / TOTAL_LIQUID_SPLIT_UNITS) * 100)} of the project`
+                    ? fmtPct((quoteUnits / TOTAL_LIQUID_SPLIT_UNITS) * 100)
                     : "—"}
                 </span>
-                <Sub>
-                  {quoteUnits > 0
-                    ? `${fmtUsd(quoteCost, "cents")} charged · ${fmtUsd(quotePricePer, "cents")} / unit`
-                    : "— charged"}
-                </Sub>
+                {quoteUnits > 0 ? (
+                  <Sub>{fmtTokens(quoteUnits)} units</Sub>
+                ) : null}
+              </Field>
+              <Field label="Total purchase">
+                <span>{quoteUnits > 0 ? fmtUsd(quoteCost, "cents") : "—"}</span>
+                {quoteUnits > 0 ? (
+                  <Sub>{fmtUsd(quotePricePer, "cents")} / unit</Sub>
+                ) : null}
               </Field>
               <Field label="Display name" align="none">
                 <input

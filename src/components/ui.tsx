@@ -187,7 +187,9 @@ export function SignatureBlock({
             aria-invalid={!!error}
             type="text"
             placeholder="Name (required, private)"
-            autoComplete="name"
+            autoComplete="off"
+            data-1p-ignore
+            data-lpignore="true"
             required
             value={value}
             onChange={(e) => onChange(e.target.value)}

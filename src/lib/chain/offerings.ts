@@ -309,6 +309,8 @@ export interface WalletRecords {
     OfferingRecord & {
       raised?: bigint;
       target?: bigint;
+      unitsSold?: number;
+      remainingUnits?: number;
       lifecycle?: OfferingLifecycle | undefined;
     }
   >;
@@ -355,7 +357,12 @@ export async function loadWalletRecords(
     const lifecycleByOffering = new Map<string, OfferingLifecycle>();
     const totalsByOffering = new Map<
       string,
-      { raised: bigint; target: bigint }
+      {
+        raised: bigint;
+        target: bigint;
+        unitsSold: number;
+        remainingUnits: number;
+      }
     >();
     await Promise.all([
       ...lifecycleRecords.map(async (record) => {
@@ -403,6 +410,8 @@ export async function loadWalletRecords(
             target:
               raised +
               costForUnits(curve, Number(unitsSold), Number(remainingUnits)),
+            unitsSold: Number(unitsSold),
+            remainingUnits: Number(remainingUnits),
           });
         } catch {} // row renders without live totals
       }),

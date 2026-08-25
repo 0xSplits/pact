@@ -5,13 +5,21 @@ import type { ReactNode } from "react";
 import { useAccount } from "wagmi";
 
 import { StatusBadge } from "#components/ui.tsx";
-import { offeringStatus } from "#lib/chain/offering-status.ts";
+import { valuationForUnitIndex } from "#lib/chain/curve.ts";
+import { TOTAL_LIQUID_SPLIT_UNITS } from "#lib/chain/liquid-split.ts";
 import { loadWalletRecords } from "#lib/chain/offerings.ts";
 import type { OfferingLifecycle, WalletRecords } from "#lib/chain/offerings.ts";
-import { fmtTokens, fmtUsd, usdcBaseUnitsToDollars } from "#lib/format.ts";
-import { buyPath, CREATE_PATH, statusPath } from "#lib/routes.ts";
+import { offeringStateCurve } from "#lib/chain/onchain.ts";
+import type { OfferingRecord } from "#lib/chain/onchain.ts";
+import {
+  fmtPct,
+  fmtTokens,
+  fmtUsd,
+  usdcBaseUnitsToDollars,
+} from "#lib/format.ts";
+import { buyPath, CREATE_PATH, statusPath, termsPath } from "#lib/routes.ts";
 
-const PAPER = "paper px-10 py-12 sm:px-14 sm:py-16";
+const PAPER = "paper px-10 py-12 sm:px-16 sm:py-16";
 
 function Explainer() {
   return (
@@ -96,23 +104,61 @@ function DashboardTable({
 }) {
   return (
     <section className="mb-8">
-      <div className="font-bold mb-2">{title}</div>
+      <h2 className="text-lg font-semibold mb-2">{title}</h2>
       {children || <p className="t-muted text-sm">{empty}</p>}
     </section>
   );
 }
 
 // Live reads degrade to no lifecycle; show absence rather than a stale guess.
-function StatusCell({
-  lifecycle,
-  closeDate,
+// Dashboard-flavoured states derived from the contract state enum (0 active,
+// 1 failed, 2 closed), minMet, and the close date.
+type OfferingState = "loading" | "open" | "funded" | "failed" | "expired";
+
+function offeringDashState(
+  lifecycle: OfferingLifecycle | undefined,
+  closeDate: number,
+): OfferingState {
+  if (!lifecycle) return "loading";
+  if (lifecycle.state === 1) return "failed";
+  if (lifecycle.state === 2) return "funded";
+  // Still active onchain: open until the close date passes without the
+  // minimum — then it can no longer succeed, but nobody has finalized it yet.
+  if (!lifecycle.minMet && Date.now() > closeDate * 1000) return "expired";
+  return "open";
+}
+
+function OfferingStatusCell({
+  state,
+  raised,
 }: {
-  lifecycle: OfferingLifecycle | undefined;
-  closeDate: number;
+  state: OfferingState;
+  raised: bigint;
 }) {
-  if (!lifecycle) return <span className="t-muted">—</span>;
-  const status = offeringStatus({ ...lifecycle, closeDate });
-  return <StatusBadge status={{ ...status, note: "" }} />;
+  if (state === "loading") return <span className="t-muted">—</span>;
+  const raisedText = fmtUsd(usdcBaseUnitsToDollars(raised), "cents");
+  const { tone, label } =
+    state === "open"
+      ? { tone: "funding", label: `Open: ${raisedText} raised` }
+      : state === "funded"
+        ? { tone: "secured", label: `Closed: ${raisedText} raised` }
+        : state === "failed"
+          ? { tone: "failed", label: "Closed: failed minimum" }
+          : { tone: "failed", label: "Expired: close date passed" };
+  return <StatusBadge status={{ tone, label, note: "" }} />;
+}
+
+function finalValuation(
+  record: OfferingRecord,
+  unitsSold: number,
+  remainingUnits: number,
+) {
+  const curve = offeringStateCurve(record);
+  return valuationForUnitIndex(
+    curve,
+    unitsSold + remainingUnits,
+    TOTAL_LIQUID_SPLIT_UNITS,
+  );
 }
 
 function Dashboard({ records }: { records: WalletRecords }) {
@@ -123,7 +169,7 @@ function Dashboard({ records }: { records: WalletRecords }) {
         <div>
           <h1 className="text-2xl font-bold">Your PACTs</h1>
           <p className="mt-1 text-sm t-muted">
-            Issuances and purchase receipts connected to this wallet.
+            Offerings and purchase receipts connected to this wallet.
           </p>
         </div>
         <a
@@ -134,39 +180,47 @@ function Dashboard({ records }: { records: WalletRecords }) {
         </a>
       </div>
 
-      <DashboardTable title="Issuances" empty="No issuances yet.">
+      <DashboardTable title="Offerings" empty="No offerings yet.">
         {pacts.length ? (
           <table className="exhibit">
             <thead>
               <tr>
                 <th>Project</th>
-                <th className="num">Raised</th>
-                <th className="num">Target</th>
-                <th className="num">Status</th>
+                <th>Round</th>
+                <th>Status</th>
               </tr>
             </thead>
             <tbody>
-              {pacts.map((pact) => (
-                <tr key={pact.offering}>
-                  <td>
-                    <a className="linkbtn" href={statusPath(pact.offering)}>
-                      {pact.projectName || "Untitled issuance"}
-                    </a>
-                  </td>
-                  <td className="num">
-                    {fmtUsd(usdcBaseUnitsToDollars(pact.raised || 0), "cents")}
-                  </td>
-                  <td className="num">
-                    {fmtUsd(usdcBaseUnitsToDollars(pact.target || 0), "cents")}
-                  </td>
-                  <td className="num">
-                    <StatusCell
-                      lifecycle={pact.lifecycle}
-                      closeDate={pact.closeDate}
-                    />
-                  </td>
-                </tr>
-              ))}
+              {pacts.map((pact) => {
+                const target = pact.target ?? 0n;
+                const unitsSold = pact.unitsSold ?? 0;
+                const remainingUnits = pact.remainingUnits ?? 0;
+                const valuation = finalValuation(
+                  pact,
+                  unitsSold,
+                  remainingUnits,
+                );
+                const state = offeringDashState(pact.lifecycle, pact.closeDate);
+                return (
+                  <tr key={pact.offering}>
+                    <td>
+                      <a className="linkbtn" href={statusPath(pact.offering)}>
+                        {pact.projectName || "Untitled offering"}
+                      </a>
+                    </td>
+                    <td>
+                      {fmtUsd(usdcBaseUnitsToDollars(target), "cents")} on{" "}
+                      {fmtUsd(valuation, "whole")}
+                    </td>
+                    <td>
+                      <OfferingStatusCell
+                        state={state}
+                        raised={pact.raised ?? 0n}
+                      />
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         ) : null}
@@ -178,9 +232,9 @@ function Dashboard({ records }: { records: WalletRecords }) {
             <thead>
               <tr>
                 <th>Project</th>
-                <th className="num">Amount</th>
-                <th className="num">Units</th>
-                <th className="num">Status</th>
+                <th className="num">Purchased</th>
+                <th>Ownership</th>
+                <th className="num">Receipt</th>
               </tr>
             </thead>
             <tbody>
@@ -195,12 +249,24 @@ function Dashboard({ records }: { records: WalletRecords }) {
                   <td className="num">
                     {fmtUsd(usdcBaseUnitsToDollars(purchase.cost), "cents")}
                   </td>
-                  <td className="num">{fmtTokens(purchase.units)}</td>
+                  <td>
+                    {fmtPct((purchase.units / TOTAL_LIQUID_SPLIT_UNITS) * 100)}
+                    <span className="t-muted">
+                      {" "}
+                      ({fmtTokens(purchase.units)} units)
+                    </span>
+                  </td>
                   <td className="num">
-                    <StatusCell
-                      lifecycle={purchase.lifecycle}
-                      closeDate={purchase.record.closeDate}
-                    />
+                    {purchase.txHash ? (
+                      <a
+                        className="linkbtn"
+                        href={termsPath(purchase.offering, purchase.txHash)}
+                      >
+                        View
+                      </a>
+                    ) : (
+                      <span className="t-muted">—</span>
+                    )}
                   </td>
                 </tr>
               ))}
