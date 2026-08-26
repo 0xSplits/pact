@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 
 import { test } from "vitest";
 
-import { llmsTxt, wellKnownManifest } from "#lib/discovery.ts";
+import { llmsTxt, robotsTxt, wellKnownManifest } from "#lib/discovery.ts";
 
 const inputs = {
   factoryAddress: "0x0000000000000000000000000000000000000Fac",
@@ -23,6 +23,14 @@ test("manifest carries the pin and the skill pointer", () => {
   assert.match(manifest.skill.source, /\/skills\/pact$/);
   assert.match(manifest.docs.integrate, /\/docs\/integrate\.md$/);
   assert.doesNotThrow(() => JSON.stringify(manifest));
+});
+
+test("robots.txt allows crawling and points agents at llms.txt", () => {
+  const text = robotsTxt();
+  assert.match(text, /Allow: \//);
+  assert.match(text, /User-agent: \*/);
+  assert.match(text, /\/llms\.txt/);
+  assert.match(text, /\/\.well-known\/pact\.json/);
 });
 
 test("llms.txt names chain, factory, deploy block, and the skill", () => {

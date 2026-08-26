@@ -11,7 +11,7 @@ import {
   OFFERING_FACTORY_DEPLOY_BLOCK,
 } from "#generated/offering-contracts.ts";
 import { BASE_USDC_ADDRESS } from "#lib/chain/chain.ts";
-import { llmsTxt, wellKnownManifest } from "#lib/discovery.ts";
+import { llmsTxt, robotsTxt, wellKnownManifest } from "#lib/discovery.ts";
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const publicDir = path.join(root, "public");
@@ -62,10 +62,11 @@ assertPinned(
 );
 
 write("llms.txt", llmsTxt(inputs));
+write("robots.txt", robotsTxt());
 write(
   ".well-known/pact.json",
   JSON.stringify(wellKnownManifest(inputs), null, 2) + "\n",
 );
 console.log(
-  "Wrote public/llms.txt, public/.well-known/pact.json, public/docs/*.md",
+  "Wrote public/llms.txt, public/robots.txt, public/.well-known/pact.json, public/docs/*.md",
 );

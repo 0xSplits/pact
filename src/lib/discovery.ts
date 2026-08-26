@@ -56,6 +56,19 @@ export function wellKnownManifest({
   };
 }
 
+// robots.txt is the first fetch many crawlers/agents make. It has no standard
+// field for llms.txt, so the pointer rides in comments an LLM reads directly.
+export function robotsTxt({
+  origin = OG_SITE_ORIGIN,
+}: Pick<DiscoveryInputs, "origin"> = {}): string {
+  return `# PACT
+# AI agents and LLMs: start at ${origin}/llms.txt — a plain-text guide to this site.
+# Machine-readable protocol facts (addresses, deploy block, ABI pointers): ${origin}/.well-known/pact.json
+User-agent: *
+Allow: /
+`;
+}
+
 export function llmsTxt({
   factoryAddress,
   factoryDeployBlock,

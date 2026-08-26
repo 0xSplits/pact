@@ -48,6 +48,40 @@ const cleanRoutes: Plugin = {
   },
 };
 
+// Every shell serves an empty #app until JS runs, so an agent reading the raw
+// HTML sees nothing. Bake in a pointer to /llms.txt: a machine-readable <link>
+// and a <noscript> line that survives without JS execution.
+const agentDiscovery: Plugin = {
+  name: "pact-agent-discovery",
+  transformIndexHtml: {
+    order: "pre",
+    handler() {
+      return [
+        {
+          tag: "link",
+          attrs: {
+            rel: "alternate",
+            type: "text/plain",
+            title: "llms.txt",
+            href: "/llms.txt",
+          },
+          injectTo: "head" as const,
+        },
+        {
+          tag: "noscript",
+          children:
+            '<p style="max-width:640px;margin:2rem auto;padding:0 1rem;font-family:system-ui,sans-serif">' +
+            "PACT is a JavaScript app. For an AI-agent-readable guide to this site, see " +
+            '<a href="/llms.txt">/llms.txt</a> ' +
+            '(machine-readable protocol facts: <a href="/.well-known/pact.json">/.well-known/pact.json</a>).' +
+            "</p>",
+          injectTo: "body-prepend" as const,
+        },
+      ];
+    },
+  },
+};
+
 const openGraphMetadata: Plugin = {
   name: "pact-open-graph-metadata",
   transformIndexHtml: {
@@ -101,7 +135,13 @@ const openGraphMetadata: Plugin = {
 
 export default defineConfig(({ isPreview }) => ({
   appType: "mpa",
-  plugins: [react(), tailwindcss(), cleanRoutes, openGraphMetadata],
+  plugins: [
+    react(),
+    tailwindcss(),
+    cleanRoutes,
+    agentDiscovery,
+    openGraphMetadata,
+  ],
   server: !isPreview && localHttps ? { https: localHttps } : {},
   // Playwright owns tests/*.spec.ts; vitest only runs the colocated unit tests.
   test: { include: ["src/**/*.test.ts"] },
