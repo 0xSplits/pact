@@ -9,9 +9,6 @@ concurrency:
   group: checks-${{ github.ref }}
   cancel-in-progress: true
 
-permissions:
-  contents: read
-
 jobs:
   e2e-impact:
     name: E2E Impact
